@@ -6,26 +6,36 @@
 - Android SDK (managed automatically via Gradle)
 - (Optional) Android Studio for the emulator and layout previews
 
-### devenv
+### Nix flake
 
-If you have [Nix](https://nixos.org) and [direnv](https://direnv.net) installed, the `.envrc` will auto-load a [devenv](https://devenv.sh) shell containing JDK 17, the Android SDK, the emulator, and `adb`. The first entry into the directory builds the shell (a few minutes for the Android SDK). On hosts without Nix, install [devenv](https://devenv.sh/getting-started/) and run `devenv shell` manually.
+If you have [Nix](https://nixos.org) (with flakes enabled) and [direnv](https://direnv.net) + [nix-direnv](https://github.com/nix-community/nix-direnv) installed, the `.envrc` will auto-load a Nix shell containing JDK 21, the Android SDK, and `adb`. The first entry into the directory builds the shell (a few minutes for the Android SDK).
+
+> **aarch64 Linux users**: Android build tools (aapt2) are x86_64-only. Add
+> `boot.binfmt.emulatedSystems = [ "x86_64-linux" ];` to your NixOS
+> configuration and run `nixos-rebuild switch` to enable transparent QEMU
+> emulation. On non-NixOS, install `qemu-user-static` via your package manager.
+
+Without direnv, enter the shell manually:
+
+```bash
+nix develop
+```
 
 Common tasks (after entering the shell):
 
 ```bash
-devenv tasks run gradle:assemble-debug    # assemble debug APK
-devenv tasks run gradle:test              # run unit tests
-devenv tasks run gradle:format            # spotless + ktfmt
-devenv tasks run gradle:lint              # android lint
-devenv tasks run gradle:clean             # gradle clean
-devenv tasks run gradle:check             # build + test
-devenv tasks list                         # show all available tasks
+just build            # assemble debug APK
+just test             # run unit tests
+just format           # spotless + ktfmt
+just lint             # android lint
+just clean            # gradle clean
+just check            # build + test
 ```
 
 Build, install and launch on a connected adb device:
 
 ```bash
-devenv tasks run android:install
+just install
 ```
 
 Boot an Android emulator (one-time AVD creation required):
@@ -76,7 +86,7 @@ For a **signed release APK**, run `scripts/setup-signing.sh` to generate a keyst
 and `.env` file, then:
 
 ```bash
-devenv tasks run gradle:assemble-release   # Nix shell — loads .env automatically
+just build-release     # Nix shell — loads .env automatically
 # or
 source .env && ./gradlew assembleRelease  # without Nix
 ```
