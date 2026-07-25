@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.data.DolphinTree.Companion.GAME_INI_NOTICE
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
@@ -488,36 +489,37 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     }
 
   /**
-   * Reads `Config/Dolphin.ini` (the INI file Dolphin uses for its
+   * Reads `Config/[fileName]` (the INI file Dolphin uses for its
    * library paths) and returns its UTF-8 contents, or null if the
    * file does not exist yet. Used by [com.skiletro.wheelwitch.util.launcher.DolphinLauncher]
    * to upsert the WheelWitch `rom/` folder as an `ISOPathN` entry.
    */
-  fun readConfigIni(): String? {
+  fun readConfigIni(fileName: String = CONFIG_INI_NAME): String? {
     val configDir =
       findOrCreateDir(root, "Config") ?: return null
-    val file = configDir.findFile(CONFIG_INI_NAME) ?: return null
-    return resolver.openInputStream(file.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+    val file = configDir.findFile(fileName) ?: return null
+    return resolver.openInputStream(file.uri)
+      ?.use { it.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF") }
   }
 
   /**
-   * Writes [content] as `Config/Dolphin.ini`, creating the
+   * Writes [content] as `Config/[fileName]`, creating the
    * `Config/` directory and replacing any existing file. Returns the
    * new INI [DocumentFile]. Used by the launch flow to register the
    * WheelWitch `rom/` folder with Dolphin's library.
    */
-  fun writeConfigIni(content: String): DocumentFile {
+  fun writeConfigIni(content: String, fileName: String = CONFIG_INI_NAME): DocumentFile {
     val configDir =
       findOrCreateDir(root, "Config")
         ?: error("Cannot create Config/ in Dolphin tree")
-    val existing = configDir.findFile(CONFIG_INI_NAME)
+    val existing = configDir.findFile(fileName)
     if (existing != null) existing.delete()
     val file =
-      configDir.createFile("text/plain", CONFIG_INI_NAME)
-        ?: error("Cannot create $CONFIG_INI_NAME")
+      configDir.createFile("text/plain", fileName)
+        ?: error("Cannot create $fileName")
     val output =
       resolver.openOutputStream(file.uri)
-        ?: error("Cannot open output stream for $CONFIG_INI_NAME")
+        ?: error("Cannot open output stream for $fileName")
     output.use { it.write(content.toByteArray(Charsets.UTF_8)) }
     return file
   }
@@ -530,7 +532,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   fun readGameIni(gamePrefix: String): String? {
     val file = gameSettingsDir.findFile("$gamePrefix.ini") ?: return null
     return resolver.openInputStream(file.uri)?.use {
-      it.readBytes().toString(Charsets.UTF_8)
+      it.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
     }
   }
 
@@ -565,26 +567,55 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * value pairs are present and correct.
    */
   fun ensureRmcGameInis() {
+    var requiredSuffix = "\n$GAME_INI_NOTICE"
+    // The order of these sections is important here for the force-disabling to work.
+    requiredSuffix = addIniKeyValueAtTheEnd(requiredSuffix, "[Core]", CHEATS_KEY, FORCE_DISABLE_VALUE)
+    // If the force-disabling should not be as aggressive, the following single line could be
+    // commented out (it breaks some game-specific settings in the "General" section as well,
+    // but this should not matter, as those settings are usually globally configured).
+    requiredSuffix = addIniKeyValueAtTheEnd(requiredSuffix, "[Dolphin.Core]", CHEATS_KEY, FORCE_DISABLE_VALUE)
+    requiredSuffix =
+      addIniKeyValueAtTheEnd(requiredSuffix, "[Achievements.Achievements]", ACHIEVEMENTS_KEY, FORCE_DISABLE_VALUE)
     val existing = readGameIni(RMC_PREFIX).orEmpty()
     var content = existing
-    content = ensureIniKeyValue(content, "[Core]", "EnableCheats", "False")
-    content = ensureIniKeyValue(content, "[Dolphin.Core]", "EnableCheats", "False")
-    content =
-      ensureIniKeyValue(content, "[Achievements.Achievements]", "Enabled", "False")
+    // Remove our required settings if they were already present to work with the user-specific settings.
+    content = content.removeSuffix(requiredSuffix)
+    // Perform section rename operations on the settings not configured by Wheel Witch to preserve
+    // the required ordering of our sections.
+    content = renameSection(content, "[Core]", "[Core]")
+    content = renameSection(content, "[Dolphin.Core]", "[Core]")
+    content = renameSection(content, "[Achievements.Achievements]", "[Achievements.Achievements]")
+    // Remove stuff we should not need or want anymore, the user has been warned.
+    content = removeAllBelowNotice(content)
+    content = removeIniKeyInSection(content, "[Core]", CHEATS_KEY)
+    content = removeIniKeyInSection(content, "[Dolphin.Core]", CHEATS_KEY)
+    content = removeIniKeyInSection(content, "[Achievements.Achievements]", ACHIEVEMENTS_KEY)
+    // Finally, append our required settings.
+    content += requiredSuffix
     if (content != existing) {
       writeGameIni(RMC_PREFIX, content)
     }
 
-    // Strip [Dolphin.Core] EnableCheats from other RMC*.ini files
+    // Fix the RetroAchievements global config as it overrides the game-specific config
+    val existingAchievements = readConfigIni(ACHIEVEMENTS_INI_NAME).orEmpty()
+    var achievementsContent = existingAchievements
+    achievementsContent = removeIniKeyInSection(achievementsContent, "[Achievements]", ACHIEVEMENTS_KEY)
+    // The RetroAchievements disabling seems a bit broken, as Dolphin often needs to be closed
+    // and re-opened if the global setting was enabled.
+    achievementsContent = addIniKeyValue(achievementsContent, "[Achievements]", ACHIEVEMENTS_KEY, FORCE_DISABLE_VALUE)
+    if (existingAchievements != achievementsContent) {
+      writeConfigIni(achievementsContent, ACHIEVEMENTS_INI_NAME)
+    }
+
+    // Strip EnableCheats and Achievements.Enable from other RMC*.ini files
     // that could override our force-disable.
     val siblings =
-      gameSettingsDir.listFiles()?.filter { file ->
+      gameSettingsDir.listFiles().filter { file ->
         val name = file.name ?: return@filter false
         name.startsWith(RMC_PREFIX) &&
           name.endsWith(".ini") &&
           name != "$RMC_PREFIX.ini"
       }
-        ?: emptyList()
     for (sibling in siblings) {
       val name = sibling.name ?: continue
       val siblingContent =
@@ -592,7 +623,11 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           it.readBytes().toString(Charsets.UTF_8)
         }
           ?: continue
-      val cleaned = removeIniKeyInSection(siblingContent, "[Dolphin.Core]", "EnableCheats")
+      // For good measure, remove the cheats and RetroAchievements settings from all files which
+      // could override the base GameINI file.
+      var cleaned = removeIniKeyInSection(siblingContent, "[Core]", CHEATS_KEY)
+      cleaned = removeIniKeyInSection(cleaned, "[Dolphin.Core]", CHEATS_KEY)
+      cleaned = removeIniKeyInSection(cleaned, "[Achievements.Achievements]", ACHIEVEMENTS_KEY)
       if (cleaned != siblingContent) {
         sibling.delete()
         val newFile =
@@ -717,8 +752,27 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     /** Filename of Dolphin's `Config/Dolphin.ini` library-paths config. */
     const val CONFIG_INI_NAME = "Dolphin.ini"
 
+    /** Filename of Dolphin's `Config/RetroAchievements.ini` config. */
+    const val ACHIEVEMENTS_INI_NAME = "RetroAchievements.ini"
+
     /** Game-ID prefix used for the shared Mario Kart Wii GameINI. */
     const val RMC_PREFIX = "RMC"
+
+    /** Notice added to the auto-generated RMC GameINI file. */
+    const val GAME_INI_NOTICE =
+      "# Auto-generated by Wheel Witch. Do NOT touch any of the values below, they might get deleted."
+
+    /** Key of the "Dolphin.Core" section of INI files which determines whether cheats are enabled. */
+    const val CHEATS_KEY = "EnableCheats"
+
+    /**
+     * Key of the "Achievements.Achievements" section of INI files
+     * which determines whether RetroAchievements are enabled.
+     */
+    const val ACHIEVEMENTS_KEY = "Enabled"
+
+    /** The boolean string we use to force-disable settings in Dolphin's INIs. */
+    const val FORCE_DISABLE_VALUE = "False"
 
     /**
      * Returns success if [treeUri] points to the Dolphin user folder.
@@ -937,7 +991,7 @@ private fun writeFilesRecursive(
   out: java.util.zip.ZipOutputStream,
   basePath: String,
 ) {
-  val children = dir.listFiles() ?: return
+  val children = dir.listFiles()
   for (child in children) {
     val name = child.name ?: continue
     val entryName = if (basePath.isEmpty()) name else "$basePath/$name"
@@ -954,53 +1008,132 @@ private fun writeFilesRecursive(
 
 /**
  * Ensures [key] = [value] exists under [section] in the INI
- * [content]. If [section] exists, the key is added at the end of
- * the section (or its existing value is updated in-place). If the
- * section does not exist, a new section with the key is appended.
- * Keys outside [section] are never disturbed.
+ * [content] by inserting a line for it in a correct position.
  */
-internal fun ensureIniKeyValue(
+internal fun addIniKeyValue(
+  content: String,
+  section: String,
+  key: String,
+  value: String,
+): String {
+  val lines = content.lines()
+  val outLines = mutableListOf<String>()
+  val kvLine = "$key = $value"
+  var added = false
+
+  for (line in lines) {
+    outLines.add(line)
+    extractIniSection(line)?.takeIf { !added && it == section }?.let {
+      outLines.add(kvLine)
+      added = true
+    }
+  }
+
+  if (!added) {
+    if (lines.isNotEmpty() && lines.last().isNotBlank()) outLines.add("")
+    outLines.add(section)
+    outLines.add(kvLine)
+    outLines.add("")
+  }
+
+  return outLines.joinToString("\n")
+}
+
+/**
+ * Ensures [key] = [value] exists under [section] in the INI
+ * [content] by appending lines at the end for it.
+ */
+internal fun addIniKeyValueAtTheEnd(
   content: String,
   section: String,
   key: String,
   value: String,
 ): String {
   val lines = content.lines().toMutableList()
-  val sectionIdx = lines.indexOfFirst { it.trim().equals(section, ignoreCase = true) }
   val kvLine = "$key = $value"
 
-  if (sectionIdx < 0) {
-    // Section missing — append it at the end.
-    if (lines.isNotEmpty() && lines.last().isNotBlank()) lines.add("")
-    lines.add(section)
-    lines.add(kvLine)
-    return lines.joinToString("\n")
-  }
-
-  // Find the end of this section (next section header or EOF).
-  val sectionEnd =
-    (sectionIdx + 1 until lines.size).firstOrNull { i ->
-      val t = lines[i].trim()
-      t.startsWith("[") && t.endsWith("]")
-    } ?: lines.size
-
-  // Search for an existing key within the section.
-  val keyPattern = Regex("""^\s*${Regex.escape(key)}\s*=\s*""", RegexOption.IGNORE_CASE)
-  val existingKeyIdx =
-    (sectionIdx + 1 until sectionEnd).firstOrNull { i -> keyPattern.matches(lines[i]) }
-
-  if (existingKeyIdx != null) {
-    lines[existingKeyIdx] = kvLine
-  } else {
-    lines.add(sectionEnd, kvLine)
-  }
+  if (lines.isNotEmpty() && lines.last().isNotBlank()) lines.add("")
+  lines.add(section)
+  lines.add(kvLine)
+  lines.add("")
   return lines.joinToString("\n")
 }
 
 /**
+ * Checks whether the [line] of an INI file assigns to a key matching the [keyPredicate].
+ */
+internal fun hasIniKeyMatching(line: String, keyPredicate: (String) -> Boolean): Boolean {
+  if (line.isEmpty() || line.first() == '#') {
+    return false
+  }
+
+  val end = line.indexOf('=')
+  if (end < 0) {
+    return false
+  }
+
+  val keyOfLine = line.substring(0, end).trim()
+  return keyPredicate(keyOfLine)
+}
+
+/**
+ * Checks whether the [line] of an INI file assigns to [key] in a case-insensitive manner.
+ */
+internal fun hasIniKey(line: String, key: String): Boolean {
+  return hasIniKeyMatching(line) { keyOfLine -> keyOfLine.equals(key, ignoreCase = true) }
+}
+
+/**
+ * Removes all lines from [content] beginning with the known Wheel Witch GameINI notice, and
+ * returns the resulting string.
+ */
+internal fun removeAllBelowNotice(content: String): String {
+  val lines = content.lines()
+  val noticeIdx = lines.indexOf(GAME_INI_NOTICE)
+  return (if (noticeIdx < 0) lines else lines.subList(0, noticeIdx)).joinToString("\n")
+}
+
+/**
+ * Returns the section name including the brackets if [line] declares an INI section,
+ * or null otherwise.
+ */
+internal fun extractIniSection(line: String): String? {
+  val sectionEnd = line.indexOf(']')
+  if (sectionEnd < 0 || line[0] != '[') {
+    return null
+  }
+
+  return line.substring(0, sectionEnd + 1)
+}
+
+/**
+ * Renames all occurrences of a section [oldSection] (case-insensitive match) to [newSection]
+ * and returns the result.
+ */
+internal fun renameSection(
+  content: String,
+  oldSection: String,
+  newSection: String,
+): String {
+  val lines = content.lines()
+  val outLines = mutableListOf<String>()
+
+  for (line in lines) {
+    extractIniSection(line)?.let { currentSection ->
+      if (currentSection.equals(oldSection, ignoreCase = true)) {
+        outLines.add(line.replaceFirst(oldSection, newSection, ignoreCase = true))
+        continue
+      }
+    }
+    outLines.add(line)
+  }
+
+  return outLines.joinToString("\n")
+}
+
+/**
  * Removes every line matching [key] (case-insensitive key name)
- * within [section] in the INI [content]. If the section header is
- * left with no key lines, the header itself is removed. Returns the
+ * within [section] in the INI [content]. Returns the
  * modified content, or the original if nothing changed.
  */
 internal fun removeIniKeyInSection(
@@ -1008,42 +1141,22 @@ internal fun removeIniKeyInSection(
   section: String,
   key: String,
 ): String {
-  val lines = content.lines().toMutableList()
-  val sectionIdx = lines.indexOfFirst { it.trim().equals(section, ignoreCase = true) }
-  if (sectionIdx < 0) return content
+  val lines = content.lines()
+  val outLines = mutableListOf<String>()
 
-  val sectionEnd =
-    (sectionIdx + 1 until lines.size).firstOrNull { i ->
-      val t = lines[i].trim()
-      t.startsWith("[") && t.endsWith("]")
-    } ?: lines.size
-
-  val keyPattern = Regex("""^\s*${Regex.escape(key)}\s*=\s*""", RegexOption.IGNORE_CASE)
-  val keyLines =
-    (sectionIdx + 1 until sectionEnd).filter { i -> keyPattern.matches(lines[i]) }
-  if (keyLines.isEmpty()) return content
-
-  // Remove key lines in reverse order to keep indices stable.
-  for (i in keyLines.reversed()) lines.removeAt(i)
-
-  // Check if the section header is now orphaned (no keys between
-  // it and the next section header or EOF).
-  val nextSection =
-    (sectionIdx + 1 until lines.size).firstOrNull { i ->
-      val t = lines[i].trim()
-      t.startsWith("[") && t.endsWith("]")
-    } ?: lines.size
-  val sectionIsEmpty =
-    (sectionIdx + 1 until nextSection).all { lines[it].isBlank() }
-  if (sectionIsEmpty) {
-    // Remove the section header and any trailing blank line.
-    lines.removeAt(sectionIdx)
-    if (sectionIdx < lines.size && lines[sectionIdx].isBlank()) {
-      lines.removeAt(sectionIdx)
+  var currentSection: String? = null
+  for (line in lines) {
+    extractIniSection(line)?.let { section ->
+      currentSection = section
+    } ?: run {
+      if (section.equals(currentSection, ignoreCase = true) && hasIniKey(line, key)) {
+        continue
+      }
     }
+    outLines.add(line)
   }
 
-  return lines.joinToString("\n")
+  return outLines.joinToString("\n")
 }
 
 /** Recursively deletes [dir] (children first). Missing [dir] is a no-op. */
