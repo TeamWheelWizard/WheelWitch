@@ -56,6 +56,9 @@
     <string name="home_launch_fallback">Couldn\'t launch Retro Rewind automatically. Pick it from Dolphin\'s game library.</string>
     <string name="home_exit_title">Exit Wheel Witch?</string>
     <string name="home_exit_message">Wheel Witch will close. Continue?</string>
+    <string name="home_game_ini_notice_title">Online Safety Settings</string>
+    <string name="home_game_ini_notice_body">Wheel Witch automatically disables cheats and RetroAchievements for Mario Kart Wii to prevent online bans and mod compatibility issues.\n\nThis is applied each time you launch the game.</string>
+    <string name="home_game_ini_notice_acknowledged">Got it</string>
 
     <!-- onboarding -->
     <string name="onboarding_beta_title">Heads up: this is beta software</string>

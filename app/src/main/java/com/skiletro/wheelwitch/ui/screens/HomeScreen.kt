@@ -151,6 +151,7 @@ fun HomeScreen(
 
   val scope = rememberCoroutineScope()
   var showLaunchWarningDialog by remember { mutableStateOf(false) }
+  var showGameIniNotice by remember { mutableStateOf(false) }
 
   val launchDolphinNotInstalled = stringResource(R.string.home_launch_dolphin_not_installed)
   val launchNoRom = stringResource(R.string.home_launch_no_rom)
@@ -193,6 +194,30 @@ fun HomeScreen(
     )
   }
 
+  if (showGameIniNotice) {
+    AlertDialog(
+      onDismissRequest = { showGameIniNotice = false },
+      title = { Text(stringResource(R.string.home_game_ini_notice_title)) },
+      text = { Text(stringResource(R.string.home_game_ini_notice_body)) },
+      confirmButton = {
+        TextButton(onClick = {
+          com.skiletro.wheelwitch.util.prefs.Prefs
+            .main(context)
+            .edit()
+            .putBoolean(
+              com.skiletro.wheelwitch.util.prefs.PrefsKeys.GAME_INI_NOTICE_SHOWN_KEY,
+              true,
+            )
+            .apply()
+          showGameIniNotice = false
+          scope.launch { performLaunch() }
+        }) {
+          Text(stringResource(R.string.home_game_ini_notice_acknowledged))
+        }
+      },
+    )
+  }
+
   Box(modifier = Modifier.fillMaxSize()) {
 
     if (!showOnlineMenu) {
@@ -224,7 +249,18 @@ fun HomeScreen(
                   if (state is UiState.Checking) {
                     showLaunchWarningDialog = true
                   } else {
-                    scope.launch { performLaunch() }
+                    val noticeShown =
+                      com.skiletro.wheelwitch.util.prefs.Prefs
+                        .main(context)
+                        .getBoolean(
+                          com.skiletro.wheelwitch.util.prefs.PrefsKeys.GAME_INI_NOTICE_SHOWN_KEY,
+                          false,
+                        )
+                    if (!noticeShown) {
+                      showGameIniNotice = true
+                    } else {
+                      scope.launch { performLaunch() }
+                    }
                   }
                 },
               )

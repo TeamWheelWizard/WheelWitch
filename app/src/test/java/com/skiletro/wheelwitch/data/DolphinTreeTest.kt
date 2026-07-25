@@ -1025,6 +1025,241 @@ class DolphinTreeTest {
     assertThat(output.toString(Charsets.UTF_8)).isEqualTo("payload")
   }
 
+  // --- readGameIni / writeGameIni -------------------------------------
+
+  @Test
+  fun `readGameIni returns null when file is absent`() {
+    val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
+    every { root.findFile("GameSettings") } returns gameSettingsDir
+    every { gameSettingsDir.isDirectory } returns true
+    every { gameSettingsDir.findFile("RMC.ini") } returns null
+
+    val tree = DolphinTree(context, treeUri)
+    assertThat(tree.readGameIni("RMC")).isNull()
+  }
+
+  @Test
+  fun `readGameIni returns content when file exists`() {
+    val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
+    val file = mockk<DocumentFile>(relaxed = true)
+    every { root.findFile("GameSettings") } returns gameSettingsDir
+    every { gameSettingsDir.isDirectory } returns true
+    every { gameSettingsDir.findFile("RMC.ini") } returns file
+    every { resolver.openInputStream(file.uri) } returns
+      ByteArrayInputStream("[Core]\nEnableCheats = False\n".encodeToByteArray())
+
+    val tree = DolphinTree(context, treeUri)
+    assertThat(tree.readGameIni("RMC")).isEqualTo("[Core]\nEnableCheats = False\n")
+  }
+
+  @Test
+  fun `writeGameIni creates a new file in GameSettings`() {
+    val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
+    val file = mockk<DocumentFile>(relaxed = true)
+    val fileUri = mockk<Uri>(relaxed = true)
+    every { root.findFile("GameSettings") } returns gameSettingsDir
+    every { gameSettingsDir.isDirectory } returns true
+    every { gameSettingsDir.findFile("RMC.ini") } returns null
+    every { gameSettingsDir.createFile("text/plain", "RMC.ini") } returns file
+    every { file.uri } returns fileUri
+    val output = ByteArrayOutputStream()
+    every { resolver.openOutputStream(fileUri) } returns output
+
+    val tree = DolphinTree(context, treeUri)
+    tree.writeGameIni("RMC", "[Core]\nEnableCheats = False\n")
+
+    assertThat(output.toString(Charsets.UTF_8)).isEqualTo("[Core]\nEnableCheats = False\n")
+  }
+
+  @Test
+  fun `writeGameIni replaces an existing file with the same name`() {
+    val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
+    val existing = mockk<DocumentFile>(relaxed = true)
+    val file = mockk<DocumentFile>(relaxed = true)
+    val fileUri = mockk<Uri>(relaxed = true)
+    every { root.findFile("GameSettings") } returns gameSettingsDir
+    every { gameSettingsDir.isDirectory } returns true
+    every { gameSettingsDir.findFile("RMC.ini") } returns existing
+    every { gameSettingsDir.createFile("text/plain", "RMC.ini") } returns file
+    every { file.uri } returns fileUri
+    val output = ByteArrayOutputStream()
+    every { resolver.openOutputStream(fileUri) } returns output
+
+    val tree = DolphinTree(context, treeUri)
+    tree.writeGameIni("RMC", "new content")
+
+    verify { existing.delete() }
+    assertThat(output.toString(Charsets.UTF_8)).isEqualTo("new content")
+  }
+
+  // --- ensureRmcGameInis ----------------------------------------------
+
+  @Test
+  fun `ensureRmcGameInis creates RMC ini from scratch when absent`() {
+    val gameSettingsDir = setupGameSettingsDir()
+    val configDir = setupConfigDir()
+    every { configDir.findFile("RetroAchievements.ini") } returns null
+    every { gameSettingsDir.findFile("RMC.ini") } returns null
+    val file = mockk<DocumentFile>(relaxed = true)
+    val fileUri = mockk<Uri>(relaxed = true)
+    every { file.uri } returns fileUri
+    every { gameSettingsDir.createFile("text/plain", "RMC.ini") } returns file
+    val output = ByteArrayOutputStream()
+    every { resolver.openOutputStream(fileUri) } returns output
+
+    val tree = DolphinTree(context, treeUri)
+    tree.ensureRmcGameInis()
+
+    val written = output.toString(Charsets.UTF_8)
+    assertThat(written).contains("[Core]")
+    assertThat(written).contains("EnableCheats = False")
+    assertThat(written).contains("[Dolphin.Core]")
+    assertThat(written).contains("[Achievements.Achievements]")
+    assertThat(written).contains("Enabled = False")
+  }
+
+  @Test
+  fun `ensureRmcGameInis preserves existing user settings in RMC ini`() {
+    val gameSettingsDir = setupGameSettingsDir()
+    val configDir = setupConfigDir()
+    every { configDir.findFile("RetroAchievements.ini") } returns null
+    val existingContent = "[Core]\nSomeCustomSetting = Value\n"
+    val existingFile = mockk<DocumentFile>(relaxed = true)
+    val file = mockk<DocumentFile>(relaxed = true)
+    val fileUri = mockk<Uri>(relaxed = true)
+    every { gameSettingsDir.findFile("RMC.ini") } returns existingFile
+    every { resolver.openInputStream(existingFile.uri) } returns
+      ByteArrayInputStream(existingContent.encodeToByteArray())
+    every { gameSettingsDir.createFile("text/plain", "RMC.ini") } returns file
+    every { file.uri } returns fileUri
+    val output = ByteArrayOutputStream()
+    every { resolver.openOutputStream(fileUri) } returns output
+
+    val tree = DolphinTree(context, treeUri)
+    tree.ensureRmcGameInis()
+
+    val written = output.toString(Charsets.UTF_8)
+    assertThat(written).contains("SomeCustomSetting = Value")
+    assertThat(written).contains("EnableCheats = False")
+  }
+
+  @Test
+  fun `ensureRmcGameInis strips DolphinCore cheats from sibling RMC ini files`() {
+    val gameSettingsDir = setupGameSettingsDir()
+    val configDir = setupConfigDir()
+    every { configDir.findFile("RetroAchievements.ini") } returns null
+    // RMC.ini already correct — no rewrite needed.
+    val rmcFile = mockk<DocumentFile>(relaxed = true)
+    val rmcUri = mockk<Uri>(relaxed = true)
+    every { rmcFile.uri } returns rmcUri
+    every { gameSettingsDir.findFile("RMC.ini") } returns rmcFile
+    every { resolver.openInputStream(rmcUri) } returns
+      ByteArrayInputStream(
+        "[Core]\nEnableCheats = False\n[Dolphin.Core]\nEnableCheats = False\n[Achievements.Achievements]\nEnabled = False\n"
+          .encodeToByteArray()
+      )
+
+    // RMCP01.ini has conflicting EnableCheats = True.
+    val rmcp01File = mockk<DocumentFile>(relaxed = true)
+    val rmcp01Uri = mockk<Uri>(relaxed = true)
+    every { rmcp01File.name } returns "RMCP01.ini"
+    every { rmcp01File.uri } returns rmcp01Uri
+    every { resolver.openInputStream(rmcp01Uri) } returns
+      ByteArrayInputStream(
+        "[Core]\nSomeSetting = Value\nEnableCheats = True\n[Dolphin.Core]\nEnableCheats = True\n"
+          .encodeToByteArray()
+      )
+
+    val cleanedFile = mockk<DocumentFile>(relaxed = true)
+    val cleanedUri = mockk<Uri>(relaxed = true)
+    every { cleanedFile.uri } returns cleanedUri
+    every { gameSettingsDir.listFiles() } returns arrayOf(rmcFile, rmcp01File)
+    every { gameSettingsDir.createFile("text/plain", "RMCP01.ini") } returns cleanedFile
+    val cleanedOutput = ByteArrayOutputStream()
+    every { resolver.openOutputStream(cleanedUri) } returns cleanedOutput
+
+    val tree = DolphinTree(context, treeUri)
+    tree.ensureRmcGameInis()
+
+    verify { rmcp01File.delete() }
+    val cleaned = cleanedOutput.toString(Charsets.UTF_8)
+    assertThat(cleaned).doesNotContain("EnableCheats")
+    assertThat(cleaned).contains("[Core]")
+  }
+
+  @Test
+  fun `ensureRmcGameInis is idempotent`() {
+    val gameSettingsDir = setupGameSettingsDir()
+    val configDir = setupConfigDir()
+    val retroConfigFile = mockk<DocumentFile>(relaxed = true)
+    val retroConfigContents = """
+[Achievements]
+Enabled = False
+"""
+    every { configDir.findFile("RetroAchievements.ini") } returns retroConfigFile
+    every { resolver.openInputStream(retroConfigFile.uri) } returns
+            ByteArrayInputStream(retroConfigContents.encodeToByteArray())
+    val correctContent = """
+# Auto-generated by Wheel Witch. Do NOT touch any of the values below, they might get deleted.
+
+[Core]
+EnableCheats = False
+
+[Dolphin.Core]
+EnableCheats = False
+
+[Achievements.Achievements]
+Enabled = False
+"""
+    val file = mockk<DocumentFile>(relaxed = true)
+    every { gameSettingsDir.findFile("RMC.ini") } returns file
+    every { resolver.openInputStream(file.uri) } returns
+            ByteArrayInputStream(correctContent.encodeToByteArray())
+    every { gameSettingsDir.listFiles() } returns arrayOf(file)
+
+    val tree = DolphinTree(context, treeUri)
+    tree.ensureRmcGameInis()
+
+    // No createFile or openOutputStream calls — content unchanged.
+    verify(exactly = 0) { gameSettingsDir.createFile(any<String>(), any<String>()) }
+    verify(exactly = 0) { resolver.openOutputStream(any()) }
+  }
+
+  // --- addIniKeyValueAtTheEnd (pure) ----------------------------------------
+
+  @Test
+  fun `addIniKeyValueAtTheEnd appends section and key when both absent`() {
+    val result = addIniKeyValueAtTheEnd("", "[Core]", "EnableCheats", "False")
+    assertThat(result).contains("[Core]")
+    assertThat(result).contains("EnableCheats = False")
+  }
+
+  // --- removeIniKeyInSection (pure) ------------------------------------
+
+  @Test
+  fun `removeIniKeyInSection removes key from section`() {
+    val input = "[Core]\nEnableCheats = True\nSomeOther = Value\n"
+    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    assertThat(result).doesNotContain("EnableCheats")
+    assertThat(result).contains("SomeOther = Value")
+  }
+
+  @Test
+  fun `removeIniKeyInSection preserves other sections and keys`() {
+    val input = "[Core]\nEnableCheats = True\nSomeOther = Value\n[Dolphin.Core]\nOtherKey = X\n"
+    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    assertThat(result).contains("[Core]\nSomeOther = Value")
+    assertThat(result).contains("[Dolphin.Core]")
+    assertThat(result).contains("OtherKey = X")
+  }
+
+  @Test
+  fun `removeIniKeyInSection returns content unchanged when section absent`() {
+    val input = "[Other]\nKey = Value\n"
+    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    assertThat(result).isEqualTo(input)
+  }
+
   // --- helpers ---------------------------------------------------------
 
   /**
@@ -1079,6 +1314,22 @@ class DolphinTreeTest {
   private fun mockPrefsMain(prefs: SharedPreferences) {
     mockkStatic("com.skiletro.wheelwitch.util.prefs.Prefs")
     io.mockk.every { com.skiletro.wheelwitch.util.prefs.Prefs.main(context) } returns prefs
+  }
+
+  /** Stubs the `Config/` directory under the tree root. */
+  private fun setupConfigDir(): DocumentFile {
+    val configDir = mockk<DocumentFile>(relaxed = true)
+    every { findOrCreateDir(root, "Config") } returns configDir
+    every { configDir.isDirectory } returns true
+    return configDir
+  }
+
+  /** Stubs the `GameSettings/` directory under the tree root. */
+  private fun setupGameSettingsDir(): DocumentFile {
+    val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
+    every { root.findFile("GameSettings") } returns gameSettingsDir
+    every { gameSettingsDir.isDirectory } returns true
+    return gameSettingsDir
   }
 
   /** A DocumentFile mock with `isDirectory = true` so `navigateOrCreate` / `findDir` keep the chain. */

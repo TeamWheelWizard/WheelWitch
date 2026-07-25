@@ -228,6 +228,14 @@ object DolphinLauncher {
    */
   fun launchRetroRewind(context: Context, tree: DolphinTree): LaunchResult {
     if (!isDolphinInstalled(context)) return LaunchResult.DolphinNotInstalled
+
+    // Force-disable cheats and RetroAchievements for online safety
+    try {
+      tree.ensureRmcGameInis()
+    } catch (e: Exception) {
+      Timber.tag(TAG).w(e, "Failed to write game INI settings")
+    }
+
     val rom = pickRomFile(tree) ?: return LaunchResult.NoRom
     val romName = rom.name ?: return LaunchResult.NoRom
     return try {
