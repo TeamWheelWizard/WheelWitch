@@ -86,6 +86,7 @@ fun MainScreen(
           exit = slideOutVertically() + fadeOut(),
         ) {
           SettingsScreen(
+            packUpdate = packUpdate,
             miiMaker = miiMaker,
             saveData = saveData,
             onClose = { showSettings = false },

@@ -55,8 +55,11 @@ import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import com.skiletro.wheelwitch.util.io.cacheSize
 import com.skiletro.wheelwitch.util.formatBytes
+import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
+import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.SaveDataViewModel
+import com.skiletro.wheelwitch.viewmodel.UiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,6 +77,7 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun SettingsScreen(
+  packUpdate: PackUpdateViewModel,
   miiMaker: MiiMakerViewModel,
   saveData: SaveDataViewModel,
   onClose: () -> Unit,
@@ -160,6 +164,7 @@ fun SettingsScreen(
           hasRRSave = hasRRSave,
         )
       }
+      item { PackSection(packUpdate = packUpdate) }
       item { LoggingSection() }
       item {
         AdvancedSection(
@@ -440,6 +445,65 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
       }
     },
   )
+}
+
+/** Pack section: current version and full reinstall button. */
+@Composable
+private fun PackSection(packUpdate: PackUpdateViewModel) {
+  val state by packUpdate.state.collectAsState()
+  val packStatus = (state as? UiState.Ready)?.status
+  val version = packStatus?.let {
+    when (it) {
+      is PackStatus.UpToDate -> it.currentVersion
+      is PackStatus.UpdateAvailable -> it.currentVersion
+      is PackStatus.CheckFailed -> it.installedVersion
+      is PackStatus.NotInstalled -> null
+    }
+  }
+  val isInstalled = version != null
+  var showReinstallConfirm by remember { mutableStateOf(false) }
+
+  if (showReinstallConfirm) {
+    AlertDialog(
+      onDismissRequest = { showReinstallConfirm = false },
+      title = { Text(stringResource(R.string.settings_pack_reinstall_dialog_title)) },
+      text = { Text(stringResource(R.string.settings_pack_reinstall_dialog_body)) },
+      confirmButton = {
+        Button(onClick = { packUpdate.reinstall(); showReinstallConfirm = false }) {
+          Text(stringResource(R.string.action_reinstall))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showReinstallConfirm = false }) {
+          Text(stringResource(R.string.action_cancel))
+        }
+      },
+    )
+  }
+
+  SettingsCategoryHeader(stringResource(R.string.settings_pack_section))
+  SettingsItem(
+    icon = ImageVector.vectorResource(R.drawable.ic_cached),
+    title = stringResource(R.string.topbar_subtitle),
+    summary =
+      if (isInstalled) {
+        stringResource(R.string.settings_pack_version_installed, version.toString())
+      } else {
+        stringResource(R.string.settings_pack_not_installed)
+      },
+    trailing = {
+      if (isInstalled) {
+        TextButton(
+          onClick = { showReinstallConfirm = true },
+          enabled = state !is UiState.Installing,
+          shape = buttonShape,
+        ) {
+          Text(stringResource(R.string.action_reinstall))
+        }
+      }
+    },
+  )
+  Spacer(modifier = Modifier.height(4.dp))
 }
 
 /** Appearance section: app theme picker and dark-mode picker. */
