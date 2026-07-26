@@ -91,6 +91,10 @@
     <string name="onboarding_storage_required">Pick a storage folder first.</string>
     <string name="onboarding_rom_verifying">Verifying ROM…</string>
     <string name="onboarding_rom_copying">Copying to Dolphin folder…</string>
+    <string name="onboarding_rom_checking">Checking for existing ROM…</string>
+    <string name="onboarding_rom_found_body">Found %s — is this the right ROM?</string>
+    <string name="onboarding_rom_use_this_rom">Use This ROM</string>
+    <string name="onboarding_rom_pick_different">Pick Different ROM</string>
 
     <!-- settings -->
     <string name="settings_title">Settings</string>
