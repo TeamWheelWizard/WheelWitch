@@ -467,6 +467,65 @@ class RewindPackManagerTest {
     coVerify(exactly = 1) { tree.writeRrMetadata(server.latestVersion) }
   }
 
+  // --- reinstall -------------------------------------------------------
+
+  @Test
+  fun `reinstall performs a full install`() = runBlocking {
+    val server = serverInfo()
+    every { VersionFileParser.fetchServerInfo() } returns Result.success(server)
+    every { VersionFileParser.getFullZipUrl() } returns "https://example.com/full.zip"
+    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+      {
+        val target = it.invocation.args[1] as File
+        target.parentFile?.mkdirs()
+        target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
+        target
+      }
+    coEvery { tree.extractZipToPack(any(), any()) } returns Unit
+    coEvery { tree.readVersion() } returns null
+    coEvery { tree.writeVersion(server.latestVersion) } returns Unit
+    coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
+
+    val result = manager().reinstall { /* no-op */ }
+
+    assertThat(result.isSuccess).isTrue()
+    coVerify(exactly = 1) { tree.extractZipToPack(any(), any()) }
+    coVerify(exactly = 1) { tree.writeVersion(server.latestVersion) }
+    coVerify(exactly = 1) { tree.writeRrMetadata(server.latestVersion) }
+  }
+
+  @Test
+  fun `reinstall returns failure when the server is unreachable`() = runBlocking {
+    every { VersionFileParser.fetchServerInfo() } returns
+      Result.failure(Exception("Server boom"))
+
+    val result = manager().reinstall { /* no-op */ }
+
+    assertThat(result.isFailure).isTrue()
+    verify(exactly = 0) { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) }
+  }
+
+  @Test
+  fun `reinstall does not write version when extract fails`() = runBlocking {
+    val server = serverInfo()
+    every { VersionFileParser.fetchServerInfo() } returns Result.success(server)
+    every { VersionFileParser.getFullZipUrl() } returns "https://example.com/full.zip"
+    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+      {
+        val target = it.invocation.args[1] as File
+        target.parentFile?.mkdirs()
+        target.writeBytes(byteArrayOf(0x00))
+        target
+      }
+    coEvery { tree.extractZipToPack(any(), any()) } throws IllegalStateException("extract boom")
+
+    val result = manager().reinstall { /* no-op */ }
+
+    assertThat(result.isFailure).isTrue()
+    coVerify(exactly = 0) { tree.writeVersion(any()) }
+    coVerify(exactly = 0) { tree.writeRrMetadata(any()) }
+  }
+
   // --- helpers ---------------------------------------------------------
 
   private fun manager() = RewindPackManager(context, tree)

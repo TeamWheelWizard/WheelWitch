@@ -154,6 +154,49 @@ class PackUpdateViewModelTest {
     coVerify(exactly = 0) { manager.installLatest(any()) }
   }
 
+  // --- reinstall ------------------------------------------------------
+
+  @Test
+  fun `reinstall transitions through Installing then Installed then back to Ready`() = runTest {
+    coEvery { manager.checkStatus() } returns PackStatus.NotInstalled
+    coEvery { manager.reinstall(any()) } returns Result.success(Unit)
+    val vm = viewModel()
+
+    vm.reinstall()
+
+    assertThat(vm.state.value).isEqualTo(UiState.Ready(PackStatus.NotInstalled))
+    coVerify(exactly = 1) { manager.reinstall(any()) }
+  }
+
+  @Test
+  fun `reinstall surfaces manager failure as Error`() = runTest {
+    coEvery { manager.checkStatus() } returns PackStatus.NotInstalled
+    coEvery { manager.reinstall(any()) } returns Result.failure(IllegalStateException("net"))
+    val vm = viewModel()
+
+    vm.reinstall()
+
+    assertThat(vm.state.value).isInstanceOf(UiState.Error::class.java)
+    assertThat((vm.state.value as UiState.Error).message).contains("net")
+  }
+
+  @Test
+  fun `reinstall reports storage not configured when manager is null`() = runTest {
+    every { context.getString(R.string.vm_storage_not_configured_full) } returns
+      "Storage not configured"
+    val vm =
+      PackUpdateViewModel(
+        application = context,
+        managerFactory = { null },
+      )
+
+    vm.reinstall()
+
+    val state = vm.state.value
+    assertThat(state).isInstanceOf(UiState.Error::class.java)
+    assertThat((state as UiState.Error).message).contains("Storage")
+  }
+
   // --- clearError ----------------------------------------------------
 
   @Test

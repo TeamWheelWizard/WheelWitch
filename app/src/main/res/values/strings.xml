@@ -243,6 +243,14 @@
     <string name="settings_save_data_rr_delete_confirm_title">Delete RR save data?</string>
     <string name="settings_save_data_rr_delete_confirm_message">This permanently deletes your Retro Rewind saves and rating data. Other data is not affected.</string>
 
+    <!-- pack -->
+    <string name="settings_pack_section">Pack</string>
+    <string name="settings_pack_version_installed">v%s installed</string>
+    <string name="settings_pack_not_installed">Not installed</string>
+    <string name="action_reinstall">Reinstall</string>
+    <string name="settings_pack_reinstall_dialog_title">Reinstall Retro Rewind Pack?</string>
+    <string name="settings_pack_reinstall_dialog_body">This will perform a fresh full installation. Your save data, Miis, and settings will not be affected.</string>
+
     <!-- rank -->
     <string name="rank_locked">Locked</string>
     <string name="rank_races_format">%d/100 races</string>

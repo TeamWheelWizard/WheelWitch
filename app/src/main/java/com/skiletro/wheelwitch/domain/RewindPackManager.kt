@@ -147,6 +147,27 @@ class RewindPackManager(
     }
 
   /**
+   * Performs a fresh full install from the server's full zip URL.
+   * Use this to recover from a corrupted or inconsistent state that
+   * incremental updates cannot fix.
+   *
+   * Same [Dispatchers.IO] wrapper as [installLatest]. See the kdoc
+   * there for why.
+   */
+  suspend fun reinstall(onProgress: (InstallProgress) -> Unit): Result<Unit> =
+    withContext(Dispatchers.IO) {
+      runCatching {
+        val server = VersionFileParser.fetchServerInfo().getOrThrow()
+        Timber.tag(TAG).i("Starting full reinstall of %s", server.latestVersion)
+        performInstall(VersionFileParser.getFullZipUrl(), onProgress)
+        if (tree.readVersion() != server.latestVersion) {
+          tree.writeVersion(server.latestVersion)
+        }
+        writeRrMetadataSafe(server.latestVersion)
+      }
+    }
+
+  /**
    * Phased progress emitted by [performInstall]. Lets the caller
    * distinguish between the network-bound download phase (which
    * carries a [DownloadProgress] with byte counts) and the

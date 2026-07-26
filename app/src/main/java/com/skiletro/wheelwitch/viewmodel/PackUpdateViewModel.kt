@@ -197,6 +197,38 @@ class PackUpdateViewModel(
     }
   }
 
+  /**
+   * Performs a fresh full install. Same [installMutex] guard as [installLatest]
+   * and [update].
+   */
+  fun reinstall() {
+    viewModelScope.launch {
+      installMutex.withLock {
+        val mgr = currentManager()
+        if (mgr == null) {
+          Timber.tag(TAG)
+            .e("reinstall: manager is null; DolphinTree.fromPersisted returned null. " +
+              "User has no valid SAF grant; route to onboarding.")
+          _state.value =
+            UiState.Error(
+              getApplication<Application>().getString(R.string.vm_storage_not_configured_full)
+            )
+          return@withLock
+        }
+        _state.value = UiState.Installing.Extracting(
+          phase = ExtractingPhase.PreparingFolders,
+          filesDone = 0,
+          filesTotal = 1,
+          currentFile = null,
+          bytesDone = 0L,
+          bytesTotal = 0L,
+        )
+        val result = mgr.reinstall { phase -> _state.value = phase.toUiState() }
+        handleInstallResult(result)
+      }
+    }
+  }
+
   /** Maps a [RewindPackManager.InstallProgress] phase to the corresponding [UiState.Installing] phase. */
   private fun RewindPackManager.InstallProgress.toUiState(): UiState.Installing =
     when (this) {
