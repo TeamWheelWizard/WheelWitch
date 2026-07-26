@@ -159,32 +159,38 @@ fun OnboardingScreen(
       isCheckingRomPresence = true
       existingRomDetected = null
       detectedRomName = null
-      val tree = withContext(Dispatchers.IO) { DolphinTree.fromPersisted(context) }
-      if (tree != null) {
-        val files = withContext(Dispatchers.IO) { tree.romDir.listFiles() }
-        var found = false
-        for (file in files) {
-          val name = file.name ?: continue
-          val ext = java.io.File(name).extension.uppercase(java.util.Locale.getDefault())
-          if (ext in setOf("ISO", "RVZ", "WBFS") && file.isFile && file.exists()) {
-            val bytes =
-              withContext(Dispatchers.IO) {
-                tree.resolver.openInputStream(file.uri)?.use { stream ->
-                  ByteArray(4096).also { stream.read(it) }
+      try {
+        val tree = withContext(Dispatchers.IO) { DolphinTree.fromPersisted(context) }
+        if (tree != null) {
+          val files = withContext(Dispatchers.IO) { tree.romDir.listFiles() }
+          var found = false
+          for (file in files) {
+            val name = file.name ?: continue
+            val ext = java.io.File(name).extension.uppercase(java.util.Locale.getDefault())
+            if (ext in setOf("ISO", "RVZ", "WBFS") && file.isFile && file.exists()) {
+              val bytes =
+                withContext(Dispatchers.IO) {
+                  tree.resolver.openInputStream(file.uri)?.use { stream ->
+                    ByteArray(4096).also { stream.read(it) }
+                  }
                 }
+              if (bytes != null && GameTypeParser.checkValidity(name, bytes)) {
+                detectedRomName = name
+                found = true
+                break
               }
-            if (bytes != null && GameTypeParser.checkValidity(name, bytes)) {
-              detectedRomName = name
-              found = true
-              break
             }
           }
+          existingRomDetected = found
+        } else {
+          existingRomDetected = false
         }
-        existingRomDetected = found
-      } else {
+      } catch (e: Exception) {
+        Timber.tag("Onboarding").w(e, "ROM scan failed")
         existingRomDetected = false
+      } finally {
+        isCheckingRomPresence = false
       }
-      isCheckingRomPresence = false
     }
   }
 
