@@ -37,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -119,6 +120,9 @@ fun OnboardingScreen(
   // "Check Again" button.
   var dolphinInstalled by remember { mutableStateOf(false) }
   var hasCheckedDolphin by remember { mutableStateOf(false) }
+  var isCheckingRomPresence by remember { mutableStateOf(false) }
+  var existingRomDetected by remember { mutableStateOf<Boolean?>(null) }
+  var detectedRomName by remember { mutableStateOf<String?>(null) }
 
   // Re-check the Dolphin install on every ON_RESUME while the
   // Dolphin step is current. This catches the case where the user
@@ -137,6 +141,57 @@ fun OnboardingScreen(
     }
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
+
+  // Auto-check when entering the Dolphin step (catches Beta→Dolphin
+  // navigation where no lifecycle event fires). The lifecycle observer
+  // above handles the resume-from-browser case.
+  LaunchedEffect(step) {
+    if (step == OnboardingStep.Dolphin) {
+      dolphinInstalled = DolphinLauncher.isDolphinInstalled(context)
+      hasCheckedDolphin = true
+    }
+  }
+
+  // Scan for an existing ROM when the user reaches the Rom step.
+  LaunchedEffect(step) {
+    if (step == OnboardingStep.Rom) {
+      isCheckingRomPresence = true
+      existingRomDetected = null
+      detectedRomName = null
+      try {
+        val tree = withContext(Dispatchers.IO) { DolphinTree.fromPersisted(context) }
+        if (tree != null) {
+          val files = withContext(Dispatchers.IO) { tree.romDir.listFiles() }
+          var found = false
+          for (file in files) {
+            val name = file.name ?: continue
+            val ext = java.io.File(name).extension.uppercase(java.util.Locale.getDefault())
+            if (ext in setOf("ISO", "RVZ", "WBFS") && file.isFile && file.exists()) {
+              val bytes =
+                withContext(Dispatchers.IO) {
+                  tree.resolver.openInputStream(file.uri)?.use { stream ->
+                    ByteArray(4096).also { stream.read(it) }
+                  }
+                }
+              if (bytes != null && GameTypeParser.checkValidity(name, bytes)) {
+                detectedRomName = name
+                found = true
+                break
+              }
+            }
+          }
+          existingRomDetected = found
+        } else {
+          existingRomDetected = false
+        }
+      } catch (e: Exception) {
+        Timber.tag("Onboarding").w(e, "ROM scan failed")
+        existingRomDetected = false
+      } finally {
+        isCheckingRomPresence = false
+      }
+    }
   }
 
   // Resolve every error string up here so the activity-result
@@ -331,8 +386,28 @@ fun OnboardingScreen(
                   // filter; GameTypeParser does extension validation.
                   romLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                 },
+                onConfirmRom = {
+                  scope.launch {
+                    try {
+                      romStage = romCopying
+                      val tree = DolphinTree.fromPersisted(context)
+                      if (tree != null) {
+                        withContext(Dispatchers.IO) { tree.writeRrCover() }
+                      }
+                      step = OnboardingStep.Complete
+                    } catch (e: Exception) {
+                      Timber.tag("Onboarding").e(e, "Cover write failed on ROM confirm")
+                      romError = e.message ?: metadataWriteFailed
+                    } finally {
+                      romStage = null
+                    }
+                  }
+                },
                 error = romError,
                 isLoading = isRomLoading,
+                isCheckingRom = isCheckingRomPresence,
+                existingRomDetected = existingRomDetected,
+                detectedRomName = detectedRomName,
                 stage = romStage,
               )
             OnboardingStep.Complete -> CompleteStep(onDone = onComplete)
@@ -480,17 +555,66 @@ private fun StorageStep(onPick: () -> Unit, error: String?) {
 
 /** Fourth onboarding step: SAF document picker for the MKW ROM. */
 @Composable
-private fun RomStep(onPick: () -> Unit, error: String?, isLoading: Boolean, stage: String?) {
+private fun RomStep(
+  onPick: () -> Unit,
+  onConfirmRom: () -> Unit,
+  error: String?,
+  isLoading: Boolean,
+  isCheckingRom: Boolean,
+  existingRomDetected: Boolean?,
+  detectedRomName: String?,
+  stage: String?,
+) {
   StepCard(
     title = stringResource(R.string.onboarding_iso_title),
     titleStyle = MaterialTheme.typography.headlineSmall,
-    body = stringResource(R.string.onboarding_iso_body),
+    body =
+      when {
+        isCheckingRom -> null
+        existingRomDetected == true && detectedRomName != null ->
+          stringResource(R.string.onboarding_rom_found_body, detectedRomName)
+        else -> stringResource(R.string.onboarding_iso_body)
+      },
   ) {
-    StepPrimaryButton(
-      text = stringResource(R.string.onboarding_select_rom),
-      onClick = onPick,
-      enabled = !isLoading,
-    )
+    when {
+      isCheckingRom -> {
+        Spacer(modifier = Modifier.height(12.dp))
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+          text = stringResource(R.string.onboarding_rom_checking),
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.fillMaxWidth(),
+        )
+      }
+      existingRomDetected == true -> {
+        StepPrimaryButton(
+          text = stringResource(R.string.onboarding_rom_use_this_rom),
+          onClick = onConfirmRom,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedButton(
+          onClick = onPick,
+          shape = buttonShape,
+          modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) {
+          Text(
+            text = stringResource(R.string.onboarding_rom_pick_different),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+          )
+        }
+      }
+      else -> {
+        StepPrimaryButton(
+          text = stringResource(R.string.onboarding_select_rom),
+          onClick = onPick,
+          enabled = !isLoading,
+        )
+      }
+    }
     if (isLoading) {
       Spacer(modifier = Modifier.height(12.dp))
       LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
