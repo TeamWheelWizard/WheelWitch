@@ -251,7 +251,10 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     withContext(Dispatchers.IO) {
       ZipFile(zipFile).use { zip ->
         val entries = zip.entries().toList()
-        val fileEntries = entries.filterNot { it.isDirectory }
+        val fileEntries =
+          entries
+            .filterNot { it.isDirectory }
+            .filter { entry -> entry.name.split('/').none { it == ".." } }
         val filesTotal = fileEntries.size
         val bytesTotal = fileEntries.sumOf { it.size.coerceAtLeast(0L) }
 
