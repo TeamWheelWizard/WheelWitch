@@ -164,10 +164,9 @@ class PackUpdateViewModel(
 
   /**
    * Performs the smallest set of incremental updates needed. Falls
-   * back to a full reinstall if the local version is missing or
-   * predates the pack format change. Same [installMutex] guard as
-   * [installLatest]; calling both in parallel is a no-op for the
-   * second caller.
+   * back to a full reinstall if the local version is missing.
+   * Same [installMutex] guard as [installLatest]; calling both in
+   * parallel is a no-op for the second caller.
    */
   fun update() {
     viewModelScope.launch {
