@@ -15,6 +15,7 @@ object ZipSafety {
    * - Absolute paths (`/etc/passwd`)
    * - Parent-directory components (`../escape`, `foo/../../bar`)
    * - Current-directory components (`./sneaky`, `foo/./bar`)
+   * - Empty components from double slashes (`foo//bar`)
    *
    * A leading `./` prefix is stripped before checking, for
    * compatibility with zip tools that produce `./foo/bar` entries.
@@ -22,6 +23,6 @@ object ZipSafety {
   fun isSafeEntryName(name: String): Boolean {
     val normalized = name.removePrefix("./")
     return !normalized.startsWith("/") &&
-      normalized.split('/').none { it == ".." || it == "." }
+      normalized.split('/').none { it.isEmpty() || it == ".." || it == "." }
   }
 }

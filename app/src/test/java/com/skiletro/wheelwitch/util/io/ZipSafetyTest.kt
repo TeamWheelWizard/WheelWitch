@@ -49,4 +49,14 @@ class ZipSafetyTest {
   fun `isSafeEntryName rejects absolute path after dot-slash`() {
     assertThat(ZipSafety.isSafeEntryName("./../../escape.txt")).isFalse()
   }
+
+  @Test
+  fun `isSafeEntryName rejects double slash`() {
+    assertThat(ZipSafety.isSafeEntryName("foo//bar.txt")).isFalse()
+  }
+
+  @Test
+  fun `isSafeEntryName rejects leading double slash`() {
+    assertThat(ZipSafety.isSafeEntryName("//etc/passwd")).isFalse()
+  }
 }
