@@ -354,41 +354,7 @@ class RewindPackManagerTest {
   }
 
   @Test
-  fun `update falls back to full reinstall when local version is below 3_2_6`() = runBlocking {
-    coEvery { tree.readVersion() } returns SemVersion(3, 2, 0) andThen null
-    val server = serverInfo()
-    every { VersionFileParser.fetchServerInfo() } returns Result.success(server)
-    every { VersionFileParser.getFullZipUrl() } returns "https://example.com/full.zip"
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
-      {
-        val target = it.invocation.args[1] as File
-        target.parentFile?.mkdirs()
-        target.writeBytes(byteArrayOf(0x00))
-        target
-      }
-    coEvery { tree.extractZipToPack(any(), any()) } returns Unit
-    coEvery { tree.writeVersion(server.latestVersion) } returns Unit
-    coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
-
-    val result = manager().update { /* no-op */ }
-
-    assertThat(result.isSuccess).isTrue()
-    verify(exactly = 1) {
-      FileDownloader.downloadToFile(
-        url = "https://example.com/full.zip",
-        targetFile = any(),
-        onProgress = any(),
-        client = any(),
-        maxRetries = any(),
-        initialBackoffMillis = any(),
-      )
-    }
-    coVerify(exactly = 1) { tree.writeVersion(server.latestVersion) }
-    coVerify(exactly = 1) { tree.writeRrMetadata(server.latestVersion) }
-  }
-
-  @Test
-  fun `update applies incremental steps when local is at or above 3_2_6`() = runBlocking {
+  fun `update applies incremental steps when local version exists`() = runBlocking {
     coEvery { tree.readVersion() } returns SemVersion(3, 3, 0) andThen null
     val server =
       ServerInfo(

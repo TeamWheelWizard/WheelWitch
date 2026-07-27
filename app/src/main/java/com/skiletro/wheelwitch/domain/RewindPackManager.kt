@@ -104,9 +104,7 @@ class RewindPackManager(
    * Performs the smallest set of incremental updates that takes the
    * local pack from its current version to the server's latest
    * version. Falls back to a full reinstall if the local version is
-   * missing or older than [MIN_INCREMENTAL_VERSION]. The pack format
-   * changed incompatibly around that point, so partial updates are
-   * not safe.
+   * missing (e.g. first install or corrupted state).
    *
    * Same `Dispatchers.IO` wrapper as [installLatest]. See the kdoc
    * there for why.
@@ -116,12 +114,9 @@ class RewindPackManager(
       runCatching {
         val local = tree.readVersion()
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
-        val minVersion =
-          SemVersion.parse(MIN_INCREMENTAL_VERSION)
-            ?: error("Invalid MIN_INCREMENTAL_VERSION constant")
-        if (local == null || local < minVersion) {
+        if (local == null) {
           Timber.tag(TAG)
-            .i("Local version %s is below %s; doing full reinstall", local, minVersion)
+            .i("Local version missing; doing full reinstall")
           performInstall(VersionFileParser.getFullZipUrl(), onProgress)
         } else {
           val steps =
@@ -270,9 +265,6 @@ class RewindPackManager(
     )
 
   private companion object {
-    /** Local versions older than this get a full reinstall, not an incremental update. */
-    const val MIN_INCREMENTAL_VERSION = "3.2.6"
-
     /** Cached pack zip filename inside [Context.getCacheDir]. */
     const val PACK_ZIP_NAME = "RetroRewind.zip"
 

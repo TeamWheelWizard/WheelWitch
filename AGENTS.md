@@ -78,7 +78,7 @@ The sub-packages under `util/` are intentional. Keep new files in the right sub-
 - **Leaderboard**: clickable rows with 5dp primary border on focus; one-shot `hasRequestedFocus` guard for pagination
 - **File downloads**: `FileDownloader.downloadToFile()` with progress callback, HTTP validation, configurable client
 - **Mii Maker WAD**: downloads zip from GameBanana, extracts `.wad`, launches via `ACTION_VIEW` + FileProvider
-- **Update server**: see `VersionFileParser.RR_BASE`; version/deletion manifest files; fallback to full reinstall if < `RewindPackManager.MIN_INCREMENTAL_VERSION`
+- **Update server**: see `VersionFileParser.RR_BASE`; version/deletion manifest files; full reinstall when no local version exists
 - **Copy buffer**: 262144 bytes; **Parallel incremental downloads** via `async/await`
 - **Multi-region saves**: `SaveManager.Region` enum (PAL/USA/JPN) mapped from the ROM filename prefix; one save file per region
 
@@ -95,7 +95,6 @@ All values live in code. This table maps each thing to its canonical source.
 | Display name | `DolphinLauncher.DISPLAY_NAME` |
 | ROM extensions | `DolphinLauncher.ROM_EXTENSIONS` |
 | Riivolution XML default | `DolphinLauncher.DEFAULT_XML_REL_PATH` |
-| Min reinstall version | `RewindPackManager.MIN_INCREMENTAL_VERSION` |
 | Update server host | `VersionFileParser.RR_BASE` |
 | API host | `VersionFileParser.RWFC_API` |
 | Badges host | `VersionFileParser.BADGES_BASE` |
@@ -104,7 +103,7 @@ All values live in code. This table maps each thing to its canonical source.
 | Version filename | `DolphinTree.VERSION_FILE_NAME` |
 | Metadata XML filename | `DolphinTree.METADATA_XML_NAME` |
 
-## Tests (~273 tests)
+## Tests (~272 tests)
 
 ### Stack
 JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs throw "not mocked")
@@ -138,7 +137,7 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `data/DolphinConfigTest.kt` | 25 | `IsoPaths.toIniLines`, `read`/`upsert`/`remove`, idempotency, comment preservation, `dolphinUserTreeUri` |
 | `data/SaveManagerTest.kt` | 9 | region mapping, `listRegions`, `hasSave`/`backup`/`restore`/`delete` |
 | `network/VersionFileParserTest.kt` | 17 | update/deletion parsing, leaderboard, health, tracks, race stats |
-| `domain/RewindPackManagerTest.kt` | 12 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental vs full reinstall fallback) |
+| `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
 | `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
 
