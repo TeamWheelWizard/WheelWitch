@@ -279,7 +279,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         var fileIndex = 0
         var bytesDone = 0L
         for (entry in fileEntries) {
-          val currentFile = entry.name
+          val currentFile = ZipSafety.normalizeEntryName(entry.name)
           onProgress(
             ExtractProgress(
               phase = ExtractingPhase.WritingFiles,
@@ -293,9 +293,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           val entrySize = entry.size.coerceAtLeast(0L)
           writeZipEntry(
             entry = entry,
-            parent = byPath.getValue(parentParts(entry.name)),
+            parent = byPath.getValue(parentParts(currentFile)),
             getChild = getChild,
-            fileName = entry.name.substringAfterLast('/'),
+            fileName = currentFile.substringAfterLast('/'),
             input = zip.getInputStream(entry),
           )
           bytesDone += entrySize
@@ -321,6 +321,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * each `createDirectory` only needs one IPC call), and returns a
    * map from path parts to the resulting [DocumentFile]. The empty
    * list is included as the key for `packDir` itself.
+   *
+   * The caller is responsible for only providing Zip entries with
+   * safe entry names.
    */
   private fun precreateDirectories(
     fileEntries: List<ZipEntry>,
@@ -336,7 +339,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     // pre-pass with "Key [apps] is missing in the map".
     val uniqueParents = fileEntries
       .flatMap { file ->
-        val parts = file.name.split('/').filter { it.isNotEmpty() }
+        val parts = ZipSafety.normalizeEntryName(file.name).split('/')
         (1 until parts.size).map { parts.take(it) }
       }
       .toSet()
@@ -370,8 +373,8 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     return byPath
   }
 
-  private fun parentParts(entryName: String): List<String> {
-    val parts = entryName.split('/').filter { it.isNotEmpty() }
+  private fun parentParts(normalizedEntryName: String): List<String> {
+    val parts = normalizedEntryName.split('/')
     return if (parts.size <= 1) emptyList() else parts.dropLast(1)
   }
 

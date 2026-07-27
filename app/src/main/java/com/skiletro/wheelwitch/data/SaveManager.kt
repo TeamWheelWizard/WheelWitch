@@ -640,8 +640,8 @@ object SaveManager {
     tree: DolphinTree,
     entryName: String,
   ): Pair<DocumentFile, String>? {
-    val normalized = entryName.removePrefix("./").trimStart('/')
     if (!ZipSafety.isSafeEntryName(entryName)) return null
+    val normalized = ZipSafety.normalizeEntryName(entryName)
     if (normalized.startsWith("RetroWFC/")) {
       val rest = normalized.removePrefix("RetroWFC/")
       val parts = rest.split('/').filter { it.isNotEmpty() }

@@ -8,6 +8,13 @@ package com.skiletro.wheelwitch.util.io
 object ZipSafety {
 
   /**
+   * Strips a leading `./` prefix.
+   */
+  fun normalizeEntryName(name: String): String {
+    return name.removePrefix("./")
+  }
+
+  /**
    * Returns `true` when [name] is a safe, relative entry path
    * suitable for extraction into a target directory.
    *
@@ -25,7 +32,7 @@ object ZipSafety {
     name: String,
     prefixBlockList: List<String> = emptyList(),
   ): Boolean {
-    val normalized = name.removePrefix("./")
+    val normalized = normalizeEntryName(name)
     return !normalized.startsWith("/") &&
       normalized.split('/').none { it.isEmpty() || it == ".." || it == "." } &&
       prefixBlockList.none { normalized.startsWith(it) }
