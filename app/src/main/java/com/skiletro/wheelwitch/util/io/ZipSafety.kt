@@ -16,13 +16,18 @@ object ZipSafety {
    * - Parent-directory components (`../escape`, `foo/../../bar`)
    * - Current-directory components (`./sneaky`, `foo/./bar`)
    * - Empty components from double slashes (`foo//bar`)
+   * - Paths starting with any prefix in [prefixBlockList]
    *
    * A leading `./` prefix is stripped before checking, for
    * compatibility with zip tools that produce `./foo/bar` entries.
    */
-  fun isSafeEntryName(name: String): Boolean {
+  fun isSafeEntryName(
+    name: String,
+    prefixBlockList: List<String> = emptyList(),
+  ): Boolean {
     val normalized = name.removePrefix("./")
     return !normalized.startsWith("/") &&
-      normalized.split('/').none { it.isEmpty() || it == ".." || it == "." }
+      normalized.split('/').none { it.isEmpty() || it == ".." || it == "." } &&
+      prefixBlockList.none { normalized.startsWith(it) }
   }
 }

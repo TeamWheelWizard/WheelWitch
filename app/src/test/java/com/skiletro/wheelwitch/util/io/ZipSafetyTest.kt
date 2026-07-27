@@ -59,4 +59,24 @@ class ZipSafetyTest {
   fun `isSafeEntryName rejects leading double slash`() {
     assertThat(ZipSafety.isSafeEntryName("//etc/passwd")).isFalse()
   }
+
+  @Test
+  fun `isSafeEntryName rejects entry matching blocked prefix`() {
+    assertThat(ZipSafety.isSafeEntryName("riivolution/save/RetroWFC/PAL/rksys.dat", listOf("riivolution/save/"))).isFalse()
+  }
+
+  @Test
+  fun `isSafeEntryName accepts entry not matching blocked prefix`() {
+    assertThat(ZipSafety.isSafeEntryName("riivolution/RetroRewind6.xml", listOf("riivolution/save/"))).isTrue()
+  }
+
+  @Test
+  fun `isSafeEntryName accepts entry with dot-slash before blocked prefix`() {
+    assertThat(ZipSafety.isSafeEntryName("./riivolution/save/RetroWFC/PAL/rksys.dat", listOf("riivolution/save/"))).isFalse()
+  }
+
+  @Test
+  fun `isSafeEntryName defaults to empty blocklist`() {
+    assertThat(ZipSafety.isSafeEntryName("anything/goes.txt")).isTrue()
+  }
 }

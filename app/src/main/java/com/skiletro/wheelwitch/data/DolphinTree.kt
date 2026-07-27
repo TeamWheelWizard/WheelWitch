@@ -255,7 +255,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         val fileEntries =
           entries
             .filterNot { it.isDirectory }
-            .filter { ZipSafety.isSafeEntryName(it.name) }
+            .filter { ZipSafety.isSafeEntryName(it.name, SaveManager.userDataPathPrefixes) }
         val filesTotal = fileEntries.size
         val bytesTotal = fileEntries.sumOf { it.size.coerceAtLeast(0L) }
 
@@ -681,10 +681,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     fileName: String,
     input: InputStream,
   ) {
-    if (SaveManager.userDataPathPrefixes.any { entry.name.startsWith(it) }) {
-      Timber.tag(TAG).d("Skipping user data path: %s", entry.name)
-      return
-    }
     getChild(parent, fileName)?.delete()
     val target =
       parent.createFile("application/octet-stream", fileName)
