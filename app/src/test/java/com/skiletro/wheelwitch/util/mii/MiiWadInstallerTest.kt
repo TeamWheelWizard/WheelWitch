@@ -87,16 +87,17 @@ class MiiWadInstallerTest {
     }
 
     @Test
-    fun `extractWad extracts only basename from traversal entries`(@TempDir tempDir: Path) {
+    fun `extractWad rejects traversal entries via ZipSafety`(@TempDir tempDir: Path) {
         val zip = File(tempDir.toFile(), "bundle.zip")
         ZipOutputStream(zip.outputStream()).use { zos ->
             zos.putNextEntry(ZipEntry("../../evil.wad"))
             zos.write(byteArrayOf(0x00, 0x00, 0x00, 0x20) + ByteArray(64))
             zos.closeEntry()
         }
-        val extracted = MiiWadInstaller.extractWadForTest(zip, tempDir.toFile())
-        assertThat(extracted.name).isEqualTo("evil.wad")
-        assertThat(extracted.parentFile).isEqualTo(tempDir.toFile())
+        val ex = assertThrows<IllegalStateException> {
+            MiiWadInstaller.extractWadForTest(zip, tempDir.toFile())
+        }
+        assertThat(ex.message).contains("No .wad file found")
     }
 
     @Test

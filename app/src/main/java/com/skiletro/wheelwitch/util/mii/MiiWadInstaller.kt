@@ -7,6 +7,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.core.content.FileProvider
 import com.skiletro.wheelwitch.data.GameTypeParser
 import com.skiletro.wheelwitch.util.io.FileDownloader
+import com.skiletro.wheelwitch.util.io.ZipSafety
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.util.net.HttpClientProvider
 import timber.log.Timber
@@ -96,6 +97,12 @@ object MiiWadInstaller {
         ZipInputStream(FileInputStream(zipFile)).use { zis ->
             var entry = zis.nextEntry
             while (entry != null) {
+                if (!ZipSafety.isSafeEntryName(entry.name)) {
+                    Timber.w("Skipping unsafe zip entry: %s", entry.name)
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                    continue
+                }
                 if (!entry.isDirectory && entry.name.endsWith(".wad", ignoreCase = true)) {
                     val outFile = File(destDir, entry.name.substringAfterLast("/"))
                     outFile.outputStream().use { output ->
