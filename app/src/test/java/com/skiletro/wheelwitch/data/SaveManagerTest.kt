@@ -563,6 +563,63 @@ class SaveManagerTest {
     assertThat(summary.ghosts).isEqualTo(0)
   }
 
+  @Test
+  fun `restoreAll skips entries with path traversal and absolute paths`() = runTest {
+    val env = setupBackupEnv(palExists = true)
+    val source = mockk<Uri>(relaxed = true)
+
+    val backupBytes = ByteArrayOutputStream().use { baos ->
+      java.util.zip.ZipOutputStream(baos).use { zos ->
+        val manifest = JSONObject().apply {
+          put("version", SaveManager.BACKUP_FORMAT_VERSION)
+          put("type", SaveManager.BACKUP_TYPE)
+          put("createdAt", System.currentTimeMillis())
+          put("contents", JSONObject().apply {
+            put("retroWfc", org.json.JSONArray(listOf("RMCP")))
+            put("vanillaSaves", org.json.JSONArray())
+            put("patchedIso", false)
+            put("faceLib", false)
+            put("pulsar", org.json.JSONArray())
+            put("ghosts", 0)
+          })
+        }
+        zos.putNextEntry(ZipEntry("manifest.json"))
+        zos.write(manifest.toString().encodeToByteArray())
+        zos.closeEntry()
+        // Safe entry.
+        zos.putNextEntry(ZipEntry("RetroWFC/RMCP/rksys.dat"))
+        zos.write("safe-data".encodeToByteArray())
+        zos.closeEntry()
+        // Traversal entries — should all be skipped.
+        zos.putNextEntry(ZipEntry("../../escape.txt"))
+        zos.write("bad".encodeToByteArray())
+        zos.closeEntry()
+        zos.putNextEntry(ZipEntry("./RetroWFC/RMCP/../../sneaky.dat"))
+        zos.write("bad2".encodeToByteArray())
+        zos.closeEntry()
+        zos.putNextEntry(ZipEntry("/etc/passwd"))
+        zos.write("abs".encodeToByteArray())
+        zos.closeEntry()
+        zos.putNextEntry(ZipEntry("./sneaky.txt"))
+        zos.write("dot".encodeToByteArray())
+        zos.closeEntry()
+      }
+      baos.toByteArray()
+    }
+    every { env.resolver.openInputStream(source) } returns ByteArrayInputStream(backupBytes)
+
+    val result = SaveManager.restoreAll(env.tree, source)
+
+    assertThat(result.isSuccess).isTrue()
+    // Only the safe RetroWFC entry was processed; traversal entries were skipped.
+    val summary = result.getOrThrow()
+    assertThat(summary.rksys).isEqualTo(1)
+    assertThat(summary.vanillaSaves).isEqualTo(0)
+    assertThat(summary.faceLib).isFalse()
+    assertThat(summary.pulsar).isEqualTo(0)
+    assertThat(summary.ghosts).isEqualTo(0)
+  }
+
   // --- deleteRR --------------------------------------------------------
 
   @Test

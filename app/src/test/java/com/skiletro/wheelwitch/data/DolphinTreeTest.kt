@@ -738,6 +738,12 @@ class DolphinTreeTest {
       zos.putNextEntry(ZipEntry("deep/../../../escape3.txt"))
       zos.write("bad3".encodeToByteArray())
       zos.closeEntry()
+      zos.putNextEntry(ZipEntry("/etc/passwd"))
+      zos.write("abs".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("./sneaky.txt"))
+      zos.write("dot".encodeToByteArray())
+      zos.closeEntry()
     }
 
     val outputs = mutableMapOf<String, ByteArrayOutputStream>()
@@ -746,11 +752,13 @@ class DolphinTreeTest {
     val tree = DolphinTree(context, treeUri)
     tree.extractZipToPack(zip) { /* no-op */ }
 
-    // Only the safe entry was written; traversal entries were filtered out.
+    // Only the safe entry was written; traversal and absolute entries were filtered out.
     assertThat(outputs).containsKey("good.txt")
     assertThat(outputs).doesNotContainKey("escape.txt")
     assertThat(outputs).doesNotContainKey("escape2.txt")
     assertThat(outputs).doesNotContainKey("escape3.txt")
+    assertThat(outputs).doesNotContainKey("passwd")
+    assertThat(outputs).doesNotContainKey("sneaky.txt")
   }
 
   // --- writeLaunchJson / readLaunchJson --------------------------------

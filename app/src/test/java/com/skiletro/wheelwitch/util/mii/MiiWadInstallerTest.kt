@@ -87,6 +87,19 @@ class MiiWadInstallerTest {
     }
 
     @Test
+    fun `extractWad extracts only basename from traversal entries`(@TempDir tempDir: Path) {
+        val zip = File(tempDir.toFile(), "bundle.zip")
+        ZipOutputStream(zip.outputStream()).use { zos ->
+            zos.putNextEntry(ZipEntry("../../evil.wad"))
+            zos.write(byteArrayOf(0x00, 0x00, 0x00, 0x20) + ByteArray(64))
+            zos.closeEntry()
+        }
+        val extracted = MiiWadInstaller.extractWadForTest(zip, tempDir.toFile())
+        assertThat(extracted.name).isEqualTo("evil.wad")
+        assertThat(extracted.parentFile).isEqualTo(tempDir.toFile())
+    }
+
+    @Test
     fun `zip roundtrip preserves payload bytes`(@TempDir tempDir: Path) {
         val payload = ByteArrayOutputStream().also { baos ->
             ZipOutputStream(baos).use { zos ->

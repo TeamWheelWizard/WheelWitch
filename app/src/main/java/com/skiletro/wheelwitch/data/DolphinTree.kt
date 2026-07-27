@@ -10,6 +10,7 @@ import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.data.DolphinTree.Companion.GAME_INI_NOTICE
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.util.prefs.Prefs
+import com.skiletro.wheelwitch.util.io.ZipSafety
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import java.io.File
 import java.io.FileOutputStream
@@ -254,7 +255,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         val fileEntries =
           entries
             .filterNot { it.isDirectory }
-            .filter { entry -> entry.name.split('/').none { it == ".." } }
+            .filter { ZipSafety.isSafeEntryName(it.name) }
         val filesTotal = fileEntries.size
         val bytesTotal = fileEntries.sumOf { it.size.coerceAtLeast(0L) }
 
