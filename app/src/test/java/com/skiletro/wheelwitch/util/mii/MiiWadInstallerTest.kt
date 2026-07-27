@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -112,5 +113,26 @@ class MiiWadInstallerTest {
             }
         }.toByteArray()
         assertThat(payload.size).isGreaterThan(1024)
+    }
+
+    @Test
+    fun `verifyZipIntegrity accepts matching hash`(@TempDir tempDir: Path) {
+        val file = File(tempDir.toFile(), "test.bin")
+        file.writeBytes(byteArrayOf(0x01, 0x02, 0x03, 0x04))
+        val hash = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+            .joinToString("") { "%02x".format(it) }
+        MiiWadInstaller.verifyZipIntegrity(file, hash)
+        assertThat(file.exists()).isTrue()
+    }
+
+    @Test
+    fun `verifyZipIntegrity rejects mismatched hash and deletes file`(@TempDir tempDir: Path) {
+        val file = File(tempDir.toFile(), "test.bin")
+        file.writeBytes(byteArrayOf(0x01, 0x02, 0x03, 0x04))
+        val ex = assertThrows<SecurityException> {
+            MiiWadInstaller.verifyZipIntegrity(file, "0000000000000000000000000000000000000000000000000000000000000000")
+        }
+        assertThat(ex.message).contains("SHA-256 mismatch")
+        assertThat(file.exists()).isFalse()
     }
 }
