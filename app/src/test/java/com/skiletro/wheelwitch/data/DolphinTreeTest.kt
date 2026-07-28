@@ -719,6 +719,48 @@ class DolphinTreeTest {
     verify(exactly = 0) { pulsarRrDir.createFile(any<String>(), any<String>()) }
   }
 
+  @Test
+  fun `extractZipToPack rejects entries with dot-dot path components`(
+    @TempDir tempDir: Path
+  ) = runBlocking {
+    val (_, packDir, _) = setupDirChain()
+    val zip = File(tempDir.toFile(), "pack.zip")
+    ZipOutputStream(zip.outputStream()).use { zos ->
+      zos.putNextEntry(ZipEntry("good.txt"))
+      zos.write("ok".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("../../escape.txt"))
+      zos.write("bad".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("pack/../../escape2.txt"))
+      zos.write("bad2".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("deep/../../../escape3.txt"))
+      zos.write("bad3".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("/etc/passwd"))
+      zos.write("abs".encodeToByteArray())
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("./sneaky.txt"))
+      zos.write("dot".encodeToByteArray())
+      zos.closeEntry()
+    }
+
+    val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+    setupPackEntryWrite(packDir, "good.txt", outputs)
+
+    val tree = DolphinTree(context, treeUri)
+    tree.extractZipToPack(zip) { /* no-op */ }
+
+    // Only the safe entry was written; traversal and absolute entries were filtered out.
+    assertThat(outputs).containsKey("good.txt")
+    assertThat(outputs).doesNotContainKey("escape.txt")
+    assertThat(outputs).doesNotContainKey("escape2.txt")
+    assertThat(outputs).doesNotContainKey("escape3.txt")
+    assertThat(outputs).doesNotContainKey("passwd")
+    assertThat(outputs).doesNotContainKey("sneaky.txt")
+  }
+
   // --- writeLaunchJson / readLaunchJson --------------------------------
 
   @Test

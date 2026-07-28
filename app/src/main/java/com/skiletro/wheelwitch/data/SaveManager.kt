@@ -9,6 +9,7 @@ import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import com.skiletro.wheelwitch.util.io.ZipSafety
 import timber.log.Timber
 import kotlin.text.startsWith
 
@@ -639,7 +640,8 @@ object SaveManager {
     tree: DolphinTree,
     entryName: String,
   ): Pair<DocumentFile, String>? {
-    val normalized = entryName.trimStart('/')
+    if (!ZipSafety.isSafeEntryName(entryName)) return null
+    val normalized = ZipSafety.normalizeEntryName(entryName)
     if (normalized.startsWith("RetroWFC/")) {
       val rest = normalized.removePrefix("RetroWFC/")
       val parts = rest.split('/').filter { it.isNotEmpty() }
