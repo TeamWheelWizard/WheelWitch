@@ -49,25 +49,39 @@ private fun rankIconRes(rank: Int): Int? = when (rank) {
   else -> null
 }
 
+private fun Modifier.badgeIcon(compact: Boolean): Modifier =
+  size(width = if (compact) 32.dp else 40.dp, height = if (compact) 40.dp else 48.dp)
+
+private fun Modifier.progressBar(compact: Boolean): Modifier =
+  width(if (compact) 40.dp else 50.dp).height(4.dp)
+
 @Composable
-fun RankBadge(result: ScoreResult?, vanityBadge: VanityBadge? = null) {
+fun RankBadge(
+  result: ScoreResult?,
+  vanityBadge: VanityBadge? = null,
+  compact: Boolean = false,
+) {
   if (result == null) return
 
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center,
-    modifier = Modifier.widthIn(min = 70.dp),
+    modifier =
+      Modifier.widthIn(
+        min = if (compact) 56.dp else 70.dp,
+        max = if (compact) 80.dp else 96.dp,
+      ),
   ) {
     if (!result.meetsRaceReq) {
-      LockedBadge(result)
+      LockedBadge(result, compact)
     } else {
-      PopulatedBadge(result, vanityBadge)
+      PopulatedBadge(result, vanityBadge, compact)
     }
   }
 }
 
 @Composable
-private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
+private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?, compact: Boolean) {
   val iconRes = remember(result.rank) { rankIconRes(result.rank) }
   val image = iconRes?.let { painterResource(it) }
   val isMaxRank = result.rank >= 9
@@ -83,15 +97,15 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
       Image(
         painter = painterResource(badgeIconRes(vanityBadge)),
         contentDescription = null,
-        modifier = Modifier.size(width = 40.dp, height = 48.dp),
+        modifier = Modifier.badgeIcon(compact),
       )
-      Spacer(Modifier.width(4.dp))
+      Spacer(Modifier.width(if (compact) 3.dp else 4.dp))
     }
     if (image != null) {
       androidx.compose.foundation.Image(
         painter = image,
         contentDescription = RANK_NAMES.getOrElse(result.rank - 1) { "" },
-        modifier = Modifier.size(width = 40.dp, height = 48.dp),
+        modifier = Modifier.badgeIcon(compact),
       )
     }
   }
@@ -124,9 +138,7 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
 
     LinearProgressIndicator(
       progress = { progress },
-      modifier = Modifier
-        .width(50.dp)
-        .height(4.dp),
+      modifier = Modifier.progressBar(compact),
       color = MaterialTheme.colorScheme.primary,
       trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
@@ -141,13 +153,12 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
         text = "$pointsNeeded pts to ",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
       )
       if (nextImage != null) {
         Image(
           painter = nextImage,
           contentDescription = null,
-          modifier = Modifier.size(22.dp),
+          modifier = Modifier.size(if (compact) 18.dp else 22.dp),
         )
       }
     }
@@ -155,7 +166,7 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
 }
 
 @Composable
-private fun LockedBadge(result: ScoreResult) {
+private fun LockedBadge(result: ScoreResult, compact: Boolean) {
   val racesProgress = (result.totalVs / 100f).coerceIn(0f, 1f)
   val targetRank = remember(result) { wouldBeRank(result) }
   val targetIconRes = remember(targetRank) { rankIconRes(targetRank) }
@@ -165,7 +176,7 @@ private fun LockedBadge(result: ScoreResult) {
     Image(
       painter = painterResource(R.drawable.ic_badge_locked),
       contentDescription = stringResource(R.string.rank_locked),
-      modifier = Modifier.size(width = 40.dp, height = 48.dp),
+      modifier = Modifier.badgeIcon(compact),
     )
 
     Spacer(Modifier.height(1.dp))
@@ -190,9 +201,7 @@ private fun LockedBadge(result: ScoreResult) {
 
     LinearProgressIndicator(
       progress = { racesProgress },
-      modifier = Modifier
-        .width(50.dp)
-        .height(4.dp),
+      modifier = Modifier.progressBar(compact),
       color = MaterialTheme.colorScheme.primary,
       trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
@@ -204,7 +213,6 @@ private fun LockedBadge(result: ScoreResult) {
         text = stringResource(R.string.rank_races_format, result.totalVs),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
       )
       if (targetImage != null) {
         Spacer(Modifier.width(2.dp))
@@ -216,7 +224,7 @@ private fun LockedBadge(result: ScoreResult) {
         Image(
           painter = targetImage,
           contentDescription = null,
-          modifier = Modifier.size(22.dp),
+          modifier = Modifier.size(if (compact) 18.dp else 22.dp),
         )
       }
     }
