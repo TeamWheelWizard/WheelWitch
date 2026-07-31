@@ -49,7 +49,6 @@ import com.skiletro.wheelwitch.ui.components.SettingsItem
 import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
 import com.skiletro.wheelwitch.ui.theme.buttonShape
-import com.skiletro.wheelwitch.util.launcher.BugReportLauncher
 import com.skiletro.wheelwitch.util.mii.MiiFaceCache
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
@@ -81,6 +80,7 @@ fun SettingsScreen(
   miiMaker: MiiMakerViewModel,
   saveData: SaveDataViewModel,
   onClose: () -> Unit,
+  onOpenLogViewer: () -> Unit,
   appTheme: AppTheme,
   onChangeAppTheme: (AppTheme) -> Unit,
   themeMode: ThemeMode,
@@ -165,7 +165,7 @@ fun SettingsScreen(
         )
       }
       item { PackSection(packUpdate = packUpdate) }
-      item { LoggingSection() }
+      item { LoggingSection(onOpenLogViewer = onOpenLogViewer) }
       item {
         AdvancedSection(
           onRelaunchOnboarding = onRelaunchOnboarding,
@@ -649,9 +649,9 @@ private fun MiiMakerSection(
   )
 }
 
-/** Logging section: toggle the on-disk log file and launch the bug-report chooser. */
+/** Logging section: toggle the on-disk log file and open the Log Viewer. */
 @Composable
-private fun LoggingSection() {
+private fun LoggingSection(onOpenLogViewer: () -> Unit) {
   val context = LocalContext.current
   val loggingPrefs = remember { Prefs.main(context) }
   SettingsCategoryHeader(stringResource(R.string.settings_logging))
@@ -678,7 +678,7 @@ private fun LoggingSection() {
     summary = stringResource(R.string.settings_report_bug_sub),
     trailing = {
       Button(
-        onClick = { BugReportLauncher.launch(context) },
+        onClick = onOpenLogViewer,
         shape = buttonShape,
         contentPadding = ButtonDefaults.TextButtonContentPadding,
         colors = ButtonDefaults.filledTonalButtonColors(

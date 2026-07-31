@@ -273,4 +273,12 @@
     <string name="bug_report_summary_with_error">Most recent error in the log buffer: %1$s</string>
     <string name="bug_report_summary_no_error">No errors captured in the current log buffer.</string>
     <string name="bug_report_share_failed">No app available to send the bug report. Logs have been copied to the clipboard.</string>
+
+    <!-- log viewer -->
+    <string name="log_viewer_title">Bug Report</string>
+    <string name="log_viewer_share">Share</string>
+    <string name="log_viewer_share_text">Share as text</string>
+    <string name="log_viewer_share_file">Share as file</string>
+    <string name="log_viewer_copied_to_clipboard">Logs copied to clipboard</string>
+    <string name="cd_copy">Copy logs</string>
 </resources>
