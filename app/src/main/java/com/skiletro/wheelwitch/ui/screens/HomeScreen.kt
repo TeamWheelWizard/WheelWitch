@@ -1,5 +1,7 @@
 package com.skiletro.wheelwitch.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -60,6 +62,7 @@ import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.model.ServerConnectivity
+import com.skiletro.wheelwitch.network.GitHubReleaseParser
 import com.skiletro.wheelwitch.ui.components.EmptySaveBody
 import com.skiletro.wheelwitch.ui.components.LicenseGrid
 import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
@@ -69,6 +72,8 @@ import com.skiletro.wheelwitch.ui.components.focusBorder
 import com.skiletro.wheelwitch.ui.theme.buttonShape
 import com.skiletro.wheelwitch.util.io.DownloadProgress
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
+import com.skiletro.wheelwitch.viewmodel.AppUpdateState
+import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
@@ -89,12 +94,15 @@ fun HomeScreen(
   miiMaker: MiiMakerViewModel,
   onlineViewModel: OnlineViewModel,
   saveData: SaveDataViewModel,
+  appUpdate: AppUpdateViewModel,
   onOpenSettings: () -> Unit,
 ) {
   val state by packUpdate.state.collectAsState()
   val installProgress by packUpdate.installProgress.collectAsState()
   val hasWad by miiMaker.hasWad.collectAsState()
   val roomsState by onlineViewModel.roomsState.collectAsState()
+  val appUpdateState by appUpdate.state.collectAsState()
+  val showAppUpdateDialog by appUpdate.dialogVisible.collectAsState()
   
 
   val playerCount = (roomsState as? RoomsState.Success)?.playerCount
@@ -216,6 +224,40 @@ fun HomeScreen(
         }
       },
     )
+  }
+
+  if (showAppUpdateDialog) {
+    val update = appUpdateState as? AppUpdateState.UpdateAvailable
+    if (update != null) {
+      AlertDialog(
+        onDismissRequest = { appUpdate.dismissDialog() },
+        title = { Text(stringResource(R.string.home_app_update_title)) },
+        text = {
+          Text(
+            stringResource(
+              R.string.home_app_update_body,
+              update.latestVersion,
+              update.currentVersion,
+            )
+          )
+        },
+        confirmButton = {
+          TextButton(onClick = {
+            appUpdate.dismissDialog()
+            context.startActivity(
+              Intent(Intent.ACTION_VIEW, Uri.parse(GitHubReleaseParser.RELEASES_PAGE_URL))
+            )
+          }) {
+            Text(stringResource(R.string.home_app_update_action))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { appUpdate.dismissDialog() }) {
+            Text(stringResource(R.string.home_app_update_dismiss))
+          }
+        },
+      )
+    }
   }
 
   Box(modifier = Modifier.fillMaxSize()) {
