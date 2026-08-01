@@ -41,10 +41,28 @@ object BugReportLauncher {
   }
 
   /**
+   * Shares [text] via the system chooser without an attachment. Used by
+   * the Log Viewer "share as text" option (e.g. Discord, email). Falls
+   * back to [copyToClipboard] + a toast when no share target exists.
+   * Returns true when the chooser was launched.
+   */
+  fun shareText(context: Context, text: String): Boolean {
+    val send = buildTextIntent(context, text)
+    val chooser = Intent.createChooser(send, context.getString(R.string.bug_report_chooser_title))
+    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    return runCatching { context.startActivity(chooser); true }
+      .getOrElse {
+        copyToClipboard(context, text)
+        Toast.makeText(context, R.string.bug_report_share_failed, Toast.LENGTH_LONG).show()
+        false
+      }
+  }
+
+  /**
    * Copies [text] to the system clipboard under a [ClipData] labeled
    * with the app name, so paste targets can identify its source.
    */
-  private fun copyToClipboard(context: Context, text: String) {
+  fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
     clipboard?.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), text))
   }
@@ -68,6 +86,20 @@ object BugReportLauncher {
       putExtra(Intent.EXTRA_TEXT, body)
       putExtra(Intent.EXTRA_STREAM, uri)
       addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+  }
+
+  private fun buildTextIntent(context: Context, text: String): Intent {
+    val subject = context.getString(
+      R.string.bug_report_subject,
+      BuildConfig.VERSION_NAME,
+      BuildConfig.GIT_HASH,
+    )
+    return Intent(Intent.ACTION_SEND).apply {
+      type = "text/plain"
+      putExtra(Intent.EXTRA_EMAIL, arrayOf(BuildConfig.LOGS_EMAIL))
+      putExtra(Intent.EXTRA_SUBJECT, subject)
+      putExtra(Intent.EXTRA_TEXT, text)
     }
   }
 

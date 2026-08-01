@@ -31,6 +31,13 @@ install: build
     echo "Launching com.skiletro.wheelwitch/.MainActivity..."
     adb shell am start -n com.skiletro.wheelwitch.debug/com.skiletro.wheelwitch.MainActivity
 
+run: install
+    #!/usr/bin/env bash
+    sleep 2
+    echo "Getting pid..."
+    PID=$(adb shell pidof -s com.skiletro.wheelwitch.debug) || exit
+    adb logcat --pid $PID -v color
+
 # run unit tests
 test:
     ./gradlew testDebugUnitTest

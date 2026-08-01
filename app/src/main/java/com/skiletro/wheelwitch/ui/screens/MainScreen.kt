@@ -23,6 +23,7 @@ import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
+import com.skiletro.wheelwitch.viewmodel.LogViewerViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
@@ -41,6 +42,7 @@ fun MainScreen(
   miiMaker: MiiMakerViewModel = viewModel(),
   onlineViewModel: OnlineViewModel = viewModel(),
   saveData: SaveDataViewModel = viewModel(factory = SaveDataViewModel.factory(packUpdate)),
+  logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
   appTheme: AppTheme = AppTheme.Hex,
   onChangeAppTheme: (AppTheme) -> Unit = {},
   themeMode: ThemeMode = ThemeMode.System,
@@ -53,9 +55,14 @@ fun MainScreen(
   }
 
   var showSettings by remember { mutableStateOf(false) }
+  var showLogViewer by remember { mutableStateOf(false) }
 
   BackHandler(enabled = showSettings) {
     showSettings = false
+  }
+
+  BackHandler(enabled = showLogViewer) {
+    showLogViewer = false
   }
 
   Box(Modifier.fillMaxSize()) {
@@ -81,7 +88,7 @@ fun MainScreen(
         }
 
         AnimatedVisibility(
-          visible = showSettings,
+          visible = showSettings && !showLogViewer,
           enter = slideInVertically() + fadeIn(),
           exit = slideOutVertically() + fadeOut(),
         ) {
@@ -90,6 +97,7 @@ fun MainScreen(
             miiMaker = miiMaker,
             saveData = saveData,
             onClose = { showSettings = false },
+            onOpenLogViewer = { showLogViewer = true },
             appTheme = appTheme,
             onChangeAppTheme = onChangeAppTheme,
             themeMode = themeMode,
@@ -102,6 +110,17 @@ fun MainScreen(
               onboardingComplete = false
               showSettings = false
             },
+          )
+        }
+
+        AnimatedVisibility(
+          visible = showLogViewer,
+          enter = slideInVertically() + fadeIn(),
+          exit = slideOutVertically() + fadeOut(),
+        ) {
+          LogViewerScreen(
+            viewModel = logViewer,
+            onClose = { showLogViewer = false },
           )
         }
       } else {

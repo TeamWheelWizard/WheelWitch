@@ -36,6 +36,12 @@ object LogExporter {
     return file
   }
 
+  /**
+   * Returns the report text without writing a file, so the Log Viewer
+   * screen can show exactly what [flushToCacheFile] would export.
+   */
+  fun exportToString(context: Context): String = buildReport(context)
+
   /** Builds the report text. Exposed for tests so they can assert the format. */
   internal fun buildReport(context: Context): String {
     val sb = StringBuilder()

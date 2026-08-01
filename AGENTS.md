@@ -103,7 +103,7 @@ All values live in code. This table maps each thing to its canonical source.
 | Version filename | `DolphinTree.VERSION_FILE_NAME` |
 | Metadata XML filename | `DolphinTree.METADATA_XML_NAME` |
 
-## Tests (~272 tests)
+## Tests
 
 ### Stack
 JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs throw "not mocked")
@@ -126,6 +126,7 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `util/log/LogBufferTest.kt` | 6 | capacity, wrap-around, clear, snapshot ordering |
 | `util/log/MemoryBufferTreeTest.kt` | 4 | fan-out to buffer, minPriority filtering |
 | `util/log/AppReleaseLogTreeTest.kt` | 2 | drops INFO/DEBUG/VERBOSE, keeps WARN/ERROR/ASSERT |
+| `util/log/LogTextRendererTest.kt` | 8 | line parsing (level letters, plain lines, messageStart), colourised report preserves text + per-level span colours |
 | `util/io/OptionalFileTreeTest.kt` | 9 | enable/disable, file append, 1MB rotation |
 | `util/io/FileDownloaderTest.kt` | 6 | MockWebServer HTTP flows, backoff, 4xx/5xx discrimination |
 | `util/io/ByteReaderTest.kt` | 12 | byte-level reads, endianness, bounds |
@@ -140,6 +141,7 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
 | `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
+| `viewmodel/LogViewerViewModelTest.kt` | 4 | init load, loading state, reload, copy bumps trigger |
 
 ### Testability notes
 - Pure functions tested directly (no Android deps): SemVersion, parseRooms(), parseUpdatesText(), `DolphinConfig`, `DolphinPaths.physicalRoot`, `DolphinLauncher.buildLaunchJson`, etc.
