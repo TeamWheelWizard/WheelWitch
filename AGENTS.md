@@ -98,6 +98,7 @@ All values live in code. This table maps each thing to its canonical source.
 | Update server host | `VersionFileParser.RR_BASE` |
 | API host | `VersionFileParser.RWFC_API` |
 | Badges host | `VersionFileParser.BADGES_BASE` |
+| GitHub releases page | `GitHubReleaseParser.RELEASES_PAGE_URL` |
 | WheelWitch subpath | `DolphinPaths.WHEELWITCH_SUBPATH` |
 | Config INI filename | `DolphinTree.CONFIG_INI_NAME` |
 | Version filename | `DolphinTree.VERSION_FILE_NAME` |
@@ -138,8 +139,10 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `data/DolphinConfigTest.kt` | 25 | `IsoPaths.toIniLines`, `read`/`upsert`/`remove`, idempotency, comment preservation, `dolphinUserTreeUri` |
 | `data/SaveManagerTest.kt` | 9 | region mapping, `listRegions`, `hasSave`/`backup`/`restore`/`delete` |
 | `network/VersionFileParserTest.kt` | 17 | update/deletion parsing, leaderboard, health, tracks, race stats |
+| `network/GitHubReleaseParserTest.kt` | 6 | `parseLatestReleaseVersion()`: release title extraction, no-version/null/empty/malformed payloads |
 | `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
+| `viewmodel/AppUpdateViewModelTest.kt` | 7 | init latest-vs-current resolution, fetch failure, disabled skip, unparseable current version, `dismissDialog` |
 | `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
 | `viewmodel/LogViewerViewModelTest.kt` | 4 | init load, loading state, reload, copy bumps trigger |
 

@@ -23,6 +23,7 @@ import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
+import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.LogViewerViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
@@ -43,6 +44,7 @@ fun MainScreen(
   onlineViewModel: OnlineViewModel = viewModel(),
   saveData: SaveDataViewModel = viewModel(factory = SaveDataViewModel.factory(packUpdate)),
   logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
+  appUpdate: AppUpdateViewModel = viewModel(factory = AppUpdateViewModel.Factory),
   appTheme: AppTheme = AppTheme.Hex,
   onChangeAppTheme: (AppTheme) -> Unit = {},
   themeMode: ThemeMode = ThemeMode.System,
@@ -83,6 +85,7 @@ fun MainScreen(
             miiMaker = miiMaker,
             onlineViewModel = onlineViewModel,
             saveData = saveData,
+            appUpdate = appUpdate,
             onOpenSettings = { showSettings = true },
           )
         }
