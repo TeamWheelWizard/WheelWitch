@@ -338,23 +338,15 @@ class SaveDataViewModel(
    * show "Last backed up: …" on next launch.
    */
   fun backupAll(dest: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      backupAllSaver(tree, dest)
-        .onSuccess {
-          val timestamp = now()
-          prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
-          _lastBackupTimestamp.value = timestamp
-          refresh()
-        }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "backup failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_write_failed)
-        }
+    runSaveOp(
+      logTag = "backup",
+      fallback = { app.getString(R.string.vm_save_write_failed) },
+      op = { backupAllSaver(it, dest) },
+    ) {
+      val timestamp = now()
+      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
+      _lastBackupTimestamp.value = timestamp
+      refresh()
     }
   }
 
@@ -364,19 +356,11 @@ class SaveDataViewModel(
    * state on success.
    */
   fun restoreAll(source: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      restoreAllSaver(tree, source)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "restore failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_read_failed)
-        }
-    }
+    runSaveOp(
+      logTag = "restore",
+      fallback = { app.getString(R.string.vm_save_read_failed) },
+      op = { restoreAllSaver(it, source) },
+    ) { refresh() }
   }
 
   /**
@@ -385,19 +369,11 @@ class SaveDataViewModel(
    * Refreshes the parsed state and [hasAnySave] on success.
    */
   fun deleteAll() {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      deleteAllSaver(tree)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "delete failed")
-          _error.value = e.message ?: app.getString(R.string.vm_failed_format, "delete save")
-        }
-    }
+    runSaveOp(
+      logTag = "delete",
+      fallback = { app.getString(R.string.vm_failed_format, "delete save") },
+      op = { deleteAllSaver(it) },
+    ) { refresh() }
   }
 
   /**
@@ -406,23 +382,15 @@ class SaveDataViewModel(
    * [PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY].
    */
   fun backupRR(dest: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      backupRRSaver(tree, dest)
-        .onSuccess {
-          val timestamp = now()
-          prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
-          _lastBackupRRTimestamp.value = timestamp
-          refresh()
-        }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "backupRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_write_failed)
-        }
+    runSaveOp(
+      logTag = "backupRR",
+      fallback = { app.getString(R.string.vm_save_write_failed) },
+      op = { backupRRSaver(it, dest) },
+    ) {
+      val timestamp = now()
+      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
+      _lastBackupRRTimestamp.value = timestamp
+      refresh()
     }
   }
 
@@ -431,19 +399,11 @@ class SaveDataViewModel(
    * Refreshes the parsed state on success.
    */
   fun restoreRR(source: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      restoreRRSaver(tree, source)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "restoreRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_read_failed)
-        }
-    }
+    runSaveOp(
+      logTag = "restoreRR",
+      fallback = { app.getString(R.string.vm_save_read_failed) },
+      op = { restoreRRSaver(it, source) },
+    ) { refresh() }
   }
 
   /**
@@ -451,19 +411,11 @@ class SaveDataViewModel(
    * parsed state on success.
    */
   fun deleteRR() {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      deleteRRSaver(tree)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "deleteRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_failed_format, "delete RR save")
-        }
-    }
+    runSaveOp(
+      logTag = "deleteRR",
+      fallback = { app.getString(R.string.vm_failed_format, "delete RR save") },
+      op = { deleteRRSaver(it) },
+    ) { refresh() }
   }
 
   /**
@@ -472,18 +424,15 @@ class SaveDataViewModel(
    * up so the UI can show the "no save data" / "never backed up"
    * status line instead.
    */
-  fun formatLastBackup(): String? {
-    val ts = _lastBackupTimestamp.value
-    if (ts <= 0L) return null
-    return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
-  }
+  fun formatLastBackup(): String? = formatTimestamp(_lastBackupTimestamp.value)
 
   /**
    * Formats [lastBackupRRTimestamp] as a localized date + time.
    * Returns null when the user has never performed an RR-only backup.
    */
-  fun formatLastBackupRR(): String? {
-    val ts = _lastBackupRRTimestamp.value
+  fun formatLastBackupRR(): String? = formatTimestamp(_lastBackupRRTimestamp.value)
+
+  private fun formatTimestamp(ts: Long): String? {
     if (ts <= 0L) return null
     return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
   }
@@ -494,6 +443,42 @@ class SaveDataViewModel(
   }
 
   // --- internals --------------------------------------------------------
+
+  /**
+   * Runs [block] against the persisted SAF tree, publishing the
+   * "storage not configured" error when no grant exists.
+   */
+  private fun runWithTree(block: suspend (DolphinTree) -> Unit) {
+    viewModelScope.launch {
+      val tree = treeFactory(app)
+      if (tree == null) {
+        _error.value = app.getString(R.string.vm_save_not_configured)
+        return@launch
+      }
+      block(tree)
+    }
+  }
+
+  /**
+   * Runs a save operation against the persisted tree, logging and
+   * publishing the [fallback] error on failure and running
+   * [onSuccess] on success.
+   */
+  private fun runSaveOp(
+    logTag: String,
+    fallback: () -> String,
+    op: suspend (DolphinTree) -> Result<*>,
+    onSuccess: () -> Unit = {},
+  ) {
+    runWithTree { tree ->
+      op(tree)
+        .onSuccess { onSuccess() }
+        .onFailure { e ->
+          Timber.tag(TAG).e(e, "$logTag failed")
+          _error.value = e.message ?: fallback()
+        }
+    }
+  }
 
   /**
    * Fans out 4 parallel leaderboard fetches (one per license slot
