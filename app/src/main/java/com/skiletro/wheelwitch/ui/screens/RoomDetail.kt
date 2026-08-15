@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -47,10 +48,10 @@ fun RoomDetail(room: Room) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = stringResource(
-                            R.string.rooms_player_count_format,
+                        text = pluralStringResource(
+                            R.plurals.rooms_player_count,
                             room.players.size,
-                            if (room.players.size == 1) "" else "s"
+                            room.players.size
                         ),
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge,

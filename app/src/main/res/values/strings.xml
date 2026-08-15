@@ -166,7 +166,10 @@
     <string name="rooms_select_a_room">Select a room</string>
     <string name="rooms_refresh">Refresh</string>
     <string name="rooms_open">Open</string>
-    <string name="rooms_player_count_format">%1$d player%2$s</string>
+    <plurals name="rooms_player_count">
+        <item quantity="one">%d player</item>
+        <item quantity="other">%d players</item>
+    </plurals>
     <string name="rooms_joinable">Joinable</string>
     <string name="rooms_visibility_public">Public</string>
     <string name="rooms_visibility_private">Private</string>
