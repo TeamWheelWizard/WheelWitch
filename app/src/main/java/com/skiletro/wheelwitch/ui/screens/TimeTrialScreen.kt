@@ -55,9 +55,12 @@ import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.TimeTrialSubmission
 import com.skiletro.wheelwitch.model.TimeTrialTrack
+import com.skiletro.wheelwitch.ui.components.EmptyState
+import com.skiletro.wheelwitch.ui.components.ErrorRetry
 import com.skiletro.wheelwitch.ui.components.FocusableSurface
-import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
+import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
+import com.skiletro.wheelwitch.ui.components.VerticalDivider
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
@@ -114,55 +117,23 @@ fun TimeTrialScreen(
         ) {
             when (ttState) {
                 is TimeTrialState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    LoadingBox()
                 }
 
                 is TimeTrialState.Error -> {
-                    val error = (ttState as TimeTrialState.Error).message
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        PrimaryActionButton(
-                            text = stringResource(R.string.action_retry),
-                            onClick = { viewModel.fetchTracks() }
-                        )
-                    }
+                    ErrorRetry(
+                        message = (ttState as TimeTrialState.Error).message,
+                        onRetry = { viewModel.fetchTracks() }
+                    )
                 }
 
                 is TimeTrialState.Success -> {
                     if (tracks.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = stringResource(R.string.time_trial_no_tracks),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                PrimaryActionButton(
-                                    text = stringResource(R.string.action_retry),
-                                    onClick = { viewModel.fetchTracks() }
-                                )
-                            }
-                        }
+                        EmptyState(
+                            message = stringResource(R.string.time_trial_no_tracks),
+                            actionLabel = stringResource(R.string.action_retry),
+                            onAction = { viewModel.fetchTracks() }
+                        )
                     } else {
                         Row(
                             modifier = Modifier.fillMaxSize(),
@@ -259,47 +230,20 @@ fun TimeTrialScreen(
                             ) {
                                 when {
                                     selectedTrackId == null -> {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = stringResource(R.string.time_trial_select_track),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                                        EmptyState(
+                                            message = stringResource(R.string.time_trial_select_track)
+                                        )
                                     }
 
                                     trackLeaderboardState is TrackLeaderboardState.Loading -> {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            CircularProgressIndicator()
-                                        }
+                                        LoadingBox()
                                     }
 
                                     trackLeaderboardState is TrackLeaderboardState.Error -> {
-                                        val error = (trackLeaderboardState as TrackLeaderboardState.Error).message
-                                        Column(
-                                            modifier = Modifier.fillMaxSize(),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = error,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = MaterialTheme.colorScheme.error,
-                                                textAlign = TextAlign.Center,
-                                                modifier = Modifier.padding(horizontal = 32.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(16.dp))
-                                            PrimaryActionButton(
-                                                text = stringResource(R.string.action_retry),
-                                                onClick = { viewModel.fetchTrackLeaderboard() }
-                                            )
-                                        }
+                                        ErrorRetry(
+                                            message = (trackLeaderboardState as TrackLeaderboardState.Error).message,
+                                            onRetry = { viewModel.fetchTrackLeaderboard() }
+                                        )
                                     }
 
                                     trackLeaderboardState is TrackLeaderboardState.Success -> {
@@ -605,14 +549,4 @@ private fun SubmissionRow(
             }
         }
     }
-}
-
-@Composable
-private fun VerticalDivider() {
-    Box(
-        modifier = Modifier
-            .width(1.dp)
-            .fillMaxHeight()
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
 }

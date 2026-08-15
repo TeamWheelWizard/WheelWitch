@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -36,14 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.NamedStat
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.WinRateStat
-import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
+import com.skiletro.wheelwitch.ui.components.ErrorRetry
+import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
@@ -96,34 +95,14 @@ fun RaceStatsScreen(
             when (raceStatsState) {
                 is RaceStatsState.Idle -> {}
                 is RaceStatsState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    LoadingBox()
                 }
 
                 is RaceStatsState.Error -> {
-                    val error = (raceStatsState as RaceStatsState.Error).message
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        PrimaryActionButton(
-                            text = stringResource(R.string.action_retry),
-                            onClick = { viewModel.fetchRaceStats() }
-                        )
-                    }
+                    ErrorRetry(
+                        message = (raceStatsState as RaceStatsState.Error).message,
+                        onRetry = { viewModel.fetchRaceStats() }
+                    )
                 }
 
                 is RaceStatsState.Success -> {

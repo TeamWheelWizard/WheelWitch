@@ -34,14 +34,15 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.LeaderboardEntry
+import com.skiletro.wheelwitch.ui.components.EmptyState
+import com.skiletro.wheelwitch.ui.components.ErrorRetry
 import com.skiletro.wheelwitch.ui.components.FocusableSurface
+import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.MiiFace
-import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
@@ -81,49 +82,20 @@ fun LeaderboardScreen(
             when (leaderboardState) {
                 is LeaderboardState.Idle -> {}
                 is LeaderboardState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    LoadingBox()
                 }
 
                 is LeaderboardState.Error -> {
-                    val error = (leaderboardState as LeaderboardState.Error).message
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        PrimaryActionButton(
-                            text = stringResource(R.string.action_retry),
-                            onClick = { viewModel.fetchLeaderboard() }
-                        )
-                    }
+                    ErrorRetry(
+                        message = (leaderboardState as LeaderboardState.Error).message,
+                        onRetry = { viewModel.fetchLeaderboard() }
+                    )
                 }
 
                 is LeaderboardState.Success -> {
                     val state = leaderboardState as LeaderboardState.Success
                     if (state.entries.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.leaderboard_no_entries),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        EmptyState(message = stringResource(R.string.leaderboard_no_entries))
                     } else {
                         LeaderboardList(
                             entries = state.entries,

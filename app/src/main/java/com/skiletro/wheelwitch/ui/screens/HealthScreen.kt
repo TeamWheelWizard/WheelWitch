@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,13 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.HealthCheckItem
 import com.skiletro.wheelwitch.model.MemoryInfo
 import com.skiletro.wheelwitch.model.ServerHealth
-import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
+import com.skiletro.wheelwitch.ui.components.ErrorRetry
+import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.container
@@ -74,34 +73,14 @@ fun HealthScreen(
             when (healthState) {
                 is HealthState.Idle -> {}
                 is HealthState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
+                    LoadingBox()
                 }
 
                 is HealthState.Error -> {
-                    val error = (healthState as HealthState.Error).message
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = error,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        PrimaryActionButton(
-                            text = stringResource(R.string.action_retry),
-                            onClick = { viewModel.fetchHealth() }
-                        )
-                    }
+                    ErrorRetry(
+                        message = (healthState as HealthState.Error).message,
+                        onRetry = { viewModel.fetchHealth() }
+                    )
                 }
 
                 is HealthState.Success -> {
