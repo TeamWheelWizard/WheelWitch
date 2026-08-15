@@ -61,6 +61,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.GameTypeParser
+import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.ui.theme.buttonShape
@@ -701,22 +702,12 @@ private fun StepCard(
 @Composable
 private fun StepPrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
   Spacer(modifier = Modifier.height(16.dp))
-  Button(
+  PrimaryActionButton(
+    text = text,
     onClick = onClick,
     enabled = enabled,
-    shape = buttonShape,
-    modifier = Modifier.fillMaxWidth().height(56.dp),
-    colors = ButtonDefaults.buttonColors(
-      containerColor = MaterialTheme.colorScheme.primary,
-      contentColor = MaterialTheme.colorScheme.onPrimary,
-    ),
-  ) {
-    Text(
-      text = text,
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.SemiBold,
-    )
-  }
+    modifier = Modifier.fillMaxWidth(),
+  )
 }
 
 /** Step progress dots rendered at the bottom of the onboarding flow. */
