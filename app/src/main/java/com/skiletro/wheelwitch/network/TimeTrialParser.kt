@@ -10,23 +10,7 @@ import org.json.JSONObject
 
 fun parseTracks(jsonString: String): List<TimeTrialTrack> {
     val arr = jsonArrayFromResponse(jsonString, "tracks", "data") ?: return emptyList()
-    val tracks = mutableListOf<TimeTrialTrack>()
-    for (i in 0 until arr.length()) {
-        val obj = arr.getJSONObject(i)
-        tracks.add(
-            TimeTrialTrack(
-                id = obj.optInt("id", 0),
-                name = obj.optString("name", "Unknown"),
-                courseId = obj.optInt("courseId", -1),
-                category = obj.optString("category", "retro"),
-                laps = obj.optInt("laps", 3),
-                supportsGlitch = obj.optBoolean("supportsGlitch", false),
-                sortOrder = obj.optInt("sortOrder", 0),
-                isHidden = obj.optBoolean("isHidden", false),
-            )
-        )
-    }
-    return tracks
+    return (0 until arr.length()).map { parseTrack(arr.getJSONObject(it)) }
 }
 
 fun parseTimeTrialLeaderboard(jsonString: String): TimeTrialLeaderboardResponse {

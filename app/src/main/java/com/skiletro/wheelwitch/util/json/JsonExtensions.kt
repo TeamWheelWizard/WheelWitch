@@ -53,3 +53,7 @@ fun jsonArrayFromResponse(jsonString: String, vararg keys: String): JSONArray? {
     val root = JSONObject(trimmed)
     return root.optAnyArray(*keys)
 }
+
+/** Maps each element of this array through [transform], skipping any non-object element. */
+inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
+    (0 until length()).map { transform(getJSONObject(it)) }
