@@ -73,9 +73,6 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
      */
     private val leaderboardRequests = Channel<Unit>(Channel.CONFLATED)
 
-    val playerCount: Int?
-        get() = (_roomsState.value as? RoomsState.Success)?.playerCount
-
     init {
         initialFetch()
         launchLeaderboardConsumer()
