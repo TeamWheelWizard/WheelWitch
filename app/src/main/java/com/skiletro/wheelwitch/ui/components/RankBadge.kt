@@ -19,7 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.RANK_NAMES
@@ -49,25 +52,46 @@ private fun rankIconRes(rank: Int): Int? = when (rank) {
   else -> null
 }
 
+private fun Modifier.badgeIcon(compact: Boolean): Modifier =
+  size(width = if (compact) 32.dp else 40.dp, height = if (compact) 32.dp else 40.dp)
+
+private fun Modifier.progressBar(compact: Boolean): Modifier =
+  width(if (compact) 40.dp else 50.dp).height(4.dp)
+
 @Composable
-fun RankBadge(result: ScoreResult?, vanityBadge: VanityBadge? = null) {
+fun RankBadge(
+  result: ScoreResult?,
+  vanityBadge: VanityBadge? = null,
+  compact: Boolean = false,
+  compactFontSize: TextUnit = TextUnit.Unspecified
+) {
   if (result == null) return
 
   Column(
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center,
-    modifier = Modifier.widthIn(min = 70.dp),
+    modifier =
+      Modifier.widthIn(
+        min = if (compact) 56.dp else 70.dp,
+        max = if (compact) 80.dp else 96.dp,
+      ),
   ) {
     if (!result.meetsRaceReq) {
-      LockedBadge(result)
+      LockedBadge(result, compact, compactFontSize)
     } else {
-      PopulatedBadge(result, vanityBadge)
+      PopulatedBadge(result, vanityBadge, compact, compactFontSize)
     }
   }
 }
 
 @Composable
-private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
+private fun PopulatedBadge(
+  result: ScoreResult,
+  vanityBadge: VanityBadge?,
+  compact: Boolean,
+  compactFontSize: TextUnit
+) {
+  val maybeCompactFontSize = if (compact) compactFontSize else TextUnit.Unspecified
   val iconRes = remember(result.rank) { rankIconRes(result.rank) }
   val image = iconRes?.let { painterResource(it) }
   val isMaxRank = result.rank >= 9
@@ -83,15 +107,15 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
       Image(
         painter = painterResource(badgeIconRes(vanityBadge)),
         contentDescription = null,
-        modifier = Modifier.size(width = 40.dp, height = 48.dp),
+        modifier = Modifier.badgeIcon(compact),
       )
-      Spacer(Modifier.width(4.dp))
+      Spacer(Modifier.width(if (compact) 3.dp else 4.dp))
     }
     if (image != null) {
       androidx.compose.foundation.Image(
         painter = image,
         contentDescription = RANK_NAMES.getOrElse(result.rank - 1) { "" },
-        modifier = Modifier.size(width = 40.dp, height = 48.dp),
+        modifier = Modifier.badgeIcon(compact),
       )
     }
   }
@@ -103,12 +127,16 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
       text = stringResource(R.string.rank_score_label),
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant,
+      fontSize = maybeCompactFontSize,
+      lineHeight = maybeCompactFontSize,
     )
     Spacer(Modifier.width(3.dp))
     RollingNumbers(
       text = result.score.toInt().toString(),
       textStyle = MaterialTheme.typography.titleSmall.copy(
         fontWeight = FontWeight.Bold,
+        fontSize = maybeCompactFontSize,
+        lineHeight = maybeCompactFontSize,
         color = MaterialTheme.colorScheme.onSurface,
       ),
     )
@@ -124,9 +152,7 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
 
     LinearProgressIndicator(
       progress = { progress },
-      modifier = Modifier
-        .width(50.dp)
-        .height(4.dp),
+      modifier = Modifier.progressBar(compact),
       color = MaterialTheme.colorScheme.primary,
       trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
@@ -141,13 +167,14 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
         text = "$pointsNeeded pts to ",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
+        fontSize = maybeCompactFontSize,
+        lineHeight = maybeCompactFontSize,
       )
       if (nextImage != null) {
         Image(
           painter = nextImage,
           contentDescription = null,
-          modifier = Modifier.size(22.dp),
+          modifier = Modifier.size(if (compact) 18.dp else 22.dp),
         )
       }
     }
@@ -155,17 +182,19 @@ private fun PopulatedBadge(result: ScoreResult, vanityBadge: VanityBadge?) {
 }
 
 @Composable
-private fun LockedBadge(result: ScoreResult) {
+private fun LockedBadge(
+  result: ScoreResult,
+  compact: Boolean,
+  compactFontSize: TextUnit
+) {
+  val maybeCompactFontSize = if (compact) compactFontSize else TextUnit.Unspecified
   val racesProgress = (result.totalVs / 100f).coerceIn(0f, 1f)
-  val targetRank = remember(result) { wouldBeRank(result) }
-  val targetIconRes = remember(targetRank) { rankIconRes(targetRank) }
-  val targetImage = targetIconRes?.let { painterResource(it) }
 
   Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Image(
       painter = painterResource(R.drawable.ic_badge_locked),
       contentDescription = stringResource(R.string.rank_locked),
-      modifier = Modifier.size(width = 40.dp, height = 48.dp),
+      modifier = Modifier.badgeIcon(compact),
     )
 
     Spacer(Modifier.height(1.dp))
@@ -175,12 +204,16 @@ private fun LockedBadge(result: ScoreResult) {
         text = stringResource(R.string.rank_score_label),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = maybeCompactFontSize,
+        lineHeight = maybeCompactFontSize,
       )
       Spacer(Modifier.width(3.dp))
       RollingNumbers(
         text = wouldBeScore(result).toInt().toString(),
         textStyle = MaterialTheme.typography.titleSmall.copy(
           fontWeight = FontWeight.Bold,
+          fontSize = maybeCompactFontSize,
+          lineHeight = maybeCompactFontSize,
           color = MaterialTheme.colorScheme.onSurface,
         ),
       )
@@ -190,9 +223,7 @@ private fun LockedBadge(result: ScoreResult) {
 
     LinearProgressIndicator(
       progress = { racesProgress },
-      modifier = Modifier
-        .width(50.dp)
-        .height(4.dp),
+      modifier = Modifier.progressBar(compact),
       color = MaterialTheme.colorScheme.primary,
       trackColor = MaterialTheme.colorScheme.surfaceVariant,
     )
@@ -202,23 +233,12 @@ private fun LockedBadge(result: ScoreResult) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Text(
         text = stringResource(R.string.rank_races_format, result.totalVs),
+        textAlign = TextAlign.Center,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
+        fontSize = maybeCompactFontSize,
+        lineHeight = maybeCompactFontSize,
       )
-      if (targetImage != null) {
-        Spacer(Modifier.width(2.dp))
-        Text(
-          text = "to ",
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Image(
-          painter = targetImage,
-          contentDescription = null,
-          modifier = Modifier.size(22.dp),
-        )
-      }
     }
   }
 }
