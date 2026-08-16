@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.model.DolphinVersion
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.model.ServerConnectivity
@@ -161,6 +162,17 @@ fun HomeScreen(
   val scope = rememberCoroutineScope()
   var showLaunchWarningDialog by remember { mutableStateOf(false) }
   var showGameIniNotice by remember { mutableStateOf(false) }
+  var showDolphinOutdatedDialog by remember { mutableStateOf(false) }
+  var outdatedDolphinVersion by remember { mutableStateOf<String?>(null) }
+
+  LaunchedEffect(Unit) {
+    val versionName = DolphinLauncher.dolphinVersionName(context)
+    val version = DolphinVersion.parse(versionName)
+    if (version != null && !version.isAtLeastMinimum()) {
+      outdatedDolphinVersion = versionName
+      showDolphinOutdatedDialog = true
+    }
+  }
 
   val launchDolphinNotInstalled = stringResource(R.string.home_launch_dolphin_not_installed)
   val launchNoRom = stringResource(R.string.home_launch_no_rom)
@@ -222,6 +234,33 @@ fun HomeScreen(
           scope.launch { performLaunch() }
         }) {
           Text(stringResource(R.string.home_game_ini_notice_acknowledged))
+        }
+      },
+    )
+  }
+
+  if (showDolphinOutdatedDialog) {
+    AlertDialog(
+      onDismissRequest = { showDolphinOutdatedDialog = false },
+      title = { Text(stringResource(R.string.home_dolphin_outdated_title)) },
+      text = {
+        Text(
+          stringResource(R.string.home_dolphin_outdated_body, outdatedDolphinVersion.orEmpty())
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = {
+          showDolphinOutdatedDialog = false
+          context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(DolphinLauncher.DOLPHIN_DOWNLOAD_URL))
+          )
+        }) {
+          Text(stringResource(R.string.home_dolphin_outdated_action))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showDolphinOutdatedDialog = false }) {
+          Text(stringResource(R.string.action_cancel))
         }
       },
     )

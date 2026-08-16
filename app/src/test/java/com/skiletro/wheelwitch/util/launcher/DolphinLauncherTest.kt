@@ -583,6 +583,35 @@ class DolphinLauncherTest {
     assertThat(started).isFalse()
   }
 
+  // --- dolphinVersionName --------------------------------------------
+
+  @Test
+  fun `dolphinVersionName returns the installed versionName`() {
+    val ctx = mockk<Context>(relaxed = true)
+    // PackageInfo.versionName is a public field, not something MockK
+    // can stub, so use a real instance and set the field directly.
+    val info = PackageInfo()
+    info.versionName = "2606-299"
+    every { ctx.packageManager.getPackageInfo(DolphinLauncher.DOLPHIN_PACKAGE, 0) } returns info
+
+    assertThat(DolphinLauncher.dolphinVersionName(ctx)).isEqualTo("2606-299")
+  }
+
+  @Test
+  fun `dolphinVersionName returns null when Dolphin is not installed`() {
+    val ctx = mockk<Context>(relaxed = true)
+    every {
+      ctx.packageManager.getPackageInfo(DolphinLauncher.DOLPHIN_PACKAGE, 0)
+    } throws PackageManager.NameNotFoundException()
+
+    assertThat(DolphinLauncher.dolphinVersionName(ctx)).isNull()
+  }
+
+  @Test
+  fun `DOLPHIN_DOWNLOAD_URL points at the official downloads page`() {
+    assertThat(DolphinLauncher.DOLPHIN_DOWNLOAD_URL).isEqualTo("https://dolphin-emu.org/download/")
+  }
+
   // --- helpers --------------------------------------------------------
 
   private fun assertOption(obj: JSONObject, name: String, choice: Int) {
