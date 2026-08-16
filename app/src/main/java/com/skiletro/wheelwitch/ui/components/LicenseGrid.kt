@@ -1,6 +1,5 @@
 package com.skiletro.wheelwitch.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,7 +25,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.LicenseInfo
@@ -35,12 +36,16 @@ import com.skiletro.wheelwitch.model.VanityBadge
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
+import kotlin.math.round
 
 /** Grid width below which licenses render as a single scrollable column. */
 private val TwoColumnMinWidth = 560.dp
 
 /** Cell width below which the cell switches to compact chrome and tighter spacing. */
-private val CompactCellThreshold = 360.dp
+private val CompactCellWidthThreshold = 360.dp
+
+/** Cell height below which the cell switches to compact chrome and tighter spacing. */
+private val CompactCellHeightThreshold = 140.dp
 
 @Composable
 fun LicenseGrid(
@@ -50,7 +55,9 @@ fun LicenseGrid(
   isLoading: Boolean,
 ) {
   Box(
-    modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(horizontal = 20.dp, vertical = 8.dp),
   ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
       if (maxWidth >= TwoColumnMinWidth) {
@@ -60,7 +67,9 @@ fun LicenseGrid(
         ) {
           licenses.chunked(2).forEach { pair ->
             Row(
-              modifier = Modifier.fillMaxWidth().weight(1f),
+              modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
               horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
               pair.getOrNull(0)?.let { first ->
@@ -135,7 +144,9 @@ fun LicenseCell(
 @Composable
 fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badge: VanityBadge? = null) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-    val compact = maxWidth < CompactCellThreshold
+    val compact = maxWidth < CompactCellWidthThreshold || maxHeight < CompactCellHeightThreshold
+    val compactFontSize = 9.sp
+    val maybeCompactFontSize = if (compact) compactFontSize else TextUnit.Unspecified
     Row(
       modifier =
         Modifier
@@ -163,58 +174,55 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badge: Vanity
         license.friendCode?.let { fc ->
           Text(
             text = fc,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = maybeCompactFontSize,
+            lineHeight = maybeCompactFontSize,
           )
         }
         Spacer(modifier = Modifier.height(3.dp))
         val vr = license.ratingVr ?: license.vr ?: 0
+        val wins = license.raceWins ?: 0
+        val losses = license.raceLosses ?: 0
+        val total = wins + losses
+        val winRate = if (total == 0) {
+          0
+        } else {
+          round((wins / total.toDouble()).coerceIn(0.0, 1.0) * 1000) / 10.0
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-            text = "VR ",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-          )
           RollingNumbers(
-            text = vr.toString(),
+            text = "$vr VR",
             textStyle =
               MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = maybeCompactFontSize,
+                lineHeight = maybeCompactFontSize,
               ),
           )
         }
         Spacer(modifier = Modifier.height(1.dp))
-        val wins = license.raceWins ?: 0
-        val losses = license.raceLosses ?: 0
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(
-            text = "W ",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
           RollingNumbers(
-            text = wins.toString(),
+            text = "${winRate}% WR",
             textStyle =
               MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-              ),
-          )
-          Text(
-            text = " / L ",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-          RollingNumbers(
-            text = losses.toString(),
-            textStyle =
-              MaterialTheme.typography.bodyMedium.copy(
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = maybeCompactFontSize,
+                lineHeight = maybeCompactFontSize,
               ),
           )
         }
       }
       Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
-      RankBadge(result = scoreResult, vanityBadge = badge, compact = compact)
+      RankBadge(
+        result = scoreResult,
+        vanityBadge = badge,
+        compact = compact,
+        compactFontSize = compactFontSize
+      )
     }
   }
 }
@@ -233,7 +241,9 @@ fun EmptyCell() {
 @Composable
 fun EmptySaveBody(isLoading: Boolean) {
   Box(
-    modifier = Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp),
+    modifier = Modifier
+      .fillMaxSize()
+      .padding(horizontal = 32.dp, vertical = 24.dp),
     contentAlignment = Alignment.Center,
   ) {
     if (isLoading) {
@@ -256,11 +266,14 @@ fun EmptySaveBody(isLoading: Boolean) {
   }
 }
 
+private const val PreviewMiiBase64 = "AAAAbgBvACAAbgBhAG0AZQAAAAAAAEBAAAAAAAAAAAAEBEJAMYAoogiMCFgUSriNAIoAiiUEAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
 private val PreviewLicenses =
   listOf(
     LicenseInfo(
       slotIndex = 0,
       exists = true,
+      miiDataBase64 = PreviewMiiBase64,
       miiName = "Bomber",
       friendCode = "1234-5678-9012",
       vr = 4800,
@@ -271,17 +284,19 @@ private val PreviewLicenses =
     LicenseInfo(
       slotIndex = 1,
       exists = true,
+      miiDataBase64 = PreviewMiiBase64,
       miiName = "Skiletro",
       friendCode = "9876-5432-1098",
       vr = 7200,
       raceWins = 250,
       raceLosses = 45,
-      ratingVr = 8300,
+      ratingVr = 999999,
     ),
     LicenseInfo(slotIndex = 2, exists = false),
     LicenseInfo(
       slotIndex = 3,
       exists = true,
+      miiDataBase64 = PreviewMiiBase64,
       miiName = "Turbo",
       friendCode = "1357-2468-0246",
       vr = 2200,
@@ -295,11 +310,37 @@ private val PreviewScores =
   mapOf(
     0 to ScoreResult(score = 76.4, rank = 6, vrNorm = 70.0, winPct = 66.0, firstsNorm = 50.0,
         distNorm = 40.0, dist1stNorm = 30.0, totalVs = 180, meetsRaceReq = true),
-    1 to ScoreResult(score = 91.2, rank = 8, vrNorm = 83.0, winPct = 84.0, firstsNorm = 60.0,
+    1 to ScoreResult(score = 91.2, rank = 7, vrNorm = 83.0, winPct = 84.0, firstsNorm = 60.0,
         distNorm = 50.0, dist1stNorm = 40.0, totalVs = 295, meetsRaceReq = true),
     3 to ScoreResult(score = 0.0, rank = 0, vrNorm = 31.0, winPct = 36.0, firstsNorm = 20.0,
-        distNorm = 10.0, dist1stNorm = 5.0, totalVs = 110, meetsRaceReq = false),
+        distNorm = 10.0, dist1stNorm = 5.0, totalVs = 100, meetsRaceReq = false),
   )
+
+@Preview(name = "LicenseGrid 1000dp", widthDp = 1000, heightDp = 225, fontScale = 1.3f, showBackground = true)
+@Composable
+private fun LicenseGridCompactTwoColumnPreview() {
+  WheelWitchPreviewTheme {
+    LicenseGrid(
+      licenses = PreviewLicenses,
+      scoreResults = PreviewScores,
+      badges = emptyMap(),
+      isLoading = false,
+    )
+  }
+}
+
+@Preview(name = "LicenseGrid 1000dp", widthDp = 1000, heightDp = 310, fontScale = 1.3f, showBackground = true)
+@Composable
+private fun LicenseGridRegularTwoColumnPreview() {
+  WheelWitchPreviewTheme {
+    LicenseGrid(
+      licenses = PreviewLicenses,
+      scoreResults = PreviewScores,
+      badges = emptyMap(),
+      isLoading = false,
+    )
+  }
+}
 
 @Preview(name = "LicenseGrid 320dp", widthDp = 320, heightDp = 320, fontScale = 1.3f, showBackground = true)
 @Composable

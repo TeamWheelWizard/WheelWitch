@@ -56,6 +56,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
@@ -426,8 +427,8 @@ private fun HomeBottomBar(
           ) {
             Text(
               text = stringResource(R.string.status_installed),
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Medium,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.SemiBold,
             )
           }
         }
@@ -443,8 +444,8 @@ private fun HomeBottomBar(
               ) {
                 Text(
                   text = stringResource(R.string.status_checking),
-                  style = MaterialTheme.typography.titleMedium,
-                  fontWeight = FontWeight.Medium,
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.SemiBold,
                 )
               }
             previous is PackStatus.CheckFailed -> {
@@ -497,8 +498,8 @@ private fun HomeBottomBar(
           FilledTonalButton(onClick = onRetry, shape = buttonShape, modifier = Modifier.height(56.dp)) {
             Text(
               text = stringResource(R.string.action_retry),
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Medium,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.SemiBold,
             )
           }
         is UiState.Ready -> {
@@ -557,8 +558,8 @@ private fun HomeBottomBar(
           ) {
             Text(
               text = stringResource(R.string.home_check_for_updates),
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Medium,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.SemiBold,
             )
           }
         }
@@ -607,7 +608,8 @@ private fun CheckFailedButton(
       ) {
         Text(
           text = title,
-          style = MaterialTheme.typography.titleMedium,
+          style = MaterialTheme.typography.titleSmall,
+          fontWeight = FontWeight.SemiBold
         )
       }
       if (showSpinner) {
@@ -620,16 +622,16 @@ private fun CheckFailedButton(
           Spacer(modifier = Modifier.width(10.dp))
           Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
           )
         }
       } else {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
           Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
           )
           if (subtitle != null) {
             Text(
@@ -706,7 +708,8 @@ private fun StatusRow(
         ) {
           Text(
             text = stringResource(R.string.home_check_for_updates),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
           )
         }
         if (isChecking) {
@@ -719,16 +722,16 @@ private fun StatusRow(
             Spacer(modifier = Modifier.width(10.dp))
             Text(
               text = stringResource(R.string.status_checking),
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Medium,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.SemiBold,
             )
           }
         } else {
           Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
               text = stringResource(R.string.home_check_for_updates),
-              style = MaterialTheme.typography.titleMedium,
-              fontWeight = FontWeight.Medium,
+              style = MaterialTheme.typography.titleSmall,
+              fontWeight = FontWeight.SemiBold,
             )
             if (checkSubtitle != null) {
               Text(

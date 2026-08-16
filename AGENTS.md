@@ -74,7 +74,7 @@ The sub-packages under `util/` are intentional. Keep new files in the right sub-
 - **Dolphin tree**: `DolphinTree` (SAF wrapper) is the single source of truth for the user-picked folder; `DolphinPaths` derives physical paths via the package-swap trick; `DolphinConfig` is the pure INI parser for `Dolphin.ini` `ISOPathN` registration
 - **Path consistency invariant**: every path inside `rr_autostartfile.json` and the `AutoStartFile` extra must derive from the same `DolphinPaths.physicalRoot(context)` call. Riivolution's native code can't resolve `content://` URIs.
 - **Launch flow**: `DolphinLauncher.launchRetroRewind(context)` does (1) validate Dolphin, (2) load tree, (3) pick ROM, (4) upsert `Dolphin.ini`, (5) write descriptor, (6) fire intent; falls back to bare-Dolphin launch if any step throws
-- **PrimaryActionButton**: 56dp, filled primary, `titleMedium` semi-bold; **SecondaryActionButton**: 48dp, outlined
+- **PrimaryActionButton**: 56dp, filled primary, `titleSmall` semi-bold; **SecondaryActionButton**: 48dp, outlined
 - **Leaderboard**: clickable rows with 5dp primary border on focus; one-shot `hasRequestedFocus` guard for pagination
 - **File downloads**: `FileDownloader.downloadToFile()` with progress callback, HTTP validation, configurable client
 - **Mii Maker WAD**: downloads zip from GameBanana, extracts `.wad`, launches via `ACTION_VIEW` + FileProvider

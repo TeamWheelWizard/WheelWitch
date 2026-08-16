@@ -28,7 +28,7 @@ private const val SubTextAlpha = 0.7f
 
 /**
  * Primary call-to-action button: 56dp tall, filled with the primary
- * color, [titleMedium] semi-bold label. An optional [subText] line
+ * color, [titleSmall] semi-bold label. An optional [subText] line
  * renders below the main label at reduced alpha. Integrates with
  * [focusBorder] for gamepad focus indication.
  */
@@ -61,7 +61,7 @@ fun PrimaryActionButton(
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center
             )
