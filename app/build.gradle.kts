@@ -46,8 +46,18 @@ android {
         } catch (_: Exception) {
           "unknown"
         }
-    versionCode = commitCount
-    versionName = "0.$commitCount.0+$gitHash"
+    val releaseVersion = providers.gradleProperty("releaseVersion").orNull
+    val releaseVersionCode =
+        releaseVersion?.split(".")?.let { parts ->
+          require(parts.size == 3) { "releaseVersion must have three numeric components" }
+          val numbers = parts.map(String::toInt)
+          require(numbers[0] in 0..2099 && numbers[1] in 0..999 && numbers[2] in 0..999) {
+            "releaseVersion components exceed the supported range"
+          }
+          numbers[0] * 1_000_000 + numbers[1] * 1_000 + numbers[2]
+        }
+    versionCode = releaseVersionCode ?: commitCount
+    versionName = releaseVersion ?: "0.$commitCount.0+$gitHash"
     buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
     buildConfigField("String", "LOGS_EMAIL", "\"wheelwitch@skilet.ro\"")
   }

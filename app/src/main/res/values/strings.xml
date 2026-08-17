@@ -68,9 +68,6 @@
     <string name="home_dolphin_outdated_action">Get Update</string>
 
     <!-- onboarding -->
-    <string name="onboarding_beta_title">Heads up: this is beta software</string>
-    <string name="onboarding_beta_body">Wheel Witch is in active development. Things might break, installs can fail, and you may see the occasional crash.\n\nIf something doesn\'t work, please report it: go to Settings, then Report bug to send your logs. The more detail you can share, the faster it gets fixed.</string>
-    <string name="onboarding_beta_continue">Got it, let\'s go</string>
     <string name="onboarding_welcome_to">Welcome to</string>
     <string name="onboarding_app_name">Wheel Witch</string>
     <string name="onboarding_welcome_body">Your companion for installing and launching the Retro Rewind Mario Kart Wii pack with Dolphin Emulator.</string>

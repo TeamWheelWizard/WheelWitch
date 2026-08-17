@@ -17,8 +17,8 @@
 <br>
 
 <div align="center">
-  <a href="https://github.com/skiletro/WheelWitch/releases/tag/ci"><img src="./.github/assets/badges/github.webp" alt="Latest Build" width="220"></a>&nbsp;&nbsp;
-  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.skiletro.wheelwitch%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fskiletro%2FWheelWitch%22%2C%22author%22%3A%22skiletro%22%2C%22name%22%3A%22WheelWitch%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Atrue%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22wheelwitch-.%2A%5C%5C%5C%5C.apk%5C%22%2C%5C%22versionExtractionRegEx%5C%22%3A%5C%22%28%5C%5C%5C%5Cd%2B%5C%5C%5C%5C.%5C%5C%5C%5Cd%2B%5C%5C%5C%5C.%5C%5C%5C%5Cd%2B%29%5C%22%2C%5C%22releaseTitleAsVersion%5C%22%3Atrue%7D%22%7D"><img src="./.github/assets/badges/obtainium.webp" alt="Add to Obtainium" width="220"></a>
+  <a href="https://github.com/skiletro/WheelWitch/releases/latest"><img src="./.github/assets/badges/github.webp" alt="Latest Release" width="220"></a>&nbsp;&nbsp;
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.skiletro.wheelwitch%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fskiletro%2FWheelWitch%22%2C%22author%22%3A%22skiletro%22%2C%22name%22%3A%22WheelWitch%22%2C%22additionalSettings%22%3A%22%7B%5C%22includePrereleases%5C%22%3Afalse%2C%5C%22apkFilterRegEx%5C%22%3A%5C%22wheelwitch-.%2A%5C%5C%5C%5C.apk%5C%22%2C%5C%22versionExtractionRegEx%5C%22%3A%5C%22%28%5C%5C%5C%5Cd%2B%5C%5C%5C%5C.%5C%5C%5C%5Cd%2B%5C%5C%5C%5C.%5C%5C%5C%5Cd%2B%29%5C%22%2C%5C%22releaseTitleAsVersion%5C%22%3Atrue%7D%22%7D"><img src="./.github/assets/badges/obtainium.webp" alt="Add to Obtainium" width="220"></a>
 </div>
 
 ## Screenshots
@@ -42,7 +42,7 @@ It downloads and incrementally updates the pack from the RWFC server, then launc
 
 ## Download
 
-The latest signed release APK is built automatically on every push to `master` and published as a [pre-release](https://github.com/skiletro/WheelWitch/releases/tag/ci) with auto-generated changelog. You can also install it via [Obtainium](https://github.com/ImranR98/Obtainium) by importing the config from the button above.
+The latest signed release APK is built automatically when a version tag is pushed and published as a [stable release](https://github.com/skiletro/WheelWitch/releases/latest) with an auto-generated changelog. You can also install it via [Obtainium](https://github.com/ImranR98/Obtainium) by importing the config from the button above.
 
 To build from source or contribute, see [CONTRIBUTING.md](CONTRIBUTING.md#build).
 
@@ -56,7 +56,7 @@ unmodified build will always verify the same way across releases.
 - **SHA-1 fingerprint:** `68:53:04:D6:F2:36:5F:34:98:E2:FA:DE:6A:67:7B:80:B8:70:4A:C3`
 
 The V4 signature is also distributed as `wheelwitch-<version>-<hash>.apk.idsig`
-alongside the APK in the [CI release](https://github.com/skiletro/WheelWitch/releases/tag/ci)
+alongside the APK in the [stable release](https://github.com/skiletro/WheelWitch/releases/latest)
 for offline verification.
 
 ## Requirements
@@ -68,11 +68,10 @@ for offline verification.
 ## First Time Setup
 
 1. Open the app and tap **Let's get started**.
-2. Tap **Got it, let's go** on the beta caveats screen.
-3. Install Dolphin Emulator if prompted, then tap **Check Again**.
-4. Tap **Grant Access** and pick Dolphin's `org.dolphinemu.dolphinemu` folder.
-5. Tap **Select ROM File** and pick your Mario Kart Wii ISO.
-6. Tap **Continue** to enter the home screen.
+2. Install Dolphin Emulator if prompted, then tap **Check Again**.
+3. Tap **Grant Access** and pick Dolphin's `org.dolphinemu.dolphinemu` folder.
+4. Tap **Select ROM File** and pick your Mario Kart Wii ISO.
+5. Tap **Continue** to enter the home screen.
 
 For returning users, the gear icon opens Settings.
 

@@ -68,7 +68,7 @@ Description is lowercase imperative, no trailing period.
 
 ### Build gates
 
-`./gradlew assembleDebug testDebugUnitTest` must stay green. Pull requests run tests automatically in CI.
+`./gradlew assembleDebug testDebugUnitTest` must stay green. Pull requests run unit tests automatically in CI; `dev` pushes also build a signed CI artefact without publishing a GitHub release.
 
 No formal CLA; if you contribute code, please add yourself to a credits section if we add one.
 
@@ -93,6 +93,14 @@ source .env && ./gradlew assembleRelease  # without Nix
 
 The keystore is resolved relative to the project root. Defaults: PKCS12, RSA-4096,
 SHA512withRSA, 10000-day validity.
+
+### Stable releases
+
+Stable releases are tag-driven. Push a tag in the form `vM.m.p`, such as `v1.0.0`;
+major versions must be at most 2099, and minor and patch versions at most 999.
+The release workflow validates the tag, runs the unit tests, builds and verifies the
+signed APK, and publishes the APK and `.idsig` file as a non-prerelease GitHub release.
+Tags with a non-semantic version are rejected before publication.
 
 ## Project structure
 
