@@ -27,6 +27,14 @@ class DolphinVersionTest {
   }
 
   @Test
+  fun `parse recognises stable hotfix suffix`() {
+    val version = DolphinVersion.parse("2606a")
+
+    assertThat(version).isNotNull()
+    assertThat(version!!.isHotfix).isTrue()
+  }
+
+  @Test
   fun `parse ignores master minor prefix and takes first year segment`() {
     val version = DolphinVersion.parse("5.0-2606-300")
     assertThat(version).isNotNull()
@@ -89,7 +97,8 @@ class DolphinVersionTest {
         Arguments.of("2606-235", false),
         Arguments.of("2407-138", false),
         Arguments.of("5.0-20132", false),
-        Arguments.of("2606a", false),
+        Arguments.of("2606a", true),
+        Arguments.of("2605a", false),
         Arguments.of("2606", false),
       )
   }

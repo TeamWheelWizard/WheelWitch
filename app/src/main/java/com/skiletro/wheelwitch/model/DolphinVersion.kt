@@ -10,7 +10,7 @@ package com.skiletro.wheelwitch.model
  * [isAtLeastMinimum] comparison is done on the year-month and, when
  * present, the dev-build number.
  */
-data class DolphinVersion(val year: Int, val devBuild: Int?) {
+data class DolphinVersion(val year: Int, val devBuild: Int?, val isHotfix: Boolean = false) {
 
   /** Classification of an installed Dolphin against the security floor. */
   enum class Status {
@@ -32,6 +32,7 @@ data class DolphinVersion(val year: Int, val devBuild: Int?) {
     when {
       year > MINIMUM_YEAR -> true
       year < MINIMUM_YEAR -> false
+      isHotfix -> true
       devBuild == null -> false
       else -> devBuild >= MINIMUM_DEV_BUILD
     }
@@ -53,8 +54,9 @@ data class DolphinVersion(val year: Int, val devBuild: Int?) {
     fun parse(versionName: String?): DolphinVersion? {
       val match = versionName?.let { PATTERN.find(it) } ?: return null
       val year = match.groupValues[1].toIntOrNull() ?: return null
+      val isHotfix = match.groupValues[2].isNotEmpty()
       val devBuild = match.groupValues[3].toIntOrNull()
-      return DolphinVersion(year, devBuild)
+      return DolphinVersion(year, devBuild, isHotfix)
     }
   }
 }
