@@ -60,7 +60,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.model.DolphinVersion
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.model.ServerConnectivity
@@ -98,6 +97,9 @@ fun HomeScreen(
   saveData: SaveDataViewModel,
   appUpdate: AppUpdateViewModel,
   onOpenSettings: () -> Unit,
+  showDolphinOutdatedDialog: Boolean = false,
+  outdatedDolphinVersion: String? = null,
+  onDismissDolphinOutdatedDialog: () -> Unit = {},
 ) {
   val state by packUpdate.state.collectAsState()
   val installProgress by packUpdate.installProgress.collectAsState()
@@ -162,17 +164,6 @@ fun HomeScreen(
   val scope = rememberCoroutineScope()
   var showLaunchWarningDialog by remember { mutableStateOf(false) }
   var showGameIniNotice by remember { mutableStateOf(false) }
-  var showDolphinOutdatedDialog by remember { mutableStateOf(false) }
-  var outdatedDolphinVersion by remember { mutableStateOf<String?>(null) }
-
-  LaunchedEffect(Unit) {
-    val versionName = DolphinLauncher.dolphinVersionName(context)
-    val version = DolphinVersion.parse(versionName)
-    if (version != null && !version.isAtLeastMinimum()) {
-      outdatedDolphinVersion = versionName
-      showDolphinOutdatedDialog = true
-    }
-  }
 
   val launchDolphinNotInstalled = stringResource(R.string.home_launch_dolphin_not_installed)
   val launchNoRom = stringResource(R.string.home_launch_no_rom)
@@ -241,7 +232,7 @@ fun HomeScreen(
 
   if (showDolphinOutdatedDialog) {
     AlertDialog(
-      onDismissRequest = { showDolphinOutdatedDialog = false },
+      onDismissRequest = onDismissDolphinOutdatedDialog,
       title = { Text(stringResource(R.string.home_dolphin_outdated_title)) },
       text = {
         Text(
@@ -250,7 +241,7 @@ fun HomeScreen(
       },
       confirmButton = {
         TextButton(onClick = {
-          showDolphinOutdatedDialog = false
+          onDismissDolphinOutdatedDialog()
           context.startActivity(
             Intent(Intent.ACTION_VIEW, Uri.parse(DolphinLauncher.DOLPHIN_DOWNLOAD_URL))
           )
@@ -259,7 +250,7 @@ fun HomeScreen(
         }
       },
       dismissButton = {
-        TextButton(onClick = { showDolphinOutdatedDialog = false }) {
+        TextButton(onClick = onDismissDolphinOutdatedDialog) {
           Text(stringResource(R.string.action_cancel))
         }
       },

@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
+import com.skiletro.wheelwitch.model.DolphinVersion
+import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
@@ -58,6 +61,20 @@ fun MainScreen(
 
   var showSettings by remember { mutableStateOf(false) }
   var showLogViewer by remember { mutableStateOf(false) }
+  var showDolphinOutdatedDialog by remember { mutableStateOf(false) }
+  var outdatedDolphinVersion by remember { mutableStateOf<String?>(null) }
+  var dolphinWarningChecked by remember { mutableStateOf(false) }
+
+  LaunchedEffect(onboardingComplete) {
+    if (!onboardingComplete || dolphinWarningChecked) return@LaunchedEffect
+    dolphinWarningChecked = true
+    val versionName = DolphinLauncher.dolphinVersionName(context)
+    val version = DolphinVersion.parse(versionName)
+    if (version != null && !version.isAtLeastMinimum()) {
+      outdatedDolphinVersion = versionName
+      showDolphinOutdatedDialog = true
+    }
+  }
 
   BackHandler(enabled = showSettings) {
     showSettings = false
@@ -87,6 +104,9 @@ fun MainScreen(
             saveData = saveData,
             appUpdate = appUpdate,
             onOpenSettings = { showSettings = true },
+            showDolphinOutdatedDialog = showDolphinOutdatedDialog,
+            outdatedDolphinVersion = outdatedDolphinVersion,
+            onDismissDolphinOutdatedDialog = { showDolphinOutdatedDialog = false },
           )
         }
 
