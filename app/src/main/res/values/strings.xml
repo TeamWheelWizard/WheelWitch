@@ -247,7 +247,7 @@
     <string name="settings_save_data_rr_no_save">No RR save data</string>
     <string name="settings_save_data_rr_last_backup_format">Last backed up: %1$s</string>
     <string name="settings_save_data_rr_restore_confirm_title">Restore RR save data?</string>
-    <string name="settings_save_data_rr_restore_confirm_message">This will overwrite your current Retro Rewind saves and rating data. Other data is not affected.</string>
+    <string name="settings_save_data_rr_restore_confirm_message">This will overwrite your current Retro Rewind saves, rating data, and ghosts. Other data is not affected.</string>
     <string name="settings_save_data_rr_delete_confirm_title">Delete RR save data?</string>
     <string name="settings_save_data_rr_delete_confirm_message">This permanently deletes your Retro Rewind saves and rating data. Other data is not affected.</string>
 
