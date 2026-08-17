@@ -467,6 +467,13 @@ class SaveManagerTest {
     assertThat(SaveManager.hasRRSave(env.tree)).isTrue()
   }
 
+  @Test
+  fun `hasRRSave returns true when ghosts exist without other RR data`() {
+    val env = setupBackupEnv(palExists = false, includeGhosts = true)
+
+    assertThat(SaveManager.hasRRSave(env.tree)).isTrue()
+  }
+
   // --- backupRR --------------------------------------------------------
 
   @Test
@@ -505,6 +512,24 @@ class SaveManagerTest {
     assertThat(contents.getBoolean("patchedIso")).isFalse()
     val pulsar = contents.getJSONArray("pulsar").let { arr -> List(arr.length()) { arr.getString(it) } }
     assertThat(pulsar).containsExactly("RRRating.pul")
+  }
+
+  @Test
+  fun `backupRR includes ghosts and records their count`() = runTest {
+    val env = setupBackupEnv(palExists = false, includeGhosts = true)
+    val dest = mockk<Uri>(relaxed = true)
+    val destOutput = ByteArrayOutputStream()
+    every { env.resolver.openOutputStream(dest) } returns destOutput
+
+    val result = SaveManager.backupRR(env.tree, dest)
+
+    assertThat(result.isSuccess).isTrue()
+    assertThat(result.getOrThrow().ghosts).isEqualTo(1)
+    val entries = readZipEntries(destOutput.toByteArray())
+    assertThat(entries.map { it.name })
+      .contains("Wii/shared2/Pulsar/RetroRewind6/Ghosts/rkg1")
+    val manifest = JSONObject(String(entries.first { it.name == "manifest.json" }.bytes))
+    assertThat(manifest.getJSONObject("contents").getInt("ghosts")).isEqualTo(1)
   }
 
   // --- restoreRR -------------------------------------------------------
@@ -561,6 +586,50 @@ class SaveManagerTest {
     assertThat(summary.faceLib).isFalse()
     assertThat(summary.pulsar).isEqualTo(1)
     assertThat(summary.ghosts).isEqualTo(0)
+  }
+
+  @Test
+  fun `restoreRR restores ghost entries under nested directories`() = runTest {
+    val env = setupBackupEnv(palExists = false, includeGhosts = true)
+    val source = mockk<Uri>(relaxed = true)
+    val ghostFile = mockk<DocumentFile>(relaxed = true)
+    val ghostUri = mockk<Uri>(relaxed = true)
+    every { env.ghostsDir!!.findFile("new/sub/ghost.rkg") } returns null
+    every { env.ghostsDir!!.createDirectory("new") } returns mockk(relaxed = true)
+    every { env.resolver.openOutputStream(ghostUri) } returns ByteArrayOutputStream()
+    every { ghostFile.uri } returns ghostUri
+    every { env.ghostsDir!!.createFile(any(), "ghost.rkg") } returns ghostFile
+
+    val backupBytes = ByteArrayOutputStream().use { baos ->
+      java.util.zip.ZipOutputStream(baos).use { zos ->
+        val manifest = JSONObject().apply {
+          put("version", SaveManager.BACKUP_FORMAT_VERSION)
+          put("type", SaveManager.BACKUP_TYPE)
+          put("createdAt", System.currentTimeMillis())
+          put("contents", JSONObject().apply {
+            put("retroWfc", org.json.JSONArray())
+            put("vanillaSaves", org.json.JSONArray())
+            put("patchedIso", false)
+            put("faceLib", false)
+            put("pulsar", org.json.JSONArray())
+            put("ghosts", 1)
+          })
+        }
+        zos.putNextEntry(ZipEntry("manifest.json"))
+        zos.write(manifest.toString().encodeToByteArray())
+        zos.closeEntry()
+        zos.putNextEntry(ZipEntry("Wii/shared2/Pulsar/RetroRewind6/Ghosts/new/sub/ghost.rkg"))
+        zos.write("ghost-data".encodeToByteArray())
+        zos.closeEntry()
+      }
+      baos.toByteArray()
+    }
+    every { env.resolver.openInputStream(source) } returns ByteArrayInputStream(backupBytes)
+
+    val result = SaveManager.restoreRR(env.tree, source)
+
+    assertThat(result.isSuccess).isTrue()
+    assertThat(result.getOrThrow().ghosts).isEqualTo(1)
   }
 
   @Test

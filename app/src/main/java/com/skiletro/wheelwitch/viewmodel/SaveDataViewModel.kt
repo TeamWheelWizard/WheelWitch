@@ -432,8 +432,8 @@ class SaveDataViewModel(
   }
 
   /**
-   * Bundles only the RR per-region `rksys.dat` files into a zip at
-   * [dest]. On success, writes the timestamp to
+   * Bundles only the RR per-region `rksys.dat` files, rating data, and
+   * ghosts into a zip at [dest]. On success, writes the timestamp to
    * [PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY].
    */
   fun backupRR(dest: Uri) {
