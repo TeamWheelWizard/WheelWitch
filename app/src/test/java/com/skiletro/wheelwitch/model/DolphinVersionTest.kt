@@ -31,7 +31,15 @@ class DolphinVersionTest {
     val version = DolphinVersion.parse("2606a")
 
     assertThat(version).isNotNull()
-    assertThat(version!!.isHotfix).isTrue()
+    assertThat(version!!.hotfix).isEqualTo('a')
+  }
+
+  @Test
+  fun `parse recognises later stable hotfix suffix`() {
+    val version = DolphinVersion.parse("2606b")
+
+    assertThat(version).isNotNull()
+    assertThat(version!!.hotfix).isEqualTo('b')
   }
 
   @Test
@@ -98,6 +106,7 @@ class DolphinVersionTest {
         Arguments.of("2407-138", false),
         Arguments.of("5.0-20132", false),
         Arguments.of("2606a", true),
+        Arguments.of("2606b", true),
         Arguments.of("2605a", false),
         Arguments.of("2606", false),
       )

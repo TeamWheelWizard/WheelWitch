@@ -10,7 +10,7 @@ package com.skiletro.wheelwitch.model
  * [isAtLeastMinimum] comparison is done on the year-month and, when
  * present, the dev-build number.
  */
-data class DolphinVersion(val year: Int, val devBuild: Int?, val isHotfix: Boolean = false) {
+data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? = null) {
 
   /** Classification of an installed Dolphin against the security floor. */
   enum class Status {
@@ -32,7 +32,7 @@ data class DolphinVersion(val year: Int, val devBuild: Int?, val isHotfix: Boole
     when {
       year > MINIMUM_YEAR -> true
       year < MINIMUM_YEAR -> false
-      isHotfix -> true
+      hotfix != null -> hotfix >= MINIMUM_HOTFIX
       devBuild == null -> false
       else -> devBuild >= MINIMUM_DEV_BUILD
     }
@@ -44,6 +44,9 @@ data class DolphinVersion(val year: Int, val devBuild: Int?, val isHotfix: Boole
     /** Earliest dev build of [MINIMUM_YEAR] carrying the fixes. */
     const val MINIMUM_DEV_BUILD = 300
 
+    /** Earliest stable hotfix of [MINIMUM_YEAR] carrying the fixes. */
+    const val MINIMUM_HOTFIX = 'a'
+
     private val PATTERN = Regex("""(\d{4})([a-z]?)(?:-(\d+))?""")
 
     /**
@@ -54,9 +57,9 @@ data class DolphinVersion(val year: Int, val devBuild: Int?, val isHotfix: Boole
     fun parse(versionName: String?): DolphinVersion? {
       val match = versionName?.let { PATTERN.find(it) } ?: return null
       val year = match.groupValues[1].toIntOrNull() ?: return null
-      val isHotfix = match.groupValues[2].isNotEmpty()
+      val hotfix = match.groupValues[2].firstOrNull()
       val devBuild = match.groupValues[3].toIntOrNull()
-      return DolphinVersion(year, devBuild, isHotfix)
+      return DolphinVersion(year, devBuild, hotfix)
     }
   }
 }
