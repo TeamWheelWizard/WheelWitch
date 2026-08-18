@@ -32,14 +32,19 @@ data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? =
     /** Earliest stable hotfix of [MINIMUM_YEAR] carrying the fixes. */
     const val MINIMUM_HOTFIX = "a"
 
-    private val PATTERN = Regex("""(\d{4})([a-z]?)(?:-(\d+))?""")
+    private val PATTERN = Regex("""^(\d{4})([a-z]?)(?:-(\d+))?$""")
+
+    private val LEGACY_PATTERN = Regex("""^\d+\.\d+-\d+$""")
 
     /**
      * Parses a Dolphin [versionName] into [DolphinVersion], or null
-     * when no `YYYY[-N]` segment is present. The first match is used;
-     * a leading `5.0-` master prefix is ignored.
+     * when no `YYYY[letter][-N]` segment is present.
      */
     fun parse(versionName: String?): DolphinVersion? {
+      versionName?.let { LEGACY_PATTERN.find(it) }?.let {
+        // If we have a legacy path, return a negative version
+        return DolphinVersion(-1, -1)
+      }
       val match = versionName?.let { PATTERN.find(it) } ?: return null
       val year = match.groupValues[1].toIntOrNull() ?: return null
       val hotfix = match.groupValues[2].firstOrNull()

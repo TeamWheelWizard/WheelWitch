@@ -15,8 +15,6 @@ class DolphinVersionTest {
     "2606, 2606, ",
     "2606a, 2606, ",
     "2606-300, 2606, 300",
-    "5.0-2606, 2606, ",
-    "5.0-2606-300, 2606, 300",
     "2407-138, 2407, 138",
   )
   fun `parse extracts year and optional dev build`(input: String, year: Int, devBuild: Int?) {
@@ -43,11 +41,16 @@ class DolphinVersionTest {
   }
 
   @Test
-  fun `parse ignores master minor prefix and takes first year segment`() {
-    val version = DolphinVersion.parse("5.0-2606-300")
+  fun `parse rejects legacy pattern that incidentally includes our pattern as a suffix`() {
+    val version = DolphinVersion.parse("5.0-2606")
     assertThat(version).isNotNull()
-    assertThat(version!!.year).isEqualTo(2606)
-    assertThat(version.devBuild).isEqualTo(300)
+    assertThat(version!!.year).isLessThan(2606)
+  }
+
+  @Test
+  fun `parse rejects invalid legacy pattern with dev build suffix as null`() {
+    val version = DolphinVersion.parse("5.0-2606-300")
+    assertThat(version).isNull()
   }
 
   @Test
@@ -105,6 +108,8 @@ class DolphinVersionTest {
         Arguments.of("2606-235", false),
         Arguments.of("2407-138", false),
         Arguments.of("5.0-20132", false),
+        Arguments.of("5.0-33333", false),
+        Arguments.of("5.0-3333", false),
         Arguments.of("2606a", true),
         Arguments.of("2606b", true),
         Arguments.of("2605a", false),
