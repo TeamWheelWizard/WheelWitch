@@ -10,19 +10,6 @@ package com.skiletro.wheelwitch.model
  * done on the year-month and, when present, the dev-build number.
  */
 data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? = null) {
-
-  /** Classification of an installed Dolphin against the security floor. */
-  enum class Status {
-    /** Version meets or exceeds the security floor. */
-    SUPPORTED,
-
-    /** Version is below the security floor and should be updated. */
-    OUTDATED,
-
-    /** Version could not be parsed (no match, garbage, or not installed). */
-    UNKNOWN,
-  }
-
   /**
    * True when this version reaches the security floor:
    * `MINIMUM_YEAR` with at least `MINIMUM_DEV_BUILD` and/or `MINIMUM_HOTFIX`, or any newer year.
