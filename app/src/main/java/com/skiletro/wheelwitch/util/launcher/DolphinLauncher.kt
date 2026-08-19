@@ -53,6 +53,9 @@ object DolphinLauncher {
   /** Default Riivolution XML path under the pack root. */
   const val DEFAULT_XML_REL_PATH = "riivolution/RetroRewind6.xml"
 
+  /** Page users are sent to when their Dolphin build is outdated. */
+  const val DOLPHIN_DOWNLOAD_URL = "https://dolphin-emu.org/download/"
+
   /** ROM file extensions that count as a valid launch ROM. */
   private val ROM_EXTENSIONS = setOf("iso", "rvz", "wbfs")
 
@@ -67,6 +70,20 @@ object DolphinLauncher {
     } catch (e: Exception) {
       Timber.tag(TAG).d(e, "Dolphin package not installed")
       false
+    }
+
+  /**
+   * Returns the installed Dolphin's `versionName`, or null when the
+   * package is not installed or its version is unreadable. The value
+   * feeds [com.skiletro.wheelwitch.model.DolphinVersion.parse] for the
+   * outdated-build warning.
+   */
+  fun dolphinVersionName(context: Context): String? =
+    try {
+      context.packageManager.getPackageInfo(DOLPHIN_PACKAGE, 0).versionName
+    } catch (e: Exception) {
+      Timber.tag(TAG).d(e, "Dolphin package not installed; no version")
+      null
     }
 
   /**

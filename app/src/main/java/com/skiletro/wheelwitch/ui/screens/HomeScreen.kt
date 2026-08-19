@@ -97,6 +97,9 @@ fun HomeScreen(
   saveData: SaveDataViewModel,
   appUpdate: AppUpdateViewModel,
   onOpenSettings: () -> Unit,
+  showDolphinOutdatedDialog: Boolean = false,
+  outdatedDolphinVersion: String? = null,
+  onDismissDolphinOutdatedDialog: () -> Unit = {},
 ) {
   val state by packUpdate.state.collectAsState()
   val installProgress by packUpdate.installProgress.collectAsState()
@@ -222,6 +225,33 @@ fun HomeScreen(
           scope.launch { performLaunch() }
         }) {
           Text(stringResource(R.string.home_game_ini_notice_acknowledged))
+        }
+      },
+    )
+  }
+
+  if (showDolphinOutdatedDialog) {
+    AlertDialog(
+      onDismissRequest = onDismissDolphinOutdatedDialog,
+      title = { Text(stringResource(R.string.home_dolphin_outdated_title)) },
+      text = {
+        Text(
+          stringResource(R.string.home_dolphin_outdated_body, outdatedDolphinVersion.orEmpty())
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = {
+          onDismissDolphinOutdatedDialog()
+          context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(DolphinLauncher.DOLPHIN_DOWNLOAD_URL))
+          )
+        }) {
+          Text(stringResource(R.string.home_dolphin_outdated_action))
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = onDismissDolphinOutdatedDialog) {
+          Text(stringResource(R.string.action_cancel))
         }
       },
     )

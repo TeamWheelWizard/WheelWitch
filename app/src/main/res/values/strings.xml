@@ -63,6 +63,9 @@
     <string name="home_app_update_body">A new version of Wheel Witch is available (v%1$s). You\'re running v%2$s.\n\nOpen GitHub to grab the latest build.</string>
     <string name="home_app_update_action">View Update</string>
     <string name="home_app_update_dismiss">Later</string>
+    <string name="home_dolphin_outdated_title">Dolphin update recommended</string>
+    <string name="home_dolphin_outdated_body">Your Dolphin version (%1$s) contains known security vulnerabilities.\n\nUpdate to the latest build from dolphin-emu.org before playing online. Wheel Witch can\'t update Dolphin for you.</string>
+    <string name="home_dolphin_outdated_action">Get Update</string>
 
     <!-- onboarding -->
     <string name="onboarding_beta_title">Heads up: this is beta software</string>
