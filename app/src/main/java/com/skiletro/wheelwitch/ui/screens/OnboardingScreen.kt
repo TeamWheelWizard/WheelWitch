@@ -61,6 +61,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.GameTypeParser
+import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.ui.theme.buttonShape
@@ -77,7 +78,7 @@ private const val ONBOARDING_TRANSITION_MS = 300
 
 /**
  * Onboarding wizard. The flow is:
- * `Welcome → Beta → Dolphin → Storage → Rom → Complete`.
+ * `Welcome → Dolphin → Storage → Rom → Complete`.
  *
  * - **Dolphin**: confirms [DolphinLauncher.isDolphinInstalled] before
  *   the user is asked to grant access to its user folder. If the
@@ -143,7 +144,7 @@ fun OnboardingScreen(
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
-  // Auto-check when entering the Dolphin step (catches Beta→Dolphin
+  // Auto-check when entering the Dolphin step (catches Welcome→Dolphin
   // navigation where no lifecycle event fires). The lifecycle observer
   // above handles the resume-from-browser case.
   LaunchedEffect(step) {
@@ -356,9 +357,7 @@ fun OnboardingScreen(
         ) {
           when (currentStep) {
             OnboardingStep.Welcome ->
-              WelcomeStep(onNext = { step = OnboardingStep.Beta })
-            OnboardingStep.Beta ->
-              BetaStep(onNext = { step = OnboardingStep.Dolphin })
+              WelcomeStep(onNext = { step = OnboardingStep.Dolphin })
             OnboardingStep.Dolphin ->
               DolphinStep(
                 installed = dolphinInstalled,
@@ -423,10 +422,9 @@ fun OnboardingScreen(
   }
 }
 
-/** Onboarding flow. Six steps; TOTAL drives the dot count. */
+/** Onboarding flow. Five steps; TOTAL drives the dot count. */
 private enum class OnboardingStep {
   Welcome,
-  Beta,
   Dolphin,
   Storage,
   Rom,
@@ -454,20 +452,8 @@ private fun WelcomeStep(onNext: () -> Unit) {
   }
 }
 
-/** Second onboarding step: surfaces the app's beta status. */
-@Composable
-private fun BetaStep(onNext: () -> Unit) {
-  StepCard(
-    title = stringResource(R.string.onboarding_beta_title),
-    titleStyle = MaterialTheme.typography.headlineSmall,
-    body = stringResource(R.string.onboarding_beta_body),
-  ) {
-    StepPrimaryButton(text = stringResource(R.string.onboarding_beta_continue), onClick = onNext)
-  }
-}
-
 /**
- * Third onboarding step: confirms [DolphinLauncher.isDolphinInstalled]
+ * Second onboarding step: confirms [DolphinLauncher.isDolphinInstalled]
  * before the user is asked to grant access to its folder. If
  * [installed] is true, only the Continue button shows; if false,
  * the Download and Check Again buttons are both visible. [hasChecked]
@@ -701,22 +687,12 @@ private fun StepCard(
 @Composable
 private fun StepPrimaryButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
   Spacer(modifier = Modifier.height(16.dp))
-  Button(
+  PrimaryActionButton(
+    text = text,
     onClick = onClick,
     enabled = enabled,
-    shape = buttonShape,
-    modifier = Modifier.fillMaxWidth().height(56.dp),
-    colors = ButtonDefaults.buttonColors(
-      containerColor = MaterialTheme.colorScheme.primary,
-      contentColor = MaterialTheme.colorScheme.onPrimary,
-    ),
-  ) {
-    Text(
-      text = text,
-      style = MaterialTheme.typography.titleMedium,
-      fontWeight = FontWeight.SemiBold,
-    )
-  }
+    modifier = Modifier.fillMaxWidth(),
+  )
 }
 
 /** Step progress dots rendered at the bottom of the onboarding flow. */

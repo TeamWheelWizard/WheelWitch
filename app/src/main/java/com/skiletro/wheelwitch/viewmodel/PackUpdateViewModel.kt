@@ -135,30 +135,8 @@ class PackUpdateViewModel(
    * with the new status.
    */
   fun installLatest() {
-    viewModelScope.launch {
-      installMutex.withLock {
-        val mgr = currentManager()
-        if (mgr == null) {
-          Timber.tag(TAG)
-            .e("installLatest: manager is null; DolphinTree.fromPersisted returned null. " +
-              "User has no valid SAF grant; route to onboarding.")
-          _state.value =
-            UiState.Error(
-              getApplication<Application>().getString(R.string.vm_storage_not_configured_full)
-            )
-          return@withLock
-        }
-        _state.value = UiState.Installing.Extracting(
-          phase = ExtractingPhase.PreparingFolders,
-          filesDone = 0,
-          filesTotal = 1,
-          currentFile = null,
-          bytesDone = 0L,
-          bytesTotal = 0L,
-        )
-        val result = mgr.installLatest { phase -> _state.value = phase.toUiState() }
-        handleInstallResult(result)
-      }
+    runInstall("installLatest") {
+      this.installLatest { phase -> _state.value = phase.toUiState() }
     }
   }
 
@@ -169,30 +147,8 @@ class PackUpdateViewModel(
    * parallel is a no-op for the second caller.
    */
   fun update() {
-    viewModelScope.launch {
-      installMutex.withLock {
-        val mgr = currentManager()
-        if (mgr == null) {
-          Timber.tag(TAG)
-            .e("update: manager is null; DolphinTree.fromPersisted returned null. " +
-              "User has no valid SAF grant; route to onboarding.")
-          _state.value =
-            UiState.Error(
-              getApplication<Application>().getString(R.string.vm_storage_not_configured_full)
-            )
-          return@withLock
-        }
-        _state.value = UiState.Installing.Extracting(
-          phase = ExtractingPhase.PreparingFolders,
-          filesDone = 0,
-          filesTotal = 1,
-          currentFile = null,
-          bytesDone = 0L,
-          bytesTotal = 0L,
-        )
-        val result = mgr.update { phase -> _state.value = phase.toUiState() }
-        handleInstallResult(result)
-      }
+    runInstall("update") {
+      this.update { phase -> _state.value = phase.toUiState() }
     }
   }
 
@@ -201,32 +157,52 @@ class PackUpdateViewModel(
    * and [update].
    */
   fun reinstall() {
+    runInstall("reinstall") {
+      this.reinstall { phase -> _state.value = phase.toUiState() }
+    }
+  }
+
+  /**
+   * Runs an install/update/reinstall against the current manager:
+   * [installMutex]-guarded, fails to a "storage not configured"
+   * error when no SAF grant exists, emits the initial extracting
+   * state, then funnels the result through [handleInstallResult].
+   */
+  private fun runInstall(
+    opName: String,
+    install: suspend RewindPackManager.() -> Result<Unit>,
+  ) {
     viewModelScope.launch {
       installMutex.withLock {
         val mgr = currentManager()
         if (mgr == null) {
           Timber.tag(TAG)
-            .e("reinstall: manager is null; DolphinTree.fromPersisted returned null. " +
-              "User has no valid SAF grant; route to onboarding.")
+            .e(
+              "$opName: manager is null; DolphinTree.fromPersisted returned null. " +
+                "User has no valid SAF grant; route to onboarding."
+            )
           _state.value =
             UiState.Error(
               getApplication<Application>().getString(R.string.vm_storage_not_configured_full)
             )
           return@withLock
         }
-        _state.value = UiState.Installing.Extracting(
-          phase = ExtractingPhase.PreparingFolders,
-          filesDone = 0,
-          filesTotal = 1,
-          currentFile = null,
-          bytesDone = 0L,
-          bytesTotal = 0L,
-        )
-        val result = mgr.reinstall { phase -> _state.value = phase.toUiState() }
+        _state.value = extractingInitial()
+        val result = mgr.install()
         handleInstallResult(result)
       }
     }
   }
+
+  private fun extractingInitial(): UiState.Installing.Extracting =
+    UiState.Installing.Extracting(
+      phase = ExtractingPhase.PreparingFolders,
+      filesDone = 0,
+      filesTotal = 1,
+      currentFile = null,
+      bytesDone = 0L,
+      bytesTotal = 0L,
+    )
 
   /** Maps a [RewindPackManager.InstallProgress] phase to the corresponding [UiState.Installing] phase. */
   private fun RewindPackManager.InstallProgress.toUiState(): UiState.Installing =

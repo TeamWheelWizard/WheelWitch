@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -116,7 +115,6 @@ class SaveDataViewModelTest {
     assertThat(vm.saveInfos.value).isEmpty()
     assertThat(vm.hasSave.value).isEmpty()
     assertThat(vm.mergedLicenses.value).isEmpty()
-    assertThat(vm.activeLicense.value).isNull()
     assertThat(vm.error.value).isNull()
     assertThat(vm.hasAnySave.value).isFalse()
   }
@@ -195,7 +193,6 @@ class SaveDataViewModelTest {
     assertThat(vm.hasSave.value).isEmpty()
     assertThat(vm.selectedRegion.value).isNull()
     assertThat(vm.mergedLicenses.value).isEmpty()
-    assertThat(vm.activeLicense.value).isNull()
     assertThat(vm.hasAnySave.value).isFalse()
   }
 
@@ -256,7 +253,7 @@ class SaveDataViewModelTest {
     }
 
   @Test
-  fun `activeLicense merges leaderboard VR and Mii for selected slot`() = runTest {
+  fun `mergedLicenses merges leaderboard VR and Mii for the selected region`() = runTest {
     val bytes = rksysWithLicense(pid = 0x00000001L, name = "X", slot = 0)
     val info = RksysParser.parse(bytes)
     val friendCode = info.licenses[0].friendCode!!
@@ -269,62 +266,42 @@ class SaveDataViewModelTest {
     vm = buildVm()
 
     vm.refresh()
-    val active = vm.activeLicense.value
-    assertThat(active).isNotNull()
-    assertThat(active!!.friendCode).isEqualTo(friendCode)
-    assertThat(active.leaderboardVr).isEqualTo(9999)
-    assertThat(active.miiName).isEqualTo("NewName")
+    val merged = vm.mergedLicenses.value[Region.PAL]!!
+    assertThat(merged[0].friendCode).isEqualTo(friendCode)
+    assertThat(merged[0].leaderboardVr).isEqualTo(9999)
+    assertThat(merged[0].miiName).isEqualTo("NewName")
   }
 
   @Test
-  fun `activeLicense is null for a slot that does not exist`() = runTest {
-    val bytes = rksysWithLicense(pid = 0x11111111L, name = "A", slot = 0)
-    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
-    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
-    coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
+  fun `selectRegion triggers leaderboard fetch for the new region`() = runTest {
+    val palBytes = rksysWithLicense(pid = 0x11111111L, name = "PAL", slot = 0)
+    val usaBytes = rksysWithLicense(pid = 0x22222222L, name = "USA", slot = 0)
+    val palInfo = RksysParser.parse(palBytes)
+    val usaInfo = RksysParser.parse(usaBytes)
+    val palFc = palInfo.licenses[0].friendCode!!
+    val usaFc = usaInfo.licenses[0].friendCode!!
+    leaderboardResult[palFc] = Result.success(PlayerLeaderboardData(1111, null, null))
+    leaderboardResult[usaFc] = Result.success(PlayerLeaderboardData(2222, null, null))
+
+    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL, Region.USA)
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns palBytes
+    coEvery { SaveManager.readSave(mockTree, Region.USA) } returns usaBytes
+    coEvery { SaveManager.hasSave(mockTree, any()) } returns true
     every { SaveManager.hasAnySave(mockTree) } returns true
     vm = buildVm()
-
-    vm.selectSlot(2)
     vm.refresh()
+    assertThat(vm.mergedLicenses.value).doesNotContainKey(Region.USA)
+    val callsAfterRefresh = leaderboardCalls
 
-    assertThat(vm.activeLicense.value).isNull()
+    vm.selectRegion(Region.USA)
+
+    assertThat(vm.selectedRegion.value).isEqualTo(Region.USA)
+    val merged = vm.mergedLicenses.value[Region.USA]
+    assertThat(merged).hasSize(4)
+    assertThat(merged!![0].leaderboardVr).isEqualTo(2222)
+    assertThat(merged[0].friendCode).isEqualTo(usaFc)
+    assertThat(leaderboardCalls - callsAfterRefresh).isEqualTo(1)
   }
-
-  @Test
-  fun `selectRegion triggers leaderboard fetch for the new region and updates activeLicense`() =
-    runTest {
-      val palBytes = rksysWithLicense(pid = 0x11111111L, name = "PAL", slot = 0)
-      val usaBytes = rksysWithLicense(pid = 0x22222222L, name = "USA", slot = 0)
-      val palInfo = RksysParser.parse(palBytes)
-      val usaInfo = RksysParser.parse(usaBytes)
-      val palFc = palInfo.licenses[0].friendCode!!
-      val usaFc = usaInfo.licenses[0].friendCode!!
-      leaderboardResult[palFc] = Result.success(PlayerLeaderboardData(1111, null, null))
-      leaderboardResult[usaFc] = Result.success(PlayerLeaderboardData(2222, null, null))
-
-      every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL, Region.USA)
-      coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns palBytes
-      coEvery { SaveManager.readSave(mockTree, Region.USA) } returns usaBytes
-      coEvery { SaveManager.hasSave(mockTree, any()) } returns true
-      every { SaveManager.hasAnySave(mockTree) } returns true
-      vm = buildVm()
-      vm.refresh()
-      assertThat(vm.mergedLicenses.value).doesNotContainKey(Region.USA)
-      val callsAfterRefresh = leaderboardCalls
-
-      vm.selectRegion(Region.USA)
-
-      assertThat(vm.selectedRegion.value).isEqualTo(Region.USA)
-      val merged = vm.mergedLicenses.value[Region.USA]
-      assertThat(merged).hasSize(4)
-      assertThat(merged!![0].leaderboardVr).isEqualTo(2222)
-      val active = vm.activeLicense.value
-      assertThat(active).isNotNull()
-      assertThat(active!!.friendCode).isEqualTo(usaFc)
-      assertThat(active.leaderboardVr).isEqualTo(2222)
-      assertThat(leaderboardCalls - callsAfterRefresh).isEqualTo(1)
-    }
 
   @Test
   fun `selectRegion with the same region is a no-op`() = runTest {
@@ -344,39 +321,6 @@ class SaveDataViewModelTest {
 
     assertThat(leaderboardCalls).isEqualTo(callsAfterRefresh)
   }
-
-  @Test
-  fun `selectSlot persists to prefs and updates activeLicense from mergedLicenses without re-fetching`() =
-    runTest {
-      val bytes = ByteArray(0x20000)
-      for ((slot, base) in RksysParser.LICENSE_BASES.withIndex()) {
-        if (slot > 1) break
-        writeAscii(bytes, base, "RKPD")
-        writeUtf16Be(bytes, base + 0x14, if (slot == 0) "Zero" else "One")
-        writeUInt32Be(bytes, base + 0x5C, if (slot == 0) 0x00000010L else 0x00000011L)
-      }
-      val info = RksysParser.parse(bytes)
-      leaderboardResult[info.licenses[0].friendCode!!] = Result.success(PlayerLeaderboardData(1000, null, null))
-      leaderboardResult[info.licenses[1].friendCode!!] = Result.success(PlayerLeaderboardData(2000, null, null))
-
-      every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
-      coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
-      coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
-      every { SaveManager.hasAnySave(mockTree) } returns true
-      vm = buildVm()
-      vm.refresh()
-      val callsAfterRefresh = leaderboardCalls
-
-      vm.selectSlot(1)
-
-      assertThat(vm.selectedSlotIndex.value).isEqualTo(1)
-      val active = vm.activeLicense.first()
-      assertThat(active).isNotNull()
-      assertThat(active!!.slotIndex).isEqualTo(1)
-      assertThat(active.miiName).isEqualTo("One")
-      assertThat(active.leaderboardVr).isEqualTo(2000)
-      assertThat(leaderboardCalls).isEqualTo(callsAfterRefresh)
-    }
 
   @Test
   fun `deleteSave updates mergedLicenses to four empty slots for the deleted region`() = runTest {
@@ -403,7 +347,6 @@ class SaveDataViewModelTest {
       assertThat(license.slotIndex).isEqualTo(i)
       assertThat(license.exists).isFalse()
     }
-    assertThat(vm.activeLicense.value).isNull()
   }
 
   @Test
@@ -430,7 +373,6 @@ class SaveDataViewModelTest {
       assertThat(license.slotIndex).isEqualTo(i)
       assertThat(license.exists).isFalse()
     }
-    assertThat(vm.activeLicense.value).isNull()
   }
 
   // --- unified save data tests ----------------------------------------

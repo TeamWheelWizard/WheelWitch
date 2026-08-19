@@ -34,6 +34,7 @@ private data class RaceStatsCache(val stats: RaceStats, val cachedAt: Long)
  * for the leaderboard is race-free via a conflated channel.
  */
 class OnlineViewModel(application: Application) : AndroidViewModel(application) {
+    private val app = application
     private val prefs = Prefs.raceStatsCache(application)
 
     private val _currentPage = MutableStateFlow(OnlineMenuPage.Hub)
@@ -73,9 +74,6 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
      */
     private val leaderboardRequests = Channel<Unit>(Channel.CONFLATED)
 
-    val playerCount: Int?
-        get() = (_roomsState.value as? RoomsState.Success)?.playerCount
-
     init {
         initialFetch()
         launchLeaderboardConsumer()
@@ -113,12 +111,12 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                         page = nextPage
                     )
                 }.onFailure { e ->
-                    Timber.tag("Online").w(e, "Leaderboard page %d fetch failed", nextPage)
+                    Timber.tag(TAG).w(e, "Leaderboard page %d fetch failed", nextPage)
                     _leaderboardState.value = if (stateBeforeFetch is LeaderboardState.Success) {
                         stateBeforeFetch
                     } else {
                         LeaderboardState.Error(
-                            e.message ?: getApplication<Application>().getString(
+                            e.message ?: app.getString(
                                 R.string.vm_failed_format,
                                 "load leaderboard"
                             )
@@ -197,32 +195,46 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Runs a fetch on [Dispatchers.IO], setting the loading state first
+     * and routing success/failure to the caller. Failure is logged with
+     * [logMessage]; the caller decides the resulting state.
+     */
+    private fun <T> fetchAsync(
+        logMessage: String,
+        setLoading: () -> Unit,
+        fetch: suspend () -> Result<T>,
+        onSuccess: (T) -> Unit,
+        onFailure: suspend (Throwable) -> Unit,
+    ) {
+        viewModelScope.launch {
+            setLoading()
+            val result = withContext(Dispatchers.IO) { fetch() }
+            result.onSuccess(onSuccess).onFailure { e ->
+                Timber.tag(TAG).w(e, "%s", logMessage)
+                onFailure(e)
+            }
+        }
+    }
+
+    private fun errorMessage(e: Throwable, what: String): String =
+        e.message ?: app.getString(R.string.vm_failed_format, what)
+
     /** Fetches the current room list. Does not navigate; use [navigateTo] for that. */
     fun fetchRooms() {
-        viewModelScope.launch {
-            _roomsState.value = RoomsState.Loading
-            val result = withContext(Dispatchers.IO) {
-                VersionFileParser.fetchRooms()
-            }
-            result.onSuccess { rooms ->
+        fetchAsync(
+            logMessage = "Rooms fetch failed",
+            setLoading = { _roomsState.value = RoomsState.Loading },
+            fetch = { VersionFileParser.fetchRooms() },
+            onSuccess = { rooms ->
                 val old = _roomsState.value
                 val connectivity =
                     if (old is RoomsState.Success) old.serverConnectivity else ServerConnectivity.Online
-                _roomsState.value = RoomsState.Success(
-                    rooms = rooms,
-                    playerCount = rooms.sumOf { it.players.size },
-                    serverConnectivity = connectivity
-                )
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "Rooms fetch failed")
-                _roomsState.value = RoomsState.Error(
-                    e.message ?: getApplication<Application>().getString(
-                        R.string.vm_failed_format,
-                        "load rooms"
-                    )
-                )
-            }
-        }
+                _roomsState.value =
+                    RoomsState.Success(rooms, rooms.sumOf { it.players.size }, connectivity)
+            },
+            onFailure = { e -> _roomsState.value = RoomsState.Error(errorMessage(e, "load rooms")) },
+        )
     }
 
     /** Enqueues a leaderboard fetch (page 1) or a "load more" (next page). */
@@ -232,18 +244,13 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Fetches the full server health report, falling back to a liveness check. */
     fun fetchHealth() {
-        viewModelScope.launch {
-            _healthState.value = HealthState.Loading
-            val result = withContext(Dispatchers.IO) {
-                VersionFileParser.fetchHealth()
-            }
-            result.onSuccess { health ->
-                _healthState.value = HealthState.Success(health)
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "Detailed health fetch failed; trying live endpoint")
-                val liveOk = withContext(Dispatchers.IO) {
-                    VersionFileParser.probeServer()
-                }
+        fetchAsync(
+            logMessage = "Detailed health fetch failed; trying live endpoint",
+            setLoading = { _healthState.value = HealthState.Loading },
+            fetch = { VersionFileParser.fetchHealth() },
+            onSuccess = { health -> _healthState.value = HealthState.Success(health) },
+            onFailure = { e ->
+                val liveOk = withContext(Dispatchers.IO) { VersionFileParser.probeServer() }
                 if (liveOk) {
                     // Live endpoint reachable but detailed health failed; synthesize a
                     // minimal "ok" health so the UI can show the server is up.
@@ -256,15 +263,10 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     _healthState.value = HealthState.Success(liveOnlyHealth)
                 } else {
-                    _healthState.value = HealthState.Error(
-                        e.message ?: getApplication<Application>().getString(
-                            R.string.vm_failed_format,
-                            "fetch server health"
-                        )
-                    )
+                    _healthState.value = HealthState.Error(errorMessage(e, "fetch server health"))
                 }
-            }
-        }
+            },
+        )
     }
 
     /**
@@ -287,31 +289,25 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Fetches global race stats and caches the raw JSON. Falls back to cache on failure. */
     fun fetchRaceStats() {
-        viewModelScope.launch {
-            _raceStatsState.value = RaceStatsState.Loading
-            val result = withContext(Dispatchers.IO) {
-                VersionFileParser.fetchGlobalRaceStatsRaw()
-            }
-            result.onSuccess { (stats, rawJson) ->
+        fetchAsync(
+            logMessage = "Race stats fetch failed",
+            setLoading = { _raceStatsState.value = RaceStatsState.Loading },
+            fetch = { VersionFileParser.fetchGlobalRaceStatsRaw() },
+            onSuccess = { (stats, rawJson) ->
                 val now = System.currentTimeMillis()
                 saveRaceStatsCache(rawJson, now)
                 _raceStatsState.value = RaceStatsState.Success(stats, now)
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "Race stats fetch failed")
+            },
+            onFailure = { e ->
                 val fallback = loadRaceStatsCache()
                 if (fallback != null) {
                     _raceStatsState.value =
                         RaceStatsState.Success(fallback.stats, fallback.cachedAt)
                 } else {
-                    _raceStatsState.value = RaceStatsState.Error(
-                        e.message ?: getApplication<Application>().getString(
-                            R.string.vm_failed_format,
-                            "fetch race stats"
-                        )
-                    )
+                    _raceStatsState.value = RaceStatsState.Error(errorMessage(e, "fetch race stats"))
                 }
-            }
-        }
+            },
+        )
     }
 
     private fun saveRaceStatsCache(rawJson: String, timestamp: Long) {
@@ -338,26 +334,22 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Fetches the time-trial track list and resets selection. */
     fun fetchTracks() {
-        viewModelScope.launch {
-            _ttState.value = TimeTrialState.Loading
-            _selectedTrackId.value = null
-            _trackLeaderboardState.value = TrackLeaderboardState.Idle
-            val result = withContext(Dispatchers.IO) {
-                VersionFileParser.fetchTracks()
-            }
-            result.onSuccess { tracks ->
+        fetchAsync(
+            logMessage = "Time trial tracks fetch failed",
+            setLoading = {
+                _ttState.value = TimeTrialState.Loading
+                _selectedTrackId.value = null
+                _trackLeaderboardState.value = TrackLeaderboardState.Idle
+            },
+            fetch = { VersionFileParser.fetchTracks() },
+            onSuccess = { tracks ->
                 val visible = tracks.filter { !it.isHidden }
                 _ttState.value = TimeTrialState.Success(visible)
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "Time trial tracks fetch failed")
-                _ttState.value = TimeTrialState.Error(
-                    e.message ?: getApplication<Application>().getString(
-                        R.string.vm_failed_format,
-                        "load time trial tracks"
-                    )
-                )
-            }
-        }
+            },
+            onFailure = { e ->
+                _ttState.value = TimeTrialState.Error(errorMessage(e, "load time trial tracks"))
+            },
+        )
     }
 
     /** Selects a track and fetches its leaderboard (page 1). */
@@ -369,9 +361,10 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
     /** Fetches page 1 of the leaderboard for the currently selected track + filters. */
     fun fetchTrackLeaderboard() {
         val trackId = _selectedTrackId.value ?: return
-        viewModelScope.launch {
-            _trackLeaderboardState.value = TrackLeaderboardState.Loading
-            val result = withContext(Dispatchers.IO) {
+        fetchAsync(
+            logMessage = "Track leaderboard fetch failed",
+            setLoading = { _trackLeaderboardState.value = TrackLeaderboardState.Loading },
+            fetch = {
                 VersionFileParser.fetchTrackLeaderboard(
                     trackId = trackId,
                     cc = _cc.value,
@@ -379,8 +372,8 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                     page = 1,
                     pageSize = 50,
                 )
-            }
-            result.onSuccess { response ->
+            },
+            onSuccess = { response ->
                 _trackLeaderboardState.value = TrackLeaderboardState.Success(
                     submissions = response.submissions,
                     currentPage = response.currentPage,
@@ -388,16 +381,12 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                     fastestLapMs = response.fastestLapMs,
                     fastestLapDisplay = response.fastestLapDisplay,
                 )
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "Track leaderboard fetch failed")
-                _trackLeaderboardState.value = TrackLeaderboardState.Error(
-                    e.message ?: getApplication<Application>().getString(
-                        R.string.vm_failed_format,
-                        "load track leaderboard"
-                    )
-                )
-            }
-        }
+            },
+            onFailure = { e ->
+                _trackLeaderboardState.value =
+                    TrackLeaderboardState.Error(errorMessage(e, "load track leaderboard"))
+            },
+        )
     }
 
     /** Fetches the next page of submissions for the currently selected track. */
@@ -407,8 +396,10 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
         if (current !is TrackLeaderboardState.Success) return
         if (current.currentPage >= current.totalPages) return
         val nextPage = current.currentPage + 1
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
+        fetchAsync(
+            logMessage = "More submissions fetch failed",
+            setLoading = {},
+            fetch = {
                 VersionFileParser.fetchTrackLeaderboard(
                     trackId = trackId,
                     cc = _cc.value,
@@ -416,20 +407,18 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                     page = nextPage,
                     pageSize = 50,
                 )
-            }
-            result.onSuccess { response ->
-                val existing = current.submissions
+            },
+            onSuccess = { response ->
                 _trackLeaderboardState.value = TrackLeaderboardState.Success(
-                    submissions = existing + response.submissions,
+                    submissions = current.submissions + response.submissions,
                     currentPage = response.currentPage,
                     totalPages = response.totalPages,
                     fastestLapMs = response.fastestLapMs,
                     fastestLapDisplay = response.fastestLapDisplay,
                 )
-            }.onFailure { e ->
-                Timber.tag("Online").w(e, "More submissions fetch failed")
-            }
-        }
+            },
+            onFailure = {},
+        )
     }
 
     /** Changes the engine class and re-fetches the leaderboard if a track is selected. */
@@ -447,6 +436,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     companion object {
+        private const val TAG = "Online"
         private const val STATUS_OK = "ok"
         private const val CACHE_KEY_JSON = "raceStats"
         private const val CACHE_KEY_CACHED_AT = "cachedAt"

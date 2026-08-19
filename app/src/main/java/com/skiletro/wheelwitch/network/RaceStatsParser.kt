@@ -7,6 +7,7 @@ import com.skiletro.wheelwitch.model.NamedStat
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.TrackStat
 import com.skiletro.wheelwitch.model.WinRateStat
+import com.skiletro.wheelwitch.util.json.mapObjects
 import com.skiletro.wheelwitch.util.json.optNonEmptyString
 import org.json.JSONArray
 import org.json.JSONObject
@@ -38,66 +39,54 @@ fun parseRaceStats(jsonString: String): RaceStats {
     )
 }
 
-private fun parseTrackStats(arr: JSONArray): List<TrackStat> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseTrackStats(arr: JSONArray): List<TrackStat> =
+    arr.mapObjects {
         TrackStat(
-            name = obj.optString("trackName", ""),
-            raceCount = obj.optInt("raceCount", 0)
+            name = it.optString("trackName", ""),
+            raceCount = it.optInt("raceCount", 0)
         )
     }
-}
 
-private fun parseNamedStats(arr: JSONArray): List<NamedStat> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseNamedStats(arr: JSONArray): List<NamedStat> =
+    arr.mapObjects {
         NamedStat(
-            name = obj.optString("name", ""),
-            raceCount = obj.optInt("raceCount", 0)
+            name = it.optString("name", ""),
+            raceCount = it.optInt("raceCount", 0)
         )
     }
-}
 
-private fun parseWinRateStats(arr: JSONArray): List<WinRateStat> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseWinRateStats(arr: JSONArray): List<WinRateStat> =
+    arr.mapObjects {
         WinRateStat(
-            name = obj.optString("name", ""),
-            raceCount = obj.optInt("raceCount", 0),
-            winCount = obj.optInt("winCount", 0),
-            winRate = obj.optDouble("winRate", 0.0)
+            name = it.optString("name", ""),
+            raceCount = it.optInt("raceCount", 0),
+            winCount = it.optInt("winCount", 0),
+            winRate = it.optDouble("winRate", 0.0)
         )
     }
-}
 
-private fun parseActivePlayers(arr: JSONArray): List<ActivePlayer> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseActivePlayers(arr: JSONArray): List<ActivePlayer> =
+    arr.mapObjects {
         ActivePlayer(
-            name = obj.optString("name", ""),
-            pid = obj.optString("pid", ""),
-            fc = obj.optString("fc", ""),
-            raceCount = obj.optInt("raceCount", 0)
+            name = it.optString("name", ""),
+            pid = it.optString("pid", ""),
+            fc = it.optString("fc", ""),
+            raceCount = it.optInt("raceCount", 0)
         )
     }
-}
 
-private fun parseDayStats(arr: JSONArray): List<DayStat> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseDayStats(arr: JSONArray): List<DayStat> =
+    arr.mapObjects {
         DayStat(
-            dayName = obj.optString("dayName", ""),
-            raceCount = obj.optInt("raceCount", 0)
+            dayName = it.optString("dayName", ""),
+            raceCount = it.optInt("raceCount", 0)
         )
     }
-}
 
-private fun parseHourStats(arr: JSONArray): List<HourStat> {
-    return (0 until arr.length()).map { i ->
-        val obj = arr.getJSONObject(i)
+private fun parseHourStats(arr: JSONArray): List<HourStat> =
+    arr.mapObjects {
         HourStat(
-            hour = obj.optInt("hour", 0),
-            raceCount = obj.optInt("raceCount", 0)
+            hour = it.optInt("hour", 0),
+            raceCount = it.optInt("raceCount", 0)
         )
     }
-}

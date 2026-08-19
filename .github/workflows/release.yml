@@ -1,52 +1,21 @@
-name: Build
+name: Release
 
 on:
   push:
-    branches: [dev]
-    paths-ignore:
-      - '*.md'
-      - '.github/**'
-      - '.github/assets/**'
-  pull_request:
-  workflow_dispatch:
+    tags: ['v*']
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-24.04
-
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: 17
-          distribution: temurin
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
-
-      - name: Run tests
-        run: ./gradlew testDebugUnitTest --build-cache
-
   build:
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-    needs: test
 
-    permissions:
-      contents: read
+    outputs:
+      version: ${{ steps.appversion.outputs.version }}
+      short_hash: ${{ steps.appversion.outputs.short_hash }}
+      sha256: ${{ steps.verify.outputs.sha256 }}
+      cert_sha256: ${{ steps.verify.outputs.cert_sha256 }}
 
     steps:
       - uses: actions/checkout@v7
@@ -67,18 +36,21 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Get app version
+      - name: Resolve and validate version
         id: appversion
         run: |
           set -euo pipefail
-          VERSION=$(./gradlew -q printVersionName)
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RESOLVED=$(./gradlew -q -PreleaseVersion="$VERSION" printVersionName)
+          [[ "$RESOLVED" == "$VERSION" ]]
           SHORT_HASH=$(git rev-parse --short HEAD)
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "short_hash=${SHORT_HASH}" >> "$GITHUB_OUTPUT"
-          echo "Resolved version: ${VERSION} (${SHORT_HASH})"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "short_hash=$SHORT_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Run tests
+        run: ./gradlew testDebugUnitTest --build-cache
 
       - name: Decode keystore
         run: echo "$KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/release.keystore"
@@ -86,7 +58,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --build-cache
+        run: ./gradlew -PreleaseVersion="${{ steps.appversion.outputs.version }}" assembleRelease --build-cache
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -112,19 +84,53 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
           SHA256=$(sha256sum "$APK" | awk '{print $1}')
-          CERT_SHA256=$("$APKSIGNER" verify --print-certs "$APK" \
-            | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}')
+          CERT_SHA256=$(
+            "$APKSIGNER" verify --print-certs "$APK" \
+              | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{print $2; exit}'
+          )
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
           echo "cert_sha256=$CERT_SHA256" >> "$GITHUB_OUTPUT"
         env:
           VERSION: ${{ steps.appversion.outputs.version }}
           SHORT_HASH: ${{ steps.appversion.outputs.short_hash }}
 
-      - name: Upload APK artifact
+      - name: Upload release assets
         uses: actions/upload-artifact@v7
         with:
-          name: wheelwitch-${{ steps.appversion.outputs.version }}-${{ steps.appversion.outputs.short_hash }}
+          name: wheelwitch-release-assets
           path: |
             app/build/outputs/apk/release/wheelwitch-${{ steps.appversion.outputs.version }}-${{ steps.appversion.outputs.short_hash }}.apk
             app/build/outputs/apk/release/wheelwitch-${{ steps.appversion.outputs.version }}-${{ steps.appversion.outputs.short_hash }}.apk.idsig
-          retention-days: 7
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v7
+        with:
+          name: wheelwitch-release-assets
+          path: release-assets
+
+      - name: Publish GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: WheelWitch ${{ needs.build.outputs.version }}
+          generateReleaseNotes: true
+          prerelease: false
+          draft: false
+          artifacts: |
+            release-assets/wheelwitch-${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_hash }}.apk
+            release-assets/wheelwitch-${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_hash }}.apk.idsig
+          body: |
+            ## WheelWitch ${{ needs.build.outputs.version }}
+
+            - **Signing certificate SHA-256:** `${{ needs.build.outputs.cert_sha256 }}`
+            - **APK SHA-256:** `${{ needs.build.outputs.sha256 }}`
+            - [Verify with AppVerifier](https://github.com/soupslurpr/AppVerifier)
+          token: ${{ secrets.GITHUB_TOKEN }}

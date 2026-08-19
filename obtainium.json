@@ -4,7 +4,7 @@
   "author": "skiletro",
   "name": "WheelWitch",
   "additionalSettings": {
-    "includePrereleases": true,
+    "includePrereleases": false,
     "apkFilterRegEx": "wheelwitch-.+\\.apk",
     "versionExtractionRegEx": "(\\d+\\.\\d+\\.\\d+)",
     "releaseTitleAsVersion": true

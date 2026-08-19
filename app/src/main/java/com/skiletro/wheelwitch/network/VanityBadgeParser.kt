@@ -9,6 +9,7 @@ import com.skiletro.wheelwitch.model.VanityBadge
  * `XXXX-XXXX-XXXX,  // name`.
  */
 object VanityBadgeParser {
+  private val FRIEND_CODE_REGEX = Regex("\\d{4}-\\d{4}-\\d{4}")
 
   fun parseBadgeText(text: String, badge: VanityBadge): Map<String, VanityBadge> {
     return text.lines()
@@ -16,7 +17,7 @@ object VanityBadgeParser {
       .filter { it.isNotEmpty() }
       .mapNotNull { line ->
         val fc = line.split(",").firstOrNull()?.trim()
-        if (fc != null && fc.matches(Regex("\\d{4}-\\d{4}-\\d{4}"))) fc else null
+        if (fc != null && fc.matches(FRIEND_CODE_REGEX)) fc else null
       }
       .associateWith { badge }
   }

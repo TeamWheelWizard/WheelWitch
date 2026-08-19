@@ -107,13 +107,13 @@ object FileDownloader {
             } catch (e: EmptyBodyException) {
                 Timber.tag("FileDownloader").w(e, "Empty body for %s; not retrying", url)
                 throw e
-            } catch (e: IOException) {
-                Timber.tag("FileDownloader")
-                    .w(e, "Transient network failure on attempt %d/%d for %s", attempt + 1, totalAttempts, url)
-                lastError = e
             } catch (e: Http5xxException) {
                 Timber.tag("FileDownloader")
                     .w(e, "HTTP 5xx on attempt %d/%d for %s", attempt + 1, totalAttempts, url)
+                lastError = e
+            } catch (e: IOException) {
+                Timber.tag("FileDownloader")
+                    .w(e, "Transient network failure on attempt %d/%d for %s", attempt + 1, totalAttempts, url)
                 lastError = e
             }
 

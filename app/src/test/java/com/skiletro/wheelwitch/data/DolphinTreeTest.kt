@@ -1216,6 +1216,7 @@ class DolphinTreeTest {
     val cleanedUri = mockk<Uri>(relaxed = true)
     every { cleanedFile.uri } returns cleanedUri
     every { gameSettingsDir.listFiles() } returns arrayOf(rmcFile, rmcp01File)
+    every { gameSettingsDir.findFile("RMCP01.ini") } returns rmcp01File
     every { gameSettingsDir.createFile("text/plain", "RMCP01.ini") } returns cleanedFile
     val cleanedOutput = ByteArrayOutputStream()
     every { resolver.openOutputStream(cleanedUri) } returns cleanedOutput

@@ -12,6 +12,9 @@ private const val CHECK_NAME_POSTGRESQL = "npgsql"
 private const val CHECK_NAME_RETRO_WFC_API = "retro-wfc-api"
 private const val CHECK_NAME_MEMORY = "memory"
 
+/** Matches the "Memory usage: NNN UNIT" substring in a health check description. */
+private val MEMORY_USAGE_REGEX = Regex("""Memory usage:\s*(\d+)\s*(MB|GB|KB)""", RegexOption.IGNORE_CASE)
+
 /** Parses the `/api/health` JSON response into [ServerHealth]; unknown check names are ignored. */
 fun parseHealthResponse(jsonString: String): ServerHealth {
     val root = JSONObject(jsonString)
@@ -69,8 +72,7 @@ private fun normalizeStatus(status: String): String = when {
  */
 private fun parseMemoryFromDescription(status: String, description: String?): MemoryInfo {
     val used = description?.let { desc ->
-        val regex = Regex("""Memory usage:\s*(\d+)\s*(MB|GB|KB)""", RegexOption.IGNORE_CASE)
-        regex.find(desc)?.let { match ->
+        MEMORY_USAGE_REGEX.find(desc)?.let { match ->
             "${match.groupValues[1]}${match.groupValues[2]}"
         }
     }

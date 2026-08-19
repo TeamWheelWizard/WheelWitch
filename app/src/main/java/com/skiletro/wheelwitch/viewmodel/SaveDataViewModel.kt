@@ -43,7 +43,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import timber.log.Timber
 
 /**
@@ -63,17 +62,13 @@ import timber.log.Timber
  * [DolphinTree.romDir] and [refresh] reads + parses a save for each
  * present region in parallel. [selectedRegion] defaults to the first
  * region with a ROM, and is persisted across launches. The Licenses
- * screen is a pure viewer of (selectedRegion × selectedSlotIndex) and
- * never picks a region.
+ * screen is a pure viewer of the selected region and never picks one.
  *
  * Leaderboard merge: the home screen renders all 4 slots of the
  * selected region, so [mergedLicenses] holds a 4-entry list per
  * region with leaderboard VR and Mii name merged in. The VR fetch
  * is fanned out in parallel for all 4 slots of the selected region
  * (4 in-flight requests max) via [refreshMergedLicensesForRegion].
- * [activeLicense] is derived from [mergedLicenses] × selected
- * region × selected slot via [combine], so selecting a slot never
- * triggers a network round trip.
  *
  * Unified save data: [hasAnySave] is the single source of truth for
  * whether the user has anything worth backing up (any region's
@@ -115,10 +110,10 @@ class SaveDataViewModel(
   private val prefs = Prefs.main(application)
 
   private val _saveInfos = MutableStateFlow<Map<Region, SaveFileInfo>>(emptyMap())
-  val saveInfos: StateFlow<Map<Region, SaveFileInfo>> = _saveInfos.asStateFlow()
+  internal val saveInfos: StateFlow<Map<Region, SaveFileInfo>> = _saveInfos.asStateFlow()
 
   private val _hasSave = MutableStateFlow<Map<Region, Boolean>>(emptyMap())
-  val hasSave: StateFlow<Map<Region, Boolean>> = _hasSave.asStateFlow()
+  internal val hasSave: StateFlow<Map<Region, Boolean>> = _hasSave.asStateFlow()
 
   private val _hasAnySave = MutableStateFlow(false)
   val hasAnySave: StateFlow<Boolean> = _hasAnySave.asStateFlow()
@@ -135,17 +130,8 @@ class SaveDataViewModel(
   private val _selectedRegion = MutableStateFlow<Region?>(null)
   val selectedRegion: StateFlow<Region?> = _selectedRegion.asStateFlow()
 
-  private val _selectedSlotIndex = MutableStateFlow(0)
-  val selectedSlotIndex: StateFlow<Int> = _selectedSlotIndex.asStateFlow()
-
   private val _mergedLicenses = MutableStateFlow<Map<Region, List<LicenseInfo>>>(emptyMap())
   val mergedLicenses: StateFlow<Map<Region, List<LicenseInfo>>> = _mergedLicenses.asStateFlow()
-
-  val activeLicense: StateFlow<LicenseInfo?> =
-    combine(_mergedLicenses, _selectedRegion, _selectedSlotIndex) { merged, region, slot ->
-        merged[region]?.getOrNull(slot)?.takeIf { it.exists }
-      }
-      .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
   val scoreResults: StateFlow<Map<Int, ScoreResult?>> =
     combine(_mergedLicenses, _selectedRegion) { merged, region ->
@@ -174,9 +160,6 @@ class SaveDataViewModel(
 
   private val _vanityBadges = MutableStateFlow<Map<String, VanityBadge>>(emptyMap())
   val vanityBadges: StateFlow<Map<String, VanityBadge>> = _vanityBadges.asStateFlow()
-
-  private val _cachedLeaderboardVrs = MutableStateFlow<Map<Int, Int>>(emptyMap())
-  val cachedLeaderboardVrs: StateFlow<Map<Int, Int>> = _cachedLeaderboardVrs.asStateFlow()
 
   private val _isLoading = MutableStateFlow(false)
   val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -215,17 +198,14 @@ class SaveDataViewModel(
   }
 
   /**
-   * Reads every persisted state (last-backup timestamp, selected
-   * region + slot, cached leaderboard VRs) from SharedPreferences
-   * off the main thread. Idempotent.
+   * Reads every persisted state (last-backup timestamps, selected
+   * region) from SharedPreferences. Idempotent.
    */
   private fun loadPersistedState() {
     _lastBackupTimestamp.value = prefs.getLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, 0L)
     _lastBackupRRTimestamp.value = prefs.getLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, 0L)
     _selectedRegion.value =
       loadPersistedRegion(prefs.getString(PrefsKeys.SELECTED_REGION_KEY, null))
-    _selectedSlotIndex.value = prefs.getInt(PrefsKeys.SELECTED_SLOT_KEY, 0)
-    _cachedLeaderboardVrs.value = readVrCache()
   }
 
   /**
@@ -350,17 +330,6 @@ class SaveDataViewModel(
   }
 
   /**
-   * Persists [index] as the selected slot. [activeLicense] is a
-   * projection of [mergedLicenses] × selected region × selected
-   * slot, so no network call is needed. The persisted value
-   * survives process death.
-   */
-  fun selectSlot(index: Int) {
-    prefs.edit().putInt(PrefsKeys.SELECTED_SLOT_KEY, index).apply()
-    _selectedSlotIndex.value = index
-  }
-
-  /**
    * Bundles every save file the user owns (all regions' `rksys.dat`,
    * the Mii DB, all Pulsar pul files, and the Ghosts directory) into
    * a single zip at [dest] (typically from `ACTION_CREATE_DOCUMENT`).
@@ -369,23 +338,15 @@ class SaveDataViewModel(
    * show "Last backed up: …" on next launch.
    */
   fun backupAll(dest: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      backupAllSaver(tree, dest)
-        .onSuccess {
-          val timestamp = now()
-          prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
-          _lastBackupTimestamp.value = timestamp
-          refresh()
-        }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "backup failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_write_failed)
-        }
+    runSaveOp(
+      logTag = "backup",
+      fallback = { app.getString(R.string.vm_save_write_failed) },
+      op = { backupAllSaver(it, dest) },
+    ) {
+      val timestamp = now()
+      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
+      _lastBackupTimestamp.value = timestamp
+      refresh()
     }
   }
 
@@ -395,19 +356,11 @@ class SaveDataViewModel(
    * state on success.
    */
   fun restoreAll(source: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      restoreAllSaver(tree, source)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "restore failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_read_failed)
-        }
-    }
+    runSaveOp(
+      logTag = "restore",
+      fallback = { app.getString(R.string.vm_save_read_failed) },
+      op = { restoreAllSaver(it, source) },
+    ) { refresh() }
   }
 
   /**
@@ -416,19 +369,11 @@ class SaveDataViewModel(
    * Refreshes the parsed state and [hasAnySave] on success.
    */
   fun deleteAll() {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      deleteAllSaver(tree)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "delete failed")
-          _error.value = e.message ?: app.getString(R.string.vm_failed_format, "delete save")
-        }
-    }
+    runSaveOp(
+      logTag = "delete",
+      fallback = { app.getString(R.string.vm_failed_format, "delete save") },
+      op = { deleteAllSaver(it) },
+    ) { refresh() }
   }
 
   /**
@@ -437,23 +382,15 @@ class SaveDataViewModel(
    * [PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY].
    */
   fun backupRR(dest: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      backupRRSaver(tree, dest)
-        .onSuccess {
-          val timestamp = now()
-          prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
-          _lastBackupRRTimestamp.value = timestamp
-          refresh()
-        }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "backupRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_write_failed)
-        }
+    runSaveOp(
+      logTag = "backupRR",
+      fallback = { app.getString(R.string.vm_save_write_failed) },
+      op = { backupRRSaver(it, dest) },
+    ) {
+      val timestamp = now()
+      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
+      _lastBackupRRTimestamp.value = timestamp
+      refresh()
     }
   }
 
@@ -462,19 +399,11 @@ class SaveDataViewModel(
    * Refreshes the parsed state on success.
    */
   fun restoreRR(source: Uri) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      restoreRRSaver(tree, source)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "restoreRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_save_read_failed)
-        }
-    }
+    runSaveOp(
+      logTag = "restoreRR",
+      fallback = { app.getString(R.string.vm_save_read_failed) },
+      op = { restoreRRSaver(it, source) },
+    ) { refresh() }
   }
 
   /**
@@ -482,19 +411,11 @@ class SaveDataViewModel(
    * parsed state on success.
    */
   fun deleteRR() {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      deleteRRSaver(tree)
-        .onSuccess { refresh() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "deleteRR failed")
-          _error.value = e.message ?: app.getString(R.string.vm_failed_format, "delete RR save")
-        }
-    }
+    runSaveOp(
+      logTag = "deleteRR",
+      fallback = { app.getString(R.string.vm_failed_format, "delete RR save") },
+      op = { deleteRRSaver(it) },
+    ) { refresh() }
   }
 
   /**
@@ -503,18 +424,15 @@ class SaveDataViewModel(
    * up so the UI can show the "no save data" / "never backed up"
    * status line instead.
    */
-  fun formatLastBackup(): String? {
-    val ts = _lastBackupTimestamp.value
-    if (ts <= 0L) return null
-    return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
-  }
+  fun formatLastBackup(): String? = formatTimestamp(_lastBackupTimestamp.value)
 
   /**
    * Formats [lastBackupRRTimestamp] as a localized date + time.
    * Returns null when the user has never performed an RR-only backup.
    */
-  fun formatLastBackupRR(): String? {
-    val ts = _lastBackupRRTimestamp.value
+  fun formatLastBackupRR(): String? = formatTimestamp(_lastBackupRRTimestamp.value)
+
+  private fun formatTimestamp(ts: Long): String? {
     if (ts <= 0L) return null
     return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
   }
@@ -527,6 +445,42 @@ class SaveDataViewModel(
   // --- internals --------------------------------------------------------
 
   /**
+   * Runs [block] against the persisted SAF tree, publishing the
+   * "storage not configured" error when no grant exists.
+   */
+  private fun runWithTree(block: suspend (DolphinTree) -> Unit) {
+    viewModelScope.launch {
+      val tree = treeFactory(app)
+      if (tree == null) {
+        _error.value = app.getString(R.string.vm_save_not_configured)
+        return@launch
+      }
+      block(tree)
+    }
+  }
+
+  /**
+   * Runs a save operation against the persisted tree, logging and
+   * publishing the [fallback] error on failure and running
+   * [onSuccess] on success.
+   */
+  private fun runSaveOp(
+    logTag: String,
+    fallback: () -> String,
+    op: suspend (DolphinTree) -> Result<*>,
+    onSuccess: () -> Unit = {},
+  ) {
+    runWithTree { tree ->
+      op(tree)
+        .onSuccess { onSuccess() }
+        .onFailure { e ->
+          Timber.tag(TAG).e(e, "$logTag failed")
+          _error.value = e.message ?: fallback()
+        }
+    }
+  }
+
+  /**
    * Fans out 4 parallel leaderboard fetches (one per license slot
    * of [region]) and writes the merged list into [mergedLicenses].
    * Skips slots without a `friendCode` (empty slots). When [info]
@@ -537,9 +491,6 @@ class SaveDataViewModel(
    *
    * The initial (un-merged) list is published first so the UI can
    * show the local VR while the network round trips are in flight.
-   *
-   * Each successful VR is also written to the persistent VR cache
-   * so subsequent fetches with no network still have a fallback.
    */
   private suspend fun refreshMergedLicensesForRegion(
     region: Region,
@@ -559,7 +510,6 @@ class SaveDataViewModel(
                   val result = leaderboardFetcher(license.friendCode)
                   if (result.isSuccess) {
                     val data = result.getOrThrow()
-                    cacheAndPersistLeaderboardVr(license.slotIndex, data.vr)
                     license.copy(
                       leaderboardVr = data.vr,
                       miiName = data.name ?: license.miiName,
@@ -597,29 +547,6 @@ class SaveDataViewModel(
   /** Maps a persisted region code (e.g. `RMCP`) back to its [Region] enum, or null. */
   private fun loadPersistedRegion(code: String?): Region? =
     code?.let { c -> Region.entries.firstOrNull { it.code == c } }
-
-  private fun cacheAndPersistLeaderboardVr(slotIndex: Int, vr: Int) {
-    val current = _cachedLeaderboardVrs.value
-    if (current[slotIndex] == vr) return
-    val updated = current + (slotIndex to vr)
-    _cachedLeaderboardVrs.value = updated
-    val obj = JSONObject()
-    updated.forEach { (slot, value) -> obj.put(slot.toString(), value) }
-    prefs.edit().putString(PrefsKeys.LAST_LEADERBOARD_VR_KEY, obj.toString()).apply()
-  }
-
-  private fun readVrCache(): Map<Int, Int> {
-    val raw = prefs.getString(PrefsKeys.LAST_LEADERBOARD_VR_KEY, null) ?: return emptyMap()
-    return runCatching {
-      val obj = JSONObject(raw)
-      buildMap {
-        obj.keys().forEach { key ->
-          val slot = key.toIntOrNull() ?: return@forEach
-          put(slot, obj.optInt(key, 0))
-        }
-      }
-    }.getOrElse { emptyMap() }
-  }
 
   private fun loadRatingVrMap(tree: DolphinTree): Map<Long, Float> {
     val file = tree.pulsarRrDir?.findFile("RRRating.pul") ?: return emptyMap()

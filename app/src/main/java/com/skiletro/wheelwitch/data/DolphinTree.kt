@@ -211,7 +211,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         val output =
           resolver.openOutputStream(target.uri)
             ?: error("Cannot open output stream for ${target.uri}")
-        output.use { o -> i.copyTo(o) }
+        output.use { o -> i.copyToWithBuffer(o, COPY_BUFFER_SIZE) }
       }
       target
     }
@@ -383,27 +383,21 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * replacing any existing file. The returned [DocumentFile] is the
    * new launch descriptor.
    */
-  fun writeLaunchJson(content: String): DocumentFile {
-    val existing = romDir.findFile(LAUNCH_JSON_NAME)
-    if (existing != null) existing.delete()
-    val file =
-      romDir.createFile("application/json", LAUNCH_JSON_NAME)
-        ?: error("Cannot create $LAUNCH_JSON_NAME in rom/")
-    val output = resolver.openOutputStream(file.uri)
-      ?: error("Cannot open output stream for $LAUNCH_JSON_NAME")
-    output.use { it.write(content.toByteArray(Charsets.UTF_8)) }
-    return file
-  }
+  fun writeLaunchJson(content: String): DocumentFile =
+    writeDolphinBytes(
+      resolver = resolver,
+      parent = romDir,
+      name = LAUNCH_JSON_NAME,
+      bytes = content.toByteArray(Charsets.UTF_8),
+      mime = "application/json",
+    )
 
   /**
    * Reads the [LAUNCH_JSON_NAME] contents from the rom dir if present,
    * or null if the launch descriptor has not been written yet.
    */
-  fun readLaunchJson(): String? {
-    val file = romDir.findFile(LAUNCH_JSON_NAME) ?: return null
-    val input = resolver.openInputStream(file.uri) ?: return null
-    return input.use { it.readBytes().toString(Charsets.UTF_8) }
-  }
+  fun readLaunchJson(): String? =
+    readDolphinText(resolver, romDir.findFile(LAUNCH_JSON_NAME))
 
   /**
    * Copies the app-shipped cover banner into [romDir] as
@@ -445,15 +439,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           it.readBytes().toString(Charsets.UTF_8)
         }
       val rendered = template.replace(VERSION_PLACEHOLDER, version.toString())
-      val existing = romDir.findFile(METADATA_XML_NAME)
-      if (existing != null) existing.delete()
-      val file =
-        romDir.createFile("text/xml", METADATA_XML_NAME)
-          ?: error("Cannot create $METADATA_XML_NAME in rom/")
-      val output =
-        resolver.openOutputStream(file.uri)
-          ?: error("Cannot open output stream for $METADATA_XML_NAME")
-      output.use { it.write(rendered.encodeToByteArray()) }
+      writeDolphinBytes(
+        resolver = resolver,
+        parent = romDir,
+        name = METADATA_XML_NAME,
+        bytes = rendered.encodeToByteArray(),
+        mime = "text/xml",
+      )
     }
 
   /**
@@ -462,10 +454,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * missing or unparseable; both are treated as "no local version".
    */
   fun readVersion(): SemVersion? {
-    val file = retroRewindDir.findFile(VERSION_FILE_NAME) ?: return null
-    val text =
-      resolver.openInputStream(file.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-        ?: return null
+    val text = readDolphinText(resolver, retroRewindDir.findFile(VERSION_FILE_NAME)) ?: return null
     val parsed = SemVersion.parse(text.trim())
     if (parsed == null) {
       Timber.tag(TAG)
@@ -484,15 +473,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    */
   suspend fun writeVersion(version: SemVersion): Unit =
     withContext(Dispatchers.IO) {
-      val existing = retroRewindDir.findFile(VERSION_FILE_NAME)
-      if (existing != null) existing.delete()
-      val file =
-        retroRewindDir.createFile("text/plain", VERSION_FILE_NAME)
-          ?: error("Cannot create $RETRO_REWIND_DIR_NAME/$VERSION_FILE_NAME")
-      val output =
-        resolver.openOutputStream(file.uri)
-          ?: error("Cannot open output stream for $RETRO_REWIND_DIR_NAME/$VERSION_FILE_NAME")
-      output.use { it.write(version.toString().encodeToByteArray()) }
+      writeDolphinBytes(
+        resolver = resolver,
+        parent = retroRewindDir,
+        name = VERSION_FILE_NAME,
+        bytes = version.toString().encodeToByteArray(),
+        mime = "text/plain",
+      )
     }
 
   /**
@@ -504,9 +491,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   fun readConfigIni(fileName: String = CONFIG_INI_NAME): String? {
     val configDir =
       findOrCreateDir(root, "Config") ?: return null
-    val file = configDir.findFile(fileName) ?: return null
-    return resolver.openInputStream(file.uri)
-      ?.use { it.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF") }
+    return readDolphinText(resolver, configDir.findFile(fileName), stripBom = true)
   }
 
   /**
@@ -519,16 +504,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     val configDir =
       findOrCreateDir(root, "Config")
         ?: error("Cannot create Config/ in Dolphin tree")
-    val existing = configDir.findFile(fileName)
-    if (existing != null) existing.delete()
-    val file =
-      configDir.createFile("text/plain", fileName)
-        ?: error("Cannot create $fileName")
-    val output =
-      resolver.openOutputStream(file.uri)
-        ?: error("Cannot open output stream for $fileName")
-    output.use { it.write(content.toByteArray(Charsets.UTF_8)) }
-    return file
+    return writeDolphinBytes(
+      resolver = resolver,
+      parent = configDir,
+      name = fileName,
+      bytes = content.toByteArray(Charsets.UTF_8),
+      mime = "text/plain",
+    )
   }
 
   /**
@@ -536,12 +518,12 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * the file is absent. Used by [ensureRmcGameInis] to inspect and
    * merge existing per-game settings before writing.
    */
-  fun readGameIni(gamePrefix: String): String? {
-    val file = gameSettingsDir.findFile("$gamePrefix.ini") ?: return null
-    return resolver.openInputStream(file.uri)?.use {
-      it.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
-    }
-  }
+  fun readGameIni(gamePrefix: String): String? =
+    readDolphinText(
+      resolver,
+      gameSettingsDir.findFile("$gamePrefix.ini"),
+      stripBom = true,
+    )
 
   /**
    * Writes [content] as `GameSettings/<gamePrefix>.ini`, replacing
@@ -549,14 +531,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    */
   fun writeGameIni(gamePrefix: String, content: String) {
     val fileName = "$gamePrefix.ini"
-    gameSettingsDir.findFile(fileName)?.delete()
-    val file =
-      gameSettingsDir.createFile("text/plain", fileName)
-        ?: error("Cannot create $fileName in GameSettings/")
-    val output =
-      resolver.openOutputStream(file.uri)
-        ?: error("Cannot open output stream for $fileName")
-    output.use { it.write(content.toByteArray(Charsets.UTF_8)) }
+    writeDolphinBytes(
+      resolver = resolver,
+      parent = gameSettingsDir,
+      name = fileName,
+      bytes = content.toByteArray(Charsets.UTF_8),
+      mime = "text/plain",
+    )
   }
 
   /**
@@ -625,25 +606,20 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       }
     for (sibling in siblings) {
       val name = sibling.name ?: continue
-      val siblingContent =
-        resolver.openInputStream(sibling.uri)?.use {
-          it.readBytes().toString(Charsets.UTF_8)
-        }
-          ?: continue
+      val siblingContent = readDolphinText(resolver, sibling) ?: continue
       // For good measure, remove the cheats and RetroAchievements settings from all files which
       // could override the base GameINI file.
       var cleaned = removeIniKeyInSection(siblingContent, "[Core]", CHEATS_KEY)
       cleaned = removeIniKeyInSection(cleaned, "[Dolphin.Core]", CHEATS_KEY)
       cleaned = removeIniKeyInSection(cleaned, "[Achievements.Achievements]", ACHIEVEMENTS_KEY)
       if (cleaned != siblingContent) {
-        sibling.delete()
-        val newFile =
-          gameSettingsDir.createFile("text/plain", name)
-            ?: error("Cannot recreate $name in GameSettings/")
-        val output =
-          resolver.openOutputStream(newFile.uri)
-            ?: error("Cannot open output stream for $name")
-        output.use { it.write(cleaned.toByteArray(Charsets.UTF_8)) }
+        writeDolphinBytes(
+          resolver = resolver,
+          parent = gameSettingsDir,
+          name = name,
+          bytes = cleaned.toByteArray(Charsets.UTF_8),
+          mime = "text/plain",
+        )
       }
     }
   }
@@ -664,17 +640,14 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * [writeRrCover] to copy the app-shipped cover banner.
    */
   private fun copyRawToRomFile(resId: Int, fileName: String, mime: String) {
-    val existing = romDir.findFile(fileName)
-    if (existing != null) existing.delete()
-    val file =
-      romDir.createFile(mime, fileName)
-        ?: error("Cannot create $fileName in rom/")
-    val output =
-      resolver.openOutputStream(file.uri)
-        ?: error("Cannot open output stream for $fileName")
-    appContext.resources.openRawResource(resId).use { input ->
-      output.use { out -> input.copyTo(out) }
-    }
+    val bytes = appContext.resources.openRawResource(resId).use { it.readBytes() }
+    writeDolphinBytes(
+      resolver = resolver,
+      parent = romDir,
+      name = fileName,
+      bytes = bytes,
+      mime = mime,
+    )
   }
 
   private fun writeZipEntry(
@@ -953,16 +926,29 @@ internal fun readDolphinBytes(resolver: ContentResolver, file: DocumentFile?): B
   return input.use { it.readBytes() }
 }
 
+/** Reads [file] as UTF-8 text, or null when [file] is null or unreadable. */
+internal fun readDolphinText(
+  resolver: ContentResolver,
+  file: DocumentFile?,
+  stripBom: Boolean = false,
+): String? {
+  if (file == null) return null
+  val input = resolver.openInputStream(file.uri) ?: return null
+  val text = input.use { it.readBytes().toString(Charsets.UTF_8) }
+  return if (stripBom) text.removePrefix("\uFEFF") else text
+}
+
 /** Writes [bytes] to [name] under [parent], replacing any existing file. */
 internal fun writeDolphinBytes(
   resolver: ContentResolver,
   parent: DocumentFile,
   name: String,
   bytes: ByteArray,
+  mime: String = "application/octet-stream",
 ): DocumentFile {
   parent.findFile(name)?.delete()
   val file =
-    parent.createFile("application/octet-stream", name)
+    parent.createFile(mime, name)
       ?: error("Cannot create $name in ${parent.uri}")
   val output =
     resolver.openOutputStream(file.uri)
@@ -985,21 +971,12 @@ internal fun recursiveCopyToStream(
   basePath: String,
 ) {
   if (dir == null || !dir.exists() || !dir.isDirectory) return
-  writeFilesRecursive(resolver, dir, out, basePath)
-}
-
-private fun writeFilesRecursive(
-  resolver: ContentResolver,
-  dir: DocumentFile,
-  out: java.util.zip.ZipOutputStream,
-  basePath: String,
-) {
   val children = dir.listFiles()
   for (child in children) {
     val name = child.name ?: continue
     val entryName = if (basePath.isEmpty()) name else "$basePath/$name"
     if (child.isDirectory) {
-      writeFilesRecursive(resolver, child, out, entryName)
+      recursiveCopyToStream(resolver, child, out, entryName)
     } else if (child.isFile) {
       out.putNextEntry(java.util.zip.ZipEntry(entryName))
       val bytes = readDolphinBytes(resolver, child) ?: ByteArray(0)
