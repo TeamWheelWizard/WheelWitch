@@ -319,7 +319,7 @@ object SaveManager {
                   if (f != null && f.exists() && f.isFile) listOf(RR_RATING_PUL) else emptyList()
                 }
               }
-            val ghostCount = if (scope == SaveScope.ALL) countGhostFiles(tree) else 0
+             val ghostCount = countGhostFiles(tree)
             val availableVanilla =
               if (scope == SaveScope.ALL) vanillaSaveFiles(tree) else emptyList()
             val patchedIsoFile =
@@ -380,15 +380,13 @@ object SaveManager {
                   writeZipBytes(zip, "Wii/shared2/Pulsar/RetroRewind6/$name", bytes)
                 }
               }
-              if (scope == SaveScope.ALL) {
-                val ghosts = pulsar.findFile(UserDataPaths.GHOSTS_DIR)
-                recursiveCopyToStream(
-                  tree.resolver,
-                  ghosts,
-                  zip,
-                  "Wii/shared2/Pulsar/RetroRewind6/${UserDataPaths.GHOSTS_DIR}",
-                )
-              }
+               val ghosts = pulsar.findFile(UserDataPaths.GHOSTS_DIR)
+               recursiveCopyToStream(
+                 tree.resolver,
+                 ghosts,
+                 zip,
+                 "Wii/shared2/Pulsar/RetroRewind6/${UserDataPaths.GHOSTS_DIR}",
+               )
             }
             val summary =
               BackupSummary(
@@ -461,7 +459,7 @@ object SaveManager {
               if (entry.isDirectory) continue
               val entryName = entry.name
               if (scope == SaveScope.RR_ONLY) {
-                // Only process RetroWFC/ entries and RRRating.pul; skip everything else.
+                 // Only process RetroWFC/, RRRating.pul, and Ghosts; skip everything else.
                 if (entryName == "Wii/shared2/Pulsar/RetroRewind6/$RR_RATING_PUL") {
                   val pulsarDir = tree.pulsarRrDir
                   if (pulsarDir != null) {
@@ -471,7 +469,11 @@ object SaveManager {
                   }
                   continue
                 }
-                if (!entryName.startsWith("RetroWFC/")) continue
+                 val isGhost =
+                   entryName.startsWith(
+                     "Wii/shared2/Pulsar/RetroRewind6/${UserDataPaths.GHOSTS_DIR}/"
+                   )
+                 if (!entryName.startsWith("RetroWFC/") && !isGhost) continue
                 val target = resolveRestoreTarget(tree, entryName)
                 if (target == null) {
                   Timber.tag(TAG).w("Skipping unknown RetroWFC entry: %s", entryName)
@@ -481,7 +483,10 @@ object SaveManager {
                 val name = target.second
                 val bytes = zip.readBytes()
                 writeDolphinBytes(tree.resolver, parent, name, bytes)
-                if (name == SAVE_FILE_NAME) rksys++
+                 when {
+                   entryName.startsWith("RetroWFC/") && name == SAVE_FILE_NAME -> rksys++
+                   isGhost -> ghosts++
+                 }
               } else {
                 val target = resolveRestoreTarget(tree, entryName)
                 if (target == null) {
