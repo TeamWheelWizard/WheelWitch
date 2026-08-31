@@ -77,6 +77,9 @@ private fun badgeLabelRes(badge: BadgeType): Int? = when (badge) {
   BadgeType.EARTHBOUND_GOLD -> R.string.badge_earthbound_gold
   BadgeType.EARTHBOUND_SILVER -> R.string.badge_earthbound_silver
   BadgeType.EARTHBOUND_BRONZE -> R.string.badge_earthbound_bronze
+  BadgeType.BOTB_GOLD -> R.string.badge_botb_gold
+  BadgeType.BOTB_SILVER -> R.string.badge_botb_silver
+  BadgeType.BOTB_BRONZE -> R.string.badge_botb_bronze
   BadgeType.UNKNOWN -> null
 }
 

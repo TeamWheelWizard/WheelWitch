@@ -264,6 +264,9 @@
     <string name="badge_earthbound_gold">Earthbound Gold</string>
     <string name="badge_earthbound_silver">Earthbound Silver</string>
     <string name="badge_earthbound_bronze">Earthbound Bronze</string>
+    <string name="badge_botb_gold">Bottom of the Barrel Gold</string>
+    <string name="badge_botb_silver">Bottom of the Barrel Silver</string>
+    <string name="badge_botb_bronze">Bottom of the Barrel Bronze</string>
 
     <!-- settings save data -->
     <string name="settings_save_data_section">Save Data</string>

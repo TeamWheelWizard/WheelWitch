@@ -8,13 +8,14 @@ class BadgeParserTest {
 
   @Test
   fun `parseBadgeTypes parses supported and unsupported values`() {
-    val badges = parseBadgeTypes("""{"badges":[0, 100, 1000, 2000, 9999]}""")
+    val badges = parseBadgeTypes("""{"badges":[0, 100, 1000, 2000, 2018, 9999]}""")
 
     assertThat(badges).containsExactly(
       BadgeType.RETRO_REWIND_DEVELOPER,
       BadgeType.RWFC_MODERATOR,
       BadgeType.CONTRIBUTOR,
       BadgeType.FIRESTARTER_GOLD,
+      BadgeType.BOTB_GOLD,
       BadgeType.UNKNOWN,
     ).inOrder()
   }
