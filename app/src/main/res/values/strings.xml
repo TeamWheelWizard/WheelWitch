@@ -235,6 +235,36 @@
     <string name="save_info_empty_slot">Empty slot</string>
     <string name="save_info_no_name">(no name)</string>
 
+    <!-- badges -->
+    <string name="badge_retro_rewind_developer">Retro Rewind Developer</string>
+    <string name="badge_wheel_wizard_developer">Wheel Wizard Developer</string>
+    <string name="badge_major_contributor">Major Contributor</string>
+    <string name="badge_rwfc_moderator">RWFC Moderator</string>
+    <string name="badge_discord_staff">Discord Staff</string>
+    <string name="badge_contributor">Contributor</string>
+    <string name="badge_translator">Translator</string>
+    <string name="badge_supporter">Supporter</string>
+    <string name="badge_beta_tester">Beta Tester</string>
+    <string name="badge_heart">Heart</string>
+    <string name="badge_firestarter_gold">Firestarter Gold</string>
+    <string name="badge_firestarter_silver">Firestarter Silver</string>
+    <string name="badge_firestarter_bronze">Firestarter Bronze</string>
+    <string name="badge_leafstruck_gold">Leafstruck Gold</string>
+    <string name="badge_leafstruck_silver">Leafstruck Silver</string>
+    <string name="badge_leafstruck_bronze">Leafstruck Bronze</string>
+    <string name="badge_summit_showdown_gold">Summit Showdown Gold</string>
+    <string name="badge_summit_showdown_silver">Summit Showdown Silver</string>
+    <string name="badge_summit_showdown_bronze">Summit Showdown Bronze</string>
+    <string name="badge_horizon_gold">Horizon Gold</string>
+    <string name="badge_horizon_silver">Horizon Silver</string>
+    <string name="badge_horizon_bronze">Horizon Bronze</string>
+    <string name="badge_sunblossom_gold">Sunblossom Gold</string>
+    <string name="badge_sunblossom_silver">Sunblossom Silver</string>
+    <string name="badge_sunblossom_bronze">Sunblossom Bronze</string>
+    <string name="badge_earthbound_gold">Earthbound Gold</string>
+    <string name="badge_earthbound_silver">Earthbound Silver</string>
+    <string name="badge_earthbound_bronze">Earthbound Bronze</string>
+
     <!-- settings save data -->
     <string name="settings_save_data_section">Save Data</string>
     <string name="settings_save_data_backup">Back up save data</string>

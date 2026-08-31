@@ -1,5 +1,6 @@
 package com.skiletro.wheelwitch.ui.components
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.model.LicenseInfo
 import com.skiletro.wheelwitch.model.ScoreResult
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
@@ -46,10 +48,43 @@ private val CompactCellWidthThreshold = 360.dp
 /** Cell height below which the cell switches to compact chrome and tighter spacing. */
 private val CompactCellHeightThreshold = 140.dp
 
+private fun badgeLabelRes(badge: BadgeType): Int? = when (badge) {
+  BadgeType.RETRO_REWIND_DEVELOPER -> R.string.badge_retro_rewind_developer
+  BadgeType.WHEEL_WIZARD_DEVELOPER -> R.string.badge_wheel_wizard_developer
+  BadgeType.MAJOR_CONTRIBUTOR -> R.string.badge_major_contributor
+  BadgeType.RWFC_MODERATOR -> R.string.badge_rwfc_moderator
+  BadgeType.DISCORD_STAFF -> R.string.badge_discord_staff
+  BadgeType.CONTRIBUTOR -> R.string.badge_contributor
+  BadgeType.TRANSLATOR -> R.string.badge_translator
+  BadgeType.SUPPORTER -> R.string.badge_supporter
+  BadgeType.BETA_TESTER -> R.string.badge_beta_tester
+  BadgeType.HEART -> R.string.badge_heart
+  BadgeType.FIRESTARTER_GOLD -> R.string.badge_firestarter_gold
+  BadgeType.FIRESTARTER_SILVER -> R.string.badge_firestarter_silver
+  BadgeType.FIRESTARTER_BRONZE -> R.string.badge_firestarter_bronze
+  BadgeType.LEAFSTRUCK_GOLD -> R.string.badge_leafstruck_gold
+  BadgeType.LEAFSTRUCK_SILVER -> R.string.badge_leafstruck_silver
+  BadgeType.LEAFSTRUCK_BRONZE -> R.string.badge_leafstruck_bronze
+  BadgeType.SUMMIT_SHOWDOWN_GOLD -> R.string.badge_summit_showdown_gold
+  BadgeType.SUMMIT_SHOWDOWN_SILVER -> R.string.badge_summit_showdown_silver
+  BadgeType.SUMMIT_SHOWDOWN_BRONZE -> R.string.badge_summit_showdown_bronze
+  BadgeType.HORIZON_GOLD -> R.string.badge_horizon_gold
+  BadgeType.HORIZON_SILVER -> R.string.badge_horizon_silver
+  BadgeType.HORIZON_BRONZE -> R.string.badge_horizon_bronze
+  BadgeType.SUNBLOSSOM_GOLD -> R.string.badge_sunblossom_gold
+  BadgeType.SUNBLOSSOM_SILVER -> R.string.badge_sunblossom_silver
+  BadgeType.SUNBLOSSOM_BRONZE -> R.string.badge_sunblossom_bronze
+  BadgeType.EARTHBOUND_GOLD -> R.string.badge_earthbound_gold
+  BadgeType.EARTHBOUND_SILVER -> R.string.badge_earthbound_silver
+  BadgeType.EARTHBOUND_BRONZE -> R.string.badge_earthbound_bronze
+  BadgeType.UNKNOWN -> null
+}
+
 @Composable
 fun LicenseGrid(
   licenses: List<LicenseInfo>,
   scoreResults: Map<Int, ScoreResult?>,
+  badges: Map<Long, List<BadgeType>>,
   isLoading: Boolean,
 ) {
   Box(
@@ -74,6 +109,7 @@ fun LicenseGrid(
                 LicenseCell(
                   license = first,
                   scoreResult = scoreResults[first.slotIndex],
+                  badges = first.profileId?.let { badges[it] },
                   modifier = Modifier.weight(1f),
                 )
               }
@@ -81,6 +117,7 @@ fun LicenseGrid(
                 LicenseCell(
                   license = second,
                   scoreResult = scoreResults[second.slotIndex],
+                  badges = second.profileId?.let { badges[it] },
                   modifier = Modifier.weight(1f),
                 )
               }
@@ -96,6 +133,7 @@ fun LicenseGrid(
             LicenseCell(
               license = license,
               scoreResult = scoreResults[license.slotIndex],
+              badges = license.profileId?.let { badges[it] },
               modifier = Modifier.fillMaxWidth(),
             )
           }
@@ -112,6 +150,7 @@ fun LicenseGrid(
 fun LicenseCell(
   license: LicenseInfo?,
   scoreResult: ScoreResult?,
+  badges: List<BadgeType>? = null,
   modifier: Modifier = Modifier,
 ) {
   val exists = license?.exists == true
@@ -127,7 +166,7 @@ fun LicenseCell(
     Box(modifier = Modifier.fillMaxSize()) {
       val populated = license?.takeIf { it.exists }
       if (populated != null) {
-        PopulatedCell(license = populated, scoreResult = scoreResult)
+        PopulatedCell(license = populated, scoreResult = scoreResult, badges = badges)
       } else {
         EmptyCell()
       }
@@ -136,7 +175,7 @@ fun LicenseCell(
 }
 
 @Composable
-fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?) {
+fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badges: List<BadgeType>? = null) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val compact = maxWidth < CompactCellWidthThreshold || maxHeight < CompactCellHeightThreshold
     val compactFontSize = 9.sp
@@ -165,6 +204,19 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?) {
           fontFamily = CtmkfFontFamily,
           color = MaterialTheme.colorScheme.onSurface,
         )
+        val badgeLabels =
+          badges?.mapNotNull { badge -> badgeLabelRes(badge)?.let { stringResource(it) } }
+        if (!badgeLabels.isNullOrEmpty()) {
+          Text(
+            text = badgeLabels.joinToString(separator = " · "),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = maybeCompactFontSize,
+            lineHeight = maybeCompactFontSize,
+            maxLines = 1,
+            modifier = Modifier.basicMarquee(),
+          )
+        }
         license.friendCode?.let { fc ->
           Text(
             text = fc,
@@ -273,6 +325,7 @@ private val PreviewLicenses =
       raceWins = 120,
       raceLosses = 60,
       ratingVr = 6100,
+      profileId = 1L,
     ),
     LicenseInfo(
       slotIndex = 1,
@@ -284,6 +337,7 @@ private val PreviewLicenses =
       raceWins = 250,
       raceLosses = 45,
       ratingVr = 999999,
+      profileId = 2L,
     ),
     LicenseInfo(slotIndex = 2, exists = false),
     LicenseInfo(
@@ -309,6 +363,12 @@ private val PreviewScores =
         distNorm = 10.0, dist1stNorm = 5.0, totalVs = 100, meetsRaceReq = false),
   )
 
+private val PreviewBadges =
+  mapOf(
+    1L to listOf(BadgeType.SUPPORTER),
+    2L to listOf(BadgeType.RETRO_REWIND_DEVELOPER, BadgeType.FIRESTARTER_GOLD),
+  )
+
 @Preview(name = "LicenseGrid 1000dp", widthDp = 1000, heightDp = 225, fontScale = 1.3f, showBackground = true)
 @Composable
 private fun LicenseGridCompactTwoColumnPreview() {
@@ -316,6 +376,7 @@ private fun LicenseGridCompactTwoColumnPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
+      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -328,6 +389,7 @@ private fun LicenseGridRegularTwoColumnPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
+      badges = PreviewBadges,
       isLoading = false,
     )
   }
@@ -340,6 +402,7 @@ private fun LicenseGridNarrowPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
+      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -352,6 +415,7 @@ private fun LicenseGridMediumPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
+      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -364,6 +428,7 @@ private fun LicenseGridWidePreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
+      badges = emptyMap(),
       isLoading = false,
     )
   }
