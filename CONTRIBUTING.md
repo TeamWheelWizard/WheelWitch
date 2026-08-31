@@ -6,20 +6,17 @@
 - Android SDK (managed automatically via Gradle)
 - (Optional) Android Studio for the emulator and layout previews
 
-### Nix flake
+### devenv
 
-If you have [Nix](https://nixos.org) (with flakes enabled) and [direnv](https://direnv.net) + [nix-direnv](https://github.com/nix-community/nix-direnv) installed, the `.envrc` will auto-load a Nix shell containing JDK 21, the Android SDK, and `adb`. The first entry into the directory builds the shell (a few minutes for the Android SDK).
+If you have [devenv](https://devenv.sh) (2.2+) installed, `devenv shell` drops you
+into an environment containing JDK 21, the Android SDK, and `adb`. The first entry
+into the shell builds the Android SDK (a few minutes).
 
-> **aarch64 Linux users**: Android build tools (aapt2) are x86_64-only. Add
-> `boot.binfmt.emulatedSystems = [ "x86_64-linux" ];` to your NixOS
-> configuration and run `nixos-rebuild switch` to enable transparent QEMU
-> emulation. On non-NixOS, install `qemu-user-static` via your package manager.
+> **x86_64 Linux only**: Android build tools (aapt2) are x86_64-only, and the
+> shell refuses to evaluate on any other system.
 
-Without direnv, enter the shell manually:
-
-```bash
-nix develop
-```
+Signing secrets are managed with [secretspec](https://secretspec.dev) and loaded
+into the shell automatically; see [Build](#build).
 
 Common tasks (after entering the shell):
 
@@ -38,7 +35,8 @@ Build, install and launch on a connected adb device:
 just install
 ```
 
-Boot an Android emulator (one-time AVD creation required):
+Boot an Android emulator (one-time AVD creation required; the emulator is not in
+the shell by default — set `android.emulator.enable = true` in `devenv.nix` first):
 
 ```bash
 echo "no" | avdmanager create avd --force --name wheelwitch \
@@ -82,13 +80,14 @@ No formal CLA; if you contribute code, please add yourself to a credits section 
 
 The debug APK lands at `app/build/outputs/apk/debug/app-debug.apk`.
 
-For a **signed release APK**, run `scripts/setup-signing.sh` to generate a keystore
-and `.env` file, then:
+For a **signed release APK**, run `just setup-signing` to generate a keystore and
+store the signing secrets with [secretspec](https://secretspec.dev) (dotenv
+provider, written to the gitignored `.env`), then:
 
 ```bash
-just build-release     # Nix shell — loads .env automatically
+just build-release     # from the devenv shell — signing secrets load automatically
 # or
-source .env && ./gradlew assembleRelease  # without Nix
+secretspec run -- ./gradlew assembleRelease  # without devenv
 ```
 
 The keystore is resolved relative to the project root. Defaults: PKCS12, RSA-4096,

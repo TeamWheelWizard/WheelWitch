@@ -1,0 +1,12 @@
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/nixpkgs-unstable
+nixpkgs:
+  allow_unfree: true
+  android_sdk:
+    accept_license: true
+secretspec:
+  enable: true
+  provider: dotenv
+  profile: default
+require_version: ">= 2.2"

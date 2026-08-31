@@ -2,10 +2,10 @@
 build:
     ./gradlew assembleDebug
 
-# signed release APK (needs release.keystore + .env)
+# signed release APK (needs signing secrets, see: just setup-signing)
 build-release:
     #!/usr/bin/env bash
-    if [ ! -f release.keystore ] || [ ! -f .env ]; then
+    if [ -z "$KEYSTORE_PATH" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
       echo "No signing config found. Run: just setup-signing" >&2
       exit 1
     fi
@@ -57,7 +57,7 @@ clean:
 # build + test
 check: build test
 
-# generate a keystore and .env for signing release APKs
+# generate a keystore and store signing secrets via secretspec
 setup-signing:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -120,13 +120,12 @@ setup-signing:
     echo "Secret name: KEY_PASSWORD"
     echo "Value: $STORE_PASS"
     echo "---"
-    printf '%s\n' \
-      "KEYSTORE_PATH=$OUTPUT" \
-      "KEYSTORE_PASSWORD=$STORE_PASS" \
-      "KEY_ALIAS=$KEY_ALIAS" \
-      "KEY_PASSWORD=$STORE_PASS" > .env
+    secretspec set KEYSTORE_PATH "$OUTPUT"
+    secretspec set KEYSTORE_PASSWORD "$STORE_PASS"
+    secretspec set KEY_ALIAS "$KEY_ALIAS"
+    secretspec set KEY_PASSWORD "$STORE_PASS"
 
     echo ""
-    echo ".env file created — nix develop loads it automatically."
+    echo "Signing secrets stored via secretspec (dotenv provider, .env)."
     echo ""
     echo "For release builds, run:  just build-release"
