@@ -20,7 +20,7 @@ import com.skiletro.wheelwitch.model.LicenseStats
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.model.SaveFileInfo
 import com.skiletro.wheelwitch.model.ScoreResult
-import com.skiletro.wheelwitch.model.VanityBadge
+import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.model.computeScore
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.prefs.Prefs
@@ -158,8 +158,8 @@ class SaveDataViewModel(
     )
   }
 
-  private val _vanityBadges = MutableStateFlow<Map<String, VanityBadge>>(emptyMap())
-  val vanityBadges: StateFlow<Map<String, VanityBadge>> = _vanityBadges.asStateFlow()
+  private val _badges = MutableStateFlow<Map<Long, List<BadgeType>>>(emptyMap())
+  val badges: StateFlow<Map<Long, List<BadgeType>>> = _badges.asStateFlow()
 
   private val _isLoading = MutableStateFlow(false)
   val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -287,9 +287,10 @@ class SaveDataViewModel(
         // Network enhancements run in background — they never block
         // the license grid from rendering local save data.
         launch {
-          val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges() }
-          Timber.tag(TAG).d("Fetched %d vanity badge entries", badges.size)
-          _vanityBadges.value = badges
+          val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
+          val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
+          Timber.tag(TAG).d("Fetched %d badge entries", badges.size)
+          _badges.value = badges
         }
         if (target != null) {
           launch { refreshMergedLicensesForRegion(target, infos[target]) }

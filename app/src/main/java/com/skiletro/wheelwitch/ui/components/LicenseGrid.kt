@@ -32,7 +32,6 @@ import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.LicenseInfo
 import com.skiletro.wheelwitch.model.ScoreResult
-import com.skiletro.wheelwitch.model.VanityBadge
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
@@ -51,7 +50,6 @@ private val CompactCellHeightThreshold = 140.dp
 fun LicenseGrid(
   licenses: List<LicenseInfo>,
   scoreResults: Map<Int, ScoreResult?>,
-  badges: Map<String, VanityBadge>,
   isLoading: Boolean,
 ) {
   Box(
@@ -76,7 +74,6 @@ fun LicenseGrid(
                 LicenseCell(
                   license = first,
                   scoreResult = scoreResults[first.slotIndex],
-                  badge = first.friendCode?.let { badges[it] },
                   modifier = Modifier.weight(1f),
                 )
               }
@@ -84,7 +81,6 @@ fun LicenseGrid(
                 LicenseCell(
                   license = second,
                   scoreResult = scoreResults[second.slotIndex],
-                  badge = second.friendCode?.let { badges[it] },
                   modifier = Modifier.weight(1f),
                 )
               }
@@ -100,7 +96,6 @@ fun LicenseGrid(
             LicenseCell(
               license = license,
               scoreResult = scoreResults[license.slotIndex],
-              badge = license.friendCode?.let { badges[it] },
               modifier = Modifier.fillMaxWidth(),
             )
           }
@@ -117,7 +112,6 @@ fun LicenseGrid(
 fun LicenseCell(
   license: LicenseInfo?,
   scoreResult: ScoreResult?,
-  badge: VanityBadge? = null,
   modifier: Modifier = Modifier,
 ) {
   val exists = license?.exists == true
@@ -133,7 +127,7 @@ fun LicenseCell(
     Box(modifier = Modifier.fillMaxSize()) {
       val populated = license?.takeIf { it.exists }
       if (populated != null) {
-        PopulatedCell(license = populated, scoreResult = scoreResult, badge = badge)
+        PopulatedCell(license = populated, scoreResult = scoreResult)
       } else {
         EmptyCell()
       }
@@ -142,7 +136,7 @@ fun LicenseCell(
 }
 
 @Composable
-fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badge: VanityBadge? = null) {
+fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?) {
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val compact = maxWidth < CompactCellWidthThreshold || maxHeight < CompactCellHeightThreshold
     val compactFontSize = 9.sp
@@ -219,7 +213,6 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badge: Vanity
       Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
       RankBadge(
         result = scoreResult,
-        vanityBadge = badge,
         compact = compact,
         compactFontSize = compactFontSize
       )
@@ -323,7 +316,6 @@ private fun LicenseGridCompactTwoColumnPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
-      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -336,7 +328,6 @@ private fun LicenseGridRegularTwoColumnPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
-      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -349,7 +340,6 @@ private fun LicenseGridNarrowPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
-      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -362,7 +352,6 @@ private fun LicenseGridMediumPreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
-      badges = emptyMap(),
       isLoading = false,
     )
   }
@@ -375,7 +364,6 @@ private fun LicenseGridWidePreview() {
     LicenseGrid(
       licenses = PreviewLicenses,
       scoreResults = PreviewScores,
-      badges = emptyMap(),
       isLoading = false,
     )
   }

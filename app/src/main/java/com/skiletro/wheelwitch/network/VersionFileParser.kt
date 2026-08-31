@@ -1,5 +1,6 @@
 package com.skiletro.wheelwitch.network
 
+import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.model.DeletionEntry
 import com.skiletro.wheelwitch.model.LeaderboardResponse
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
@@ -11,9 +12,9 @@ import com.skiletro.wheelwitch.model.ServerInfo
 import com.skiletro.wheelwitch.model.TimeTrialLeaderboardResponse
 import com.skiletro.wheelwitch.model.TimeTrialTrack
 import com.skiletro.wheelwitch.model.UpdateEntry
-import com.skiletro.wheelwitch.model.VanityBadge
 import com.skiletro.wheelwitch.util.net.HttpClientProvider
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
@@ -78,7 +79,7 @@ object VersionFileParser {
     private const val RACE_STATS_URL = "$RWFC_API/api/racestats/global"
     private const val TIME_TRIAL_TRACKS_URL = "$RWFC_API/api/timetrial/tracks"
     private const val TIME_TRIAL_LEADERBOARD_URL = "$RWFC_API/api/timetrial/leaderboard"
-    private const val BADGES_BASE = "$RWFC_API/api/game/badges/"
+    private const val BADGES_BASE = "$RWFC_API/api/badges/by-pid/"
 
     private val httpClient get() = HttpClientProvider.client
     private val probeClient get() = HttpClientProvider.probeClient
@@ -171,18 +172,24 @@ object VersionFileParser {
         )
     }
 
-    /** Fetches the vanity badge map: friend code → [VanityBadge]. Fetches all 3 badge files concurrently. */
-    suspend fun fetchBadges(): Map<String, VanityBadge> = runCatching {
-        kotlinx.coroutines.coroutineScope {
-            val ant = async { VanityBadgeParser.parseBadgeText(fetchUrl("${BADGES_BASE}ant.txt"), VanityBadge.ANT) }
-            val dev = async { VanityBadgeParser.parseBadgeText(fetchUrl("${BADGES_BASE}dev.txt"), VanityBadge.DEVELOPER) }
-            val dono = async { VanityBadgeParser.parseBadgeText(fetchUrl("${BADGES_BASE}dono.txt"), VanityBadge.DONATOR) }
-            ant.await() + dev.await() + dono.await()
+    /** Fetches the badges for each profile ID. Pids with no badges are omitted. */
+    suspend fun fetchBadges(profileIds: Collection<Long>): Map<Long, List<BadgeType>> =
+        coroutineScope {
+            profileIds
+                .distinct()
+                .map { pid -> async { pid to badgesForPid(pid) } }
+                .awaitAll()
+                .filter { (_, badges) -> badges.isNotEmpty() }
+                .toMap()
         }
-    }.getOrElse {
-        Timber.tag("Network").w(it, "Failed to fetch vanity badges")
-        emptyMap()
+
+    private fun badgesForPid(pid: Long): List<BadgeType> = runCatching {
+        parseBadgeTypes(fetchUrl("$BADGES_BASE$pid")).filter { it != BadgeType.UNKNOWN }
     }
+        .getOrElse {
+            Timber.tag("Network").w(it, "Failed to fetch badges for %d", pid)
+            emptyList()
+        }
 
     /** Blocking HTTP GET. Throws on non-2xx or empty body. */
     private fun fetchUrl(urlString: String): String {
