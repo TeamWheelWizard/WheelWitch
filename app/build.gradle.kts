@@ -118,7 +118,6 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  implementation(libs.material)
   implementation(libs.okhttp)
   implementation(libs.rollingnumbers)
   implementation(libs.timber)
