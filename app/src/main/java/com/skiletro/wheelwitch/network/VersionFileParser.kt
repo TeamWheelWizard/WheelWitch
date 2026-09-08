@@ -68,11 +68,11 @@ internal fun parseDeletionsText(text: String): List<DeletionEntry> {
 
 /** Fetches update manifests, room status, leaderboard data from the RWFC network. */
 object VersionFileParser {
-    private const val RR_BASE = "https://update.rwfc.net/"
+    const val RR_BASE = "https://update.rwfc.net/"
     private const val VERSION_URL = "${RR_BASE}RetroRewind/RetroRewindVersion.txt"
     private const val DELETE_URL = "${RR_BASE}RetroRewind/RetroRewindDelete.txt"
     private const val INSTALL_URL = "${RR_BASE}RetroRewind/RetroRewindInstall.txt"
-    private const val RWFC_API = "https://rwfc.net"
+    const val RWFC_API = "https://rwfc.net"
     private const val ROOM_STATUS_URL = "$RWFC_API/api/roomstatus"
     private const val LEADERBOARD_URL = "$RWFC_API/api/leaderboard"
     private const val HEALTH_URL = "$RWFC_API/api/health"
@@ -80,7 +80,7 @@ object VersionFileParser {
     private const val RACE_STATS_URL = "$RWFC_API/api/racestats/global"
     private const val TIME_TRIAL_TRACKS_URL = "$RWFC_API/api/timetrial/tracks"
     private const val TIME_TRIAL_LEADERBOARD_URL = "$RWFC_API/api/timetrial/leaderboard"
-    private const val BADGES_BASE = "$RWFC_API/api/badges/by-pid/"
+    const val BADGES_BASE = "$RWFC_API/api/badges/by-pid/"
 
     private val probeClient get() = HttpClientProvider.probeClient
 
