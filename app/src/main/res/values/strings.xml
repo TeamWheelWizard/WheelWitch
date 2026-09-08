@@ -6,6 +6,7 @@
     <string name="cd_mii_maker">Mii Maker</string>
     <string name="cd_online_menu">Online Menu</string>
     <string name="topbar_subtitle">Retro Rewind Pack Manager</string>
+    <string name="topbar_canary_version">%1$s CANARY</string>
 
     <!-- general actions -->
     <string name="action_install">Install</string>
@@ -44,6 +45,7 @@
     <string name="home_launch_retro_rewind">Launch Retro Rewind</string>
     <string name="home_racers_online">%d racers online</string>
     <string name="home_offline">Offline</string>
+    <string name="home_bulleted_format">\u2022 %1$s</string>
     <string name="home_up_to_date">Up to date (v%s)</string>
     <string name="home_update_format">v%1$s to v%2$s</string>
     <string name="home_check_failed">Couldn\'t check for updates</string>
@@ -70,6 +72,7 @@
     <!-- onboarding -->
     <string name="onboarding_welcome_to">Welcome to</string>
     <string name="onboarding_app_name">Wheel Witch</string>
+    <string name="onboarding_welcome_title">%1$s\n%2$s</string>
     <string name="onboarding_welcome_body">Your companion for installing and launching the Retro Rewind Mario Kart Wii pack with Dolphin Emulator.</string>
     <string name="onboarding_get_started">Let\'s get started</string>
     <string name="onboarding_dolphin_title">Dolphin Emulator</string>
@@ -212,6 +215,8 @@
     <string name="race_stats_days_ago">%dd ago</string>
     <string name="race_stats_number_m">%.1fM</string>
     <string name="race_stats_number_k">%.1fK</string>
+    <string name="race_stats_hour_am">%1$da</string>
+    <string name="race_stats_hour_pm">%1$dp</string>
 
     <!-- time trial -->
     <string name="time_trial_title">Time Trials</string>
@@ -219,6 +224,8 @@
     <string name="time_trial_no_tracks">No tracks available</string>
     <string name="time_trial_no_submissions">No submissions yet</string>
     <string name="time_trial_cc_format">%dcc</string>
+    <string name="time_trial_rank_format">#%1$d</string>
+    <string name="time_trial_rank_placeholder">-</string>
     <string name="time_trial_glitch_allowed">Glitch</string>
     <string name="time_trial_no_glitch">No Glitch</string>
     <string name="time_trial_search_hint">Search tracks</string>
@@ -297,6 +304,7 @@
     <string name="rank_locked">Locked</string>
     <string name="rank_races_format">%d/100 races</string>
     <string name="rank_score_label">Score:</string>
+    <string name="rank_pts_to_format">%1$d pts to </string>
 
     <!-- logging / bug report -->
     <string name="settings_logging">Logging</string>

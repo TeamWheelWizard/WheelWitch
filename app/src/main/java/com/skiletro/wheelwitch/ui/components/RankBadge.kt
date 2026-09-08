@@ -147,7 +147,7 @@ private fun PopulatedBadge(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Text(
-        text = "$pointsNeeded pts to ",
+        text = stringResource(R.string.rank_pts_to_format, pointsNeeded),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = maybeCompactFontSize,

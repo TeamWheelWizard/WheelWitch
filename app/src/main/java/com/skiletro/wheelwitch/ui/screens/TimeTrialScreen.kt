@@ -498,7 +498,9 @@ private fun SubmissionRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "#${submission.rank ?: "-"}",
+                text = submission.rank
+              ?.let { stringResource(R.string.time_trial_rank_format, it) }
+              ?: stringResource(R.string.time_trial_rank_placeholder),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (submission.rank != null && submission.rank <= 3)

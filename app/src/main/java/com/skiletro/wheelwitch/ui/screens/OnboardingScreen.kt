@@ -440,7 +440,11 @@ private enum class OnboardingStep {
 private fun WelcomeStep(onNext: () -> Unit) {
   StepCard(
     title =
-      "${stringResource(R.string.onboarding_welcome_to)}\n${stringResource(R.string.onboarding_app_name)}",
+      stringResource(
+        R.string.onboarding_welcome_title,
+        stringResource(R.string.onboarding_welcome_to),
+        stringResource(R.string.onboarding_app_name),
+      ),
     titleStyle = MaterialTheme.typography.headlineLarge,
     titleColor = MaterialTheme.colorScheme.primary,
     body = stringResource(R.string.onboarding_welcome_body),

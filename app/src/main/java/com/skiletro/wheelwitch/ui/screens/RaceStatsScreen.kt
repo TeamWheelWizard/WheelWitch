@@ -573,10 +573,10 @@ private fun PeakHoursChart(
     StatsCard(modifier = modifier) {
         hours.filter { it.hour % 3 == 0 }.forEach { hour ->
             val label = when (hour.hour) {
-                0 -> "12a"
-                12 -> "12p"
-                in 1..11 -> "${hour.hour}a"
-                else -> "${hour.hour - 12}p"
+                0 -> stringResource(R.string.race_stats_hour_am, 12)
+                12 -> stringResource(R.string.race_stats_hour_pm, 12)
+                in 1..11 -> stringResource(R.string.race_stats_hour_am, hour.hour)
+                else -> stringResource(R.string.race_stats_hour_pm, hour.hour - 12)
             }
             Row(
                 modifier = Modifier
