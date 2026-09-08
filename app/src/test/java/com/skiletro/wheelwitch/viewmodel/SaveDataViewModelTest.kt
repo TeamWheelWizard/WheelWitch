@@ -390,7 +390,7 @@ mockkObject(SaveManager)
     val uri = mockk<Uri>(relaxed = true)
     coEvery { SaveManager.backupAll(mockTree, uri) } returns
       Result.success(
-        SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = true, pulsar = 3, ghosts = 4, bytes = 100L)
+        SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = true, pulsar = 3, ghosts = 4)
       )
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
@@ -483,7 +483,7 @@ mockkObject(SaveManager)
     val uri = mockk<Uri>(relaxed = true)
     coEvery { SaveManager.backupRR(mockTree, uri) } returns
       Result.success(
-        SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 100L)
+        SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0)
       )
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
@@ -573,7 +573,7 @@ mockkObject(SaveManager)
     val uri = mockk<Uri>(relaxed = true)
     coEvery { SaveManager.backupRR(mockTree, uri) } returns
       Result.success(
-        SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
+        SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0)
       )
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
@@ -591,7 +591,7 @@ mockkObject(SaveManager)
     val uri = mockk<Uri>(relaxed = true)
     coEvery { SaveManager.backupAll(mockTree, uri) } returns
       Result.success(
-        SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
+        SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0)
       )
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true

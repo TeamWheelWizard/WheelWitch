@@ -396,7 +396,6 @@ object SaveManager {
                 faceLib = faceLibAvailable,
                 pulsar = availablePul.size,
                 ghosts = ghostCount,
-                bytes = -1L,
               )
             val what = if (scope == SaveScope.ALL) "user save data" else "RR saves"
             Timber.tag(TAG).i("Backed up %s to %s: %s", what, dest, summary)
@@ -745,7 +744,6 @@ object SaveManager {
     val faceLib: Boolean,
     val pulsar: Int,
     val ghosts: Int,
-    val bytes: Long,
   )
 
   /** Counts returned by [restoreAll] for UI feedback. */

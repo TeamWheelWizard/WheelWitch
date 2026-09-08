@@ -32,13 +32,10 @@ data class ServerHealth(
  *
  * The RWFC API embeds memory usage in the check's free-text description
  * rather than a structured field, so only [used] is populated by the
- * health parser. [usagePercent] and [total] are reserved for future API
- * support and are currently always null.
+ * health parser.
  */
 @Immutable
 data class MemoryInfo(
     val status: String,
-    val usagePercent: Double?,
-    val used: String?,
-    val total: String?
+    val used: String?
 )

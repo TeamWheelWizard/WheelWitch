@@ -73,9 +73,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/** Duration of the onboarding fade-in/out crossfade. */
-private const val ONBOARDING_TRANSITION_MS = 300
-
 /**
  * Onboarding wizard. The flow is:
  * `Welcome → Dolphin → Storage → Rom → Complete`.

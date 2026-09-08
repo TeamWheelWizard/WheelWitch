@@ -227,30 +227,10 @@ private fun MemoryRow(memory: MemoryInfo) {
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
-                val usageText = when {
-                    memory.usagePercent != null && memory.used != null && memory.total != null ->
-                        stringResource(
-                            R.string.health_usage_with_total_format,
-                            memory.usagePercent,
-                            memory.used,
-                            memory.total
-                        )
-
-                    memory.usagePercent != null && memory.used != null ->
-                        stringResource(
-                            R.string.health_usage_with_used_format,
-                            memory.usagePercent,
-                            memory.used
-                        )
-
-                    memory.usagePercent != null ->
-                        stringResource(R.string.health_usage_format, memory.usagePercent)
-
-                    memory.used != null ->
-                        stringResource(R.string.health_usage_just_used_format, memory.used)
-
-                    else ->
-                        stringResource(R.string.health_usage_format, 0.0)
+                val usageText = if (memory.used != null) {
+                    stringResource(R.string.health_usage_just_used_format, memory.used)
+                } else {
+                    stringResource(R.string.health_usage_format, 0.0)
                 }
                 Text(
                     text = usageText,
