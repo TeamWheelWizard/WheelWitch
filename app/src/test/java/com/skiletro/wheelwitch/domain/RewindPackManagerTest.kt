@@ -18,6 +18,7 @@ import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import io.mockk.verify
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -310,6 +311,26 @@ class RewindPackManagerTest {
 
     assertThat(result.isFailure).isTrue()
     verify(exactly = 0) { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) }
+  }
+
+  @Test
+  fun `installLatest does not swallow cancellation into a Result failure`() = runBlocking {
+    every { VersionFileParser.fetchServerInfo() } returns Result.success(serverInfo())
+    every { VersionFileParser.getFullZipUrl() } returns "https://example.com/RetroRewind.zip"
+    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+      {
+        val target = it.invocation.args[1] as File
+        target.parentFile?.mkdirs()
+        target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
+        target
+      }
+    coEvery { tree.extractZipToPack(any(), any()) } throws CancellationException("cancelled")
+
+    val ex = runCatching { manager().installLatest { /* no-op */ } }.exceptionOrNull()
+
+    // runCatching was applied by the *caller* here; the manager must not
+    // convert cooperative cancellation into Result.failure itself.
+    assertThat(ex).isInstanceOf(CancellationException::class.java)
   }
 
   // --- update ----------------------------------------------------------

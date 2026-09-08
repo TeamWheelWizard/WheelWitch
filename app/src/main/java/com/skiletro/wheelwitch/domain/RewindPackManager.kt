@@ -11,6 +11,7 @@ import com.skiletro.wheelwitch.util.io.FileDownloader
 import com.skiletro.wheelwitch.util.io.ParallelDownloadProgress
 import com.skiletro.wheelwitch.util.net.HttpClientProvider
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -89,7 +90,7 @@ class RewindPackManager(
    */
   suspend fun installLatest(onProgress: (InstallProgress) -> Unit): Result<Unit> =
     withContext(Dispatchers.IO) {
-      runCatching {
+      try {
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         Timber.tag(TAG).i("Starting full install of %s", server.latestVersion)
         performInstall(VersionFileParser.getFullZipUrl(), onProgress)
@@ -97,6 +98,11 @@ class RewindPackManager(
           tree.writeVersion(server.latestVersion)
         }
         writeRrMetadataSafe(server.latestVersion)
+        Result.success(Unit)
+      } catch (ce: CancellationException) {
+        throw ce
+      } catch (t: Throwable) {
+        Result.failure(t)
       }
     }
 
@@ -111,7 +117,7 @@ class RewindPackManager(
    */
   suspend fun update(onProgress: (InstallProgress) -> Unit): Result<Unit> =
     withContext(Dispatchers.IO) {
-      runCatching {
+      try {
         val local = tree.readVersion()
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         if (local == null) {
@@ -138,6 +144,11 @@ class RewindPackManager(
           tree.writeVersion(server.latestVersion)
         }
         writeRrMetadataSafe(server.latestVersion)
+        Result.success(Unit)
+      } catch (ce: CancellationException) {
+        throw ce
+      } catch (t: Throwable) {
+        Result.failure(t)
       }
     }
 
@@ -151,7 +162,7 @@ class RewindPackManager(
    */
   suspend fun reinstall(onProgress: (InstallProgress) -> Unit): Result<Unit> =
     withContext(Dispatchers.IO) {
-      runCatching {
+      try {
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         Timber.tag(TAG).i("Starting full reinstall of %s", server.latestVersion)
         performInstall(VersionFileParser.getFullZipUrl(), onProgress)
@@ -159,6 +170,11 @@ class RewindPackManager(
           tree.writeVersion(server.latestVersion)
         }
         writeRrMetadataSafe(server.latestVersion)
+        Result.success(Unit)
+      } catch (ce: CancellationException) {
+        throw ce
+      } catch (t: Throwable) {
+        Result.failure(t)
       }
     }
 
