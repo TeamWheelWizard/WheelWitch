@@ -8,15 +8,18 @@ import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
 import com.skiletro.wheelwitch.domain.LeaderboardMerger
+import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.model.SemVersion
+import com.skiletro.wheelwitch.network.VersionFileParser
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +51,8 @@ class SaveDataViewModelTest {
     ioDispatcher = testDispatcher
     packStatus = MutableStateFlow(UiState.Idle)
     mockTree = mockk(relaxed = true)
-    mockkObject(SaveManager)
+mockkObject(SaveManager)
+    mockkObject(VersionFileParser)
     leaderboardResult.clear()
     leaderboardCalls = 0
     leaderboardResult["1234-5678-9012"] = Result.success(PlayerLeaderboardData(9999, null, null))
@@ -58,6 +62,7 @@ class SaveDataViewModelTest {
   fun tearDown() {
     Dispatchers.resetMain()
     unmockkObject(SaveManager)
+    unmockkObject(VersionFileParser)
   }
 
   private lateinit var ioDispatcher: kotlinx.coroutines.CoroutineDispatcher
@@ -275,6 +280,36 @@ class SaveDataViewModelTest {
     assertThat(merged[0].friendCode).isEqualTo(usaFc)
     assertThat(leaderboardCalls - callsAfterRefresh).isEqualTo(1)
   }
+
+  @Test
+  fun `re-refresh cancels an in-flight badge fetch so stale badges cannot overwrite fresh ones`() =
+    runTest {
+      val bytes = rksysWithLicense(pid = 0x00000010L, name = "Alice", slot = 0)
+      every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
+      coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
+      every { SaveManager.hasAnySave(mockTree) } returns true
+      val gate = CompletableDeferred<Unit>()
+      var calls = 0
+      val fresh = mapOf(0x00000010L to listOf(BadgeType.CONTRIBUTOR))
+      val stale = mapOf(0x00000010L to listOf(BadgeType.UNKNOWN))
+      coEvery { VersionFileParser.fetchBadges(any()) } coAnswers {
+        val seq = calls
+        calls++
+        if (seq == 0) gate.await()
+        if (seq == 0) stale else fresh
+      }
+      vm = buildVm()
+
+      vm.refresh()
+      // Second refresh answers with the fresh badge set immediately…
+      vm.refresh()
+      assertThat(vm.badges.value).isEqualTo(fresh)
+
+      gate.complete(Unit)
+      testScheduler.advanceUntilIdle()
+      assertThat(vm.badges.value).isEqualTo(fresh)
+      assertThat(calls).isEqualTo(2)
+    }
 
   @Test
   fun `selectRegion with the same region is a no-op`() = runTest {

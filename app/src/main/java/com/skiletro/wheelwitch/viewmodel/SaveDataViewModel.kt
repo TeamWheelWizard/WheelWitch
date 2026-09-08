@@ -29,8 +29,11 @@ import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import java.text.DateFormat
 import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -168,9 +171,18 @@ class SaveDataViewModel(
    * [refreshIfStale] to dedup the `init` collect and the
    * `SaveInfoScreen` lifecycle ON_RESUME observer. The latter
    * previously triggered a second full save re-parse + 4 leaderboard
-   * round trips every time the user opened the screen.
+   * round trips every time the user opened the screen. Updated with
+   * an atomic CAS so two concurrent stale-checks cannot both start a
+   * refresh.
    */
-  @Volatile private var lastRefreshAt: Long = 0L
+  private val lastRefreshAt = AtomicLong(0L)
+
+  /**
+   * Handle to the in-flight [refresh] job. A re-entrant [refresh]
+   * cancels the previous run so a stale badge fetch or leaderboard
+   * merge from the old run cannot overwrite fresh state.
+   */
+  private var refreshJob: Job? = null
 
   init {
     // Read persisted state synchronously — SharedPreferences get*()
@@ -214,9 +226,11 @@ class SaveDataViewModel(
    * second SAF `findFile` round trip for every region.
    */
   fun refresh() {
-    viewModelScope.launch {
+    refreshJob?.cancel()
+    refreshJob =
+      viewModelScope.launch {
       _isLoading.value = true
-      lastRefreshAt = now()
+      lastRefreshAt.set(now())
       try {
         val tree =
           treeFactory(app)
@@ -279,15 +293,19 @@ class SaveDataViewModel(
 
         // Network enhancements run in background — they never block
         // the license grid from rendering local save data.
-        launch {
-          val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
-          val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
-          Timber.tag(TAG).d("Fetched %d badge entries", badges.size)
-          _badges.value = badges
+        coroutineScope {
+          launch {
+            val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
+            val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
+            Timber.tag(TAG).d("Fetched %d badge entries", badges.size)
+            _badges.value = badges
+          }
+          if (target != null) {
+            launch { publishMerged(target, infos[target]) }
+          }
         }
-        if (target != null) {
-          launch { publishMerged(target, infos[target]) }
-        }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         Timber.tag(TAG).e(e, "refresh failed")
         _error.value =
@@ -308,7 +326,10 @@ class SaveDataViewModel(
    * should call [refresh] directly.
    */
   fun refreshIfStale(maxAgeMs: Long = DEFAULT_REFRESH_STALE_MS) {
-    if (now() - lastRefreshAt >= maxAgeMs) refresh()
+    val nowValue = now()
+    val last = lastRefreshAt.get()
+    if (nowValue - last < maxAgeMs) return
+    if (lastRefreshAt.compareAndSet(last, nowValue)) refresh()
   }
 
   /**
