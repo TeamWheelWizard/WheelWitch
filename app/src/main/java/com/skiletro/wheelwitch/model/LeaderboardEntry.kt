@@ -5,19 +5,21 @@ import androidx.compose.runtime.Immutable
 /**
  * One row of the VR leaderboard.
  *
- * [miiImageBase64] and [miiData] are two optional Mii representations
- * returned by the API: [miiImageBase64] is a pre-rendered PNG image, and
- * [miiData] is the raw Base64-encoded RFL (Mii binary) payload that the
- * client can re-render via the Mii image service. Either may be null.
+ * [player] carries the shared per-player shape (VR, name, Mii data)
+ * that the "player profile" endpoint also returns; [rank], [friendCode]
+ * and [miiImageBase64] are leaderboard-specific.
+ *
+ * [miiImageBase64] is a pre-rendered PNG image, whereas
+ * [PlayerLeaderboardData.miiData] is the raw Base64-encoded RFL (Mii
+ * binary) payload that the client can re-render via the Mii image
+ * service. Either may be null.
  */
 @Immutable
 data class LeaderboardEntry(
     val rank: Int,
     val friendCode: String,
-    val name: String,
-    val vr: Int,
-    val miiImageBase64: String?,
-    val miiData: String?
+    val player: PlayerLeaderboardData,
+    val miiImageBase64: String?
 )
 
 data class LeaderboardResponse(

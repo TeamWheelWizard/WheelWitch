@@ -191,13 +191,13 @@ private fun LeaderboardRow(entry: LeaderboardEntry, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.width(8.dp))
             MiiFace(
                 imageBase64 = entry.miiImageBase64,
-                miiDataBase64 = entry.miiData,
+                miiDataBase64 = entry.player.miiData,
                 modifier = Modifier.size(36.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = entry.name,
+                    text = entry.player.name ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,
@@ -213,7 +213,7 @@ private fun LeaderboardRow(entry: LeaderboardEntry, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "${entry.vr}",
+                    text = "${entry.player.vr}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary

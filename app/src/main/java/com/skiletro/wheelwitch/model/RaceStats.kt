@@ -1,10 +1,9 @@
 package com.skiletro.wheelwitch.model
 
-data class TrackStat(val name: String, val raceCount: Int)
-data class NamedStat(val name: String, val raceCount: Int)
+/** A named item and how many races it appears in (tracks, characters, vehicles, combos, days). */
+data class CountStat(val name: String, val raceCount: Int)
 data class WinRateStat(val name: String, val raceCount: Int, val winCount: Int, val winRate: Double)
 data class ActivePlayer(val name: String, val pid: String, val fc: String, val raceCount: Int)
-data class DayStat(val dayName: String, val raceCount: Int)
 data class HourStat(val hour: Int, val raceCount: Int)
 
 /**
@@ -22,12 +21,12 @@ data class RaceStats(
     val totalRaces: Int,
     val totalPlayers: Int,
     val trackedSince: String?,
-    val allPlayedTracks: List<TrackStat>,
-    val topCharacters: List<NamedStat>,
-    val topVehicles: List<NamedStat>,
-    val topCombos: List<NamedStat>,
+    val allPlayedTracks: List<CountStat>,
+    val topCharacters: List<CountStat>,
+    val topVehicles: List<CountStat>,
+    val topCombos: List<CountStat>,
     val mostActivePlayers: List<ActivePlayer>,
-    val racesByDayOfWeek: List<DayStat>,
+    val racesByDayOfWeek: List<CountStat>,
     val racesByHour: List<HourStat>,
     val topCharactersByWinRate: List<WinRateStat>,
     val topVehiclesByWinRate: List<WinRateStat>,

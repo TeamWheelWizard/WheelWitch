@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.model.NamedStat
+import com.skiletro.wheelwitch.model.CountStat
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.WinRateStat
 import com.skiletro.wheelwitch.ui.components.ErrorRetry
@@ -423,7 +423,7 @@ private fun ThinDivider() {
 }
 
 @Composable
-private fun NamedStatList(items: List<NamedStat>) {
+private fun NamedStatList(items: List<CountStat>) {
     val maxCount = items.firstOrNull()?.raceCount ?: 1
     StatsCard {
         items.take(5).forEachIndexed { index, item ->
@@ -531,7 +531,7 @@ private fun WinRateList(items: List<WinRateStat>) {
 
 @Composable
 private fun DayOfWeekChart(
-    days: List<com.skiletro.wheelwitch.model.DayStat>,
+    days: List<com.skiletro.wheelwitch.model.CountStat>,
     modifier: Modifier = Modifier
 ) {
     val maxCount = (days.maxOfOrNull { it.raceCount } ?: 0).coerceAtLeast(1)
@@ -544,7 +544,7 @@ private fun DayOfWeekChart(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = day.dayName.take(3),
+                    text = day.name.take(3),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.width(28.dp)
