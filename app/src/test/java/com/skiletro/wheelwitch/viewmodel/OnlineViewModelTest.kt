@@ -2,6 +2,8 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import android.content.SharedPreferences
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.MutableCreationExtras
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.prefs.Prefs
@@ -69,6 +71,17 @@ class OnlineViewModelTest {
         // The cached fallback read must be dispatched to the injected io
         // dispatcher, not run inline on the main dispatcher.
         assertThat(readInsideIoDispatcher).isTrue()
+    }
+
+    @Test
+    fun `companion factory constructs the view model from application extras`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val extras = MutableCreationExtras()
+        extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] = application
+
+        val vm = OnlineViewModel.Factory.create(OnlineViewModel::class.java, extras)
+
+        assertThat(vm).isInstanceOf(OnlineViewModel::class.java)
     }
 
     private val ioDispatcher = InlineFlaggedDispatcher()

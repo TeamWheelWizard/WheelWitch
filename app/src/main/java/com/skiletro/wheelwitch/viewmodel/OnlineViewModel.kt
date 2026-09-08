@@ -2,7 +2,10 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.ServerConnectivity
@@ -445,5 +448,19 @@ class OnlineViewModel(
         private const val CACHE_KEY_JSON = "raceStats"
         private const val CACHE_KEY_CACHED_AT = "cachedAt"
         private val MAX_CACHE_AGE_MS = TimeUnit.DAYS.toMillis(1)
+
+        /**
+         * [ViewModelProvider.Factory] for the composition root. The default
+         * [ViewModelProvider] for [AndroidViewModel] only handles a single
+         * `(Application)` constructor, so the injected [ioDispatcher]
+         * parameter requires a custom factory.
+         */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app =
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application
+                OnlineViewModel(app)
+            }
+        }
     }
 }

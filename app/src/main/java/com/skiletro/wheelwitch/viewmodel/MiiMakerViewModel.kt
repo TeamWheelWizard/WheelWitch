@@ -2,7 +2,10 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.util.mii.MiiWadInstaller
 import com.skiletro.wheelwitch.util.net.isNetworkAvailable
@@ -117,6 +120,22 @@ class MiiMakerViewModel(
             }
             refreshHasWad()
             Timber.tag("MiiMaker").i("WAD cache cleared")
+        }
+    }
+
+    companion object {
+        /**
+         * [ViewModelProvider.Factory] for the composition root. The default
+         * [ViewModelProvider] for [AndroidViewModel] only handles a single
+         * `(Application)` constructor, so the injected [ioDispatcher]
+         * parameter requires a custom factory.
+         */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app =
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application
+                MiiMakerViewModel(app)
+            }
         }
     }
 }

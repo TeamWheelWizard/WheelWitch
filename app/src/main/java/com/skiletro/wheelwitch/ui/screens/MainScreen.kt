@@ -43,8 +43,8 @@ private const val ONBOARDING_TRANSITION_MS = 300
 @Composable
 fun MainScreen(
   packUpdate: PackUpdateViewModel = viewModel(factory = PackUpdateViewModel.Factory),
-  miiMaker: MiiMakerViewModel = viewModel(),
-  onlineViewModel: OnlineViewModel = viewModel(),
+  miiMaker: MiiMakerViewModel = viewModel(factory = MiiMakerViewModel.Factory),
+  onlineViewModel: OnlineViewModel = viewModel(factory = OnlineViewModel.Factory),
   saveData: SaveDataViewModel = viewModel(factory = SaveDataViewModel.factory(packUpdate)),
   logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
   appUpdate: AppUpdateViewModel = viewModel(factory = AppUpdateViewModel.Factory),
