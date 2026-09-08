@@ -1,11 +1,14 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * One named check in the `/api/health` response.
  *
  * [status] is normalized to one of "ok", "error", or "degraded" by the
  * health parser; [message] is the raw description, if any.
  */
+@Immutable
 data class HealthCheckItem(
     val status: String,
     val message: String?
@@ -15,6 +18,7 @@ data class HealthCheckItem(
  * Parsed `/api/health` response. Each subsystem field is null when the
  * corresponding check is absent from the server response.
  */
+@Immutable
 data class ServerHealth(
     val status: String,
     val database: HealthCheckItem?,
@@ -31,6 +35,7 @@ data class ServerHealth(
  * health parser. [usagePercent] and [total] are reserved for future API
  * support and are currently always null.
  */
+@Immutable
 data class MemoryInfo(
     val status: String,
     val usagePercent: Double?,

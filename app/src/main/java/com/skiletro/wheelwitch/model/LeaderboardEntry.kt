@@ -22,6 +22,7 @@ data class LeaderboardEntry(
     val miiImageBase64: String?
 )
 
+@Immutable
 data class LeaderboardResponse(
     val entries: List<LeaderboardEntry>,
     val page: Int,

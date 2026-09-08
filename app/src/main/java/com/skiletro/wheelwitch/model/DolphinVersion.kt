@@ -1,5 +1,7 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Parsed Dolphin Emulator version, used to warn users running a build
  * with known security vulnerabilities.
@@ -9,6 +11,7 @@ package com.skiletro.wheelwitch.model
  * to be used anymore, however)). The [isAtLeastMinimum] comparison is
  * done on the year-month and, when present, the dev-build number.
  */
+@Immutable
 data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? = null) {
   /**
    * True when this version reaches the security floor:

@@ -1,6 +1,9 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /** Three-part semantic version with optional pre-release label (e.g. "3.2.6-beta1"). */
+@Immutable
 data class SemVersion(
     val major: Int,
     val minor: Int,

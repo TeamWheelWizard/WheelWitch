@@ -1,9 +1,15 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /** A named item and how many races it appears in (tracks, characters, vehicles, combos, days). */
+@Immutable
 data class CountStat(val name: String, val raceCount: Int)
+@Immutable
 data class WinRateStat(val name: String, val raceCount: Int, val winCount: Int, val winRate: Double)
+@Immutable
 data class ActivePlayer(val name: String, val pid: String, val fc: String, val raceCount: Int)
+@Immutable
 data class HourStat(val hour: Int, val raceCount: Int)
 
 /**
@@ -17,6 +23,7 @@ data class HourStat(val hour: Int, val raceCount: Int)
  * [ActivePlayer.pid] is the player's persistent ID and [ActivePlayer.fc]
  * is their friend code.
  */
+@Immutable
 data class RaceStats(
     val totalRaces: Int,
     val totalPlayers: Int,

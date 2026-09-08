@@ -1,5 +1,8 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 enum class BadgeType(val apiValue: Int) {
   RETRO_REWIND_DEVELOPER(0),
   WHEEL_WIZARD_DEVELOPER(1),
