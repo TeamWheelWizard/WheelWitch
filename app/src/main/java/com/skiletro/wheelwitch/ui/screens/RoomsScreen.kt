@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -203,13 +202,13 @@ fun RoomListItem(
                 }
                 if (room.isJoinable) {
                     Surface(
-                        color = statusColors().ok,
+                        color = statusColors().okContainer,
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.rooms_open),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                            color = Color.White,
+                            color = statusColors().onOkContainer,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }

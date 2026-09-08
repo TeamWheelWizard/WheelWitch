@@ -217,6 +217,10 @@
     <string name="race_stats_number_k">%.1fK</string>
     <string name="race_stats_hour_am">%1$da</string>
     <string name="race_stats_hour_pm">%1$dp</string>
+    <plurals name="race_stats_chart_segment">
+        <item quantity="one">%1$s: %2$d race</item>
+        <item quantity="other">%1$s: %2$d races</item>
+    </plurals>
 
     <!-- time trial -->
     <string name="time_trial_title">Time Trials</string>

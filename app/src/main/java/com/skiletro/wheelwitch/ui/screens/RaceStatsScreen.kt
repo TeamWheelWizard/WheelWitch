@@ -33,7 +33,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -538,10 +541,17 @@ private fun DayOfWeekChart(
     val maxCount = (days.maxOfOrNull { it.raceCount } ?: 0).coerceAtLeast(1)
     StatsCard(modifier = modifier) {
         days.forEach { day ->
+            val dayDescription = pluralStringResource(
+                R.plurals.race_stats_chart_segment,
+                day.raceCount,
+                day.name,
+                day.raceCount
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .clearAndSetSemantics { contentDescription = dayDescription },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -579,10 +589,17 @@ private fun PeakHoursChart(
                 in 1..11 -> stringResource(R.string.race_stats_hour_am, hour.hour)
                 else -> stringResource(R.string.race_stats_hour_pm, hour.hour - 12)
             }
+            val hourDescription = pluralStringResource(
+                R.plurals.race_stats_chart_segment,
+                hour.raceCount,
+                label,
+                hour.raceCount
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .clearAndSetSemantics { contentDescription = hourDescription },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(

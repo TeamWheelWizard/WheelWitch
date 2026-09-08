@@ -20,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,13 +58,13 @@ fun RoomDetail(room: Room) {
                     )
                     if (room.isJoinable) {
                         Surface(
-                            color = statusColors().ok,
+                            color = statusColors().okContainer,
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.rooms_joinable),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                color = Color.White,
+                                color = statusColors().onOkContainer,
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
