@@ -34,10 +34,8 @@ class OptionalFileTree(
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 1_000_000L // 1 MB
 
-    internal fun formatLine(priority: Int, tag: String?, message: String): String {
-      val ts = LogEntry(System.currentTimeMillis(), priority, tag, message)
-      return "${ts.timestampMillis} ${ts.levelLabel()}/${tag ?: "?"}: $message"
-    }
+    internal fun formatLine(priority: Int, tag: String?, message: String): String =
+        LogEntry(System.currentTimeMillis(), priority, tag, message).serialize()
   }
 }
 

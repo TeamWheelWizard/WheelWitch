@@ -62,15 +62,7 @@ object LogExporter {
       sb.append("(no log entries captured)\n")
     } else {
       for (entry in entries) {
-        val tag = entry.tag ?: "?"
-        sb.append(entry.timestampMillis)
-          .append(' ')
-          .append(entry.levelLabel())
-          .append('/')
-          .append(tag)
-          .append(": ")
-          .append(entry.message)
-          .append('\n')
+        sb.append(entry.serialize()).append('\n')
       }
     }
     appendOnDiskLogs(sb, File(context.cacheDir, DIR_NAME))

@@ -25,4 +25,11 @@ data class LogEntry(
         android.util.Log.ASSERT -> "A"
         else -> "?"
       }
+
+  /**
+   * Serialises this entry to the canonical on-disk/report line shape
+   * `<timestamp> <LEVEL>/<tag>: <message>`. Single source of truth for the
+   * format consumed by [LogTextRenderer]'s regex.
+   */
+  fun serialize(): String = "$timestampMillis ${levelLabel()}/${tag ?: "?"}: $message"
 }
