@@ -50,6 +50,7 @@ class DolphinTreeTest {
 
     mockkStatic(DocumentFile::class)
     every { DocumentFile.fromTreeUri(context, treeUri) } returns root
+    DolphinTree.resetMemo()
   }
 
   @AfterEach
@@ -365,6 +366,20 @@ class DolphinTreeTest {
     assertThat(DolphinTree.fromPersisted(context)).isNull()
     verify { editor.remove(PrefsKeys.WHEELWITCH_TREE_URI_KEY) }
     verify { editor.apply() }
+  }
+
+  @Test
+  fun `fromPersisted reuses the memoised tree for repeated calls with the same URI`() {
+    val prefs = mockk<SharedPreferences>(relaxed = true)
+    every { prefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null) } returns
+      treeUri.toString()
+    mockPrefsMain(prefs)
+
+    val first = DolphinTree.fromPersisted(context)
+    val second = DolphinTree.fromPersisted(context)
+
+    assertThat(second).isEqualTo(first)
+    verify(exactly = 1) { DocumentFile.fromTreeUri(context, treeUri) }
   }
 
   @Test

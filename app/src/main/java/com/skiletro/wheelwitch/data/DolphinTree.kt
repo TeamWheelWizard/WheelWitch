@@ -742,6 +742,12 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     /** Tag used by Timber in this file's log lines. */
     const val TAG = "DolphinTree"
 
+    /** Memoised tree from [fromPersisted]; kept in sync with [memoUri]. */
+    private var memoTree: DolphinTree? = null
+
+    /** Persisted URI the memoised tree was built from; null when unset. */
+    private var memoUri: String? = null
+
     /** Buffered-copy buffer used when [FileChannel.transferFrom] is not available. */
     const val COPY_BUFFER_SIZE: Int = 256 * 1024
 
@@ -851,7 +857,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
      * is missing or no longer valid (e.g. the user revoked the SAF
      * grant). When the grant is lost, the persisted URI is cleared so
      * the UI can route to onboarding.
+     *
+     * The rebuilt tree is memoised for the process lifetime; repeat
+     * calls with the unchanged URI skip the resolver rebuild. The memo
+     * is invalidated by [persist] (a new folder pick) and on rebuild
+     * failure so a stale grant can never be served a cached tree.
      */
+    @Synchronized
     fun fromPersisted(context: Context): DolphinTree? {
       val prefs = Prefs.main(context)
       val uriString = prefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null)
@@ -859,7 +871,15 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         Timber.tag(TAG)
           .i("fromPersisted: no tree URI under %s; user has not completed onboarding",
             PrefsKeys.WHEELWITCH_TREE_URI_KEY)
+        memoUri = null
+        memoTree = null
         return null
+      }
+      if (memoUri == uriString) {
+        Timber.tag(TAG)
+          .i("fromPersisted: reusing memoised tree for authority=%s",
+            memoTree?.treeUri?.authority)
+        return memoTree
       }
       return try {
         val uri = Uri.parse(uriString)
@@ -868,25 +888,38 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           .i("fromPersisted: rebuilding tree from authority=%s docId=%s",
             uri?.authority, docId)
         val tree = DolphinTree(context, uri)
+        memoUri = uriString
+        memoTree = tree
         Timber.tag(TAG)
           .i("fromPersisted: tree built ok, wheelWitchDir=%s", tree.wheelWitchDir.uri)
         tree
       } catch (e: Exception) {
         Timber.tag(TAG)
           .e(e, "fromPersisted: rebuild failed for uriString=%s; clearing pref", uriString)
+        memoUri = null
+        memoTree = null
         prefs.edit().remove(PrefsKeys.WHEELWITCH_TREE_URI_KEY).apply()
         null
       }
     }
 
     /** Stores [tree]'s URI under [PrefsKeys.WHEELWITCH_TREE_URI_KEY] for [fromPersisted]. */
+    @Synchronized
     fun persist(context: Context, tree: DolphinTree) {
       Prefs.main(context)
         .edit()
         .putString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, tree.treeUri.toString())
         .apply()
+      memoUri = null
+      memoTree = null
       Timber.tag(TAG)
         .i("persist: stored tree URI authority=%s", tree.treeUri.authority)
+    }
+
+    /** Drops the in-process memo, e.g. in tests that build the tree repeatedly. */
+    internal fun resetMemo() {
+      memoUri = null
+      memoTree = null
     }
   }
 }
