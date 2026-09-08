@@ -64,6 +64,7 @@ import com.skiletro.wheelwitch.ui.components.VerticalDivider
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.TimeTrialState
 import com.skiletro.wheelwitch.viewmodel.TrackLeaderboardState
@@ -104,7 +105,7 @@ fun TimeTrialScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchTracks() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_TimeTrial",
+                key = OnlineMenuPage.TimeTrial.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )

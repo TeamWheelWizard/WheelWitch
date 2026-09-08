@@ -38,6 +38,7 @@ import com.skiletro.wheelwitch.ui.theme.indicator
 import com.skiletro.wheelwitch.ui.theme.statusColors
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
 import com.skiletro.wheelwitch.viewmodel.HealthState
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -59,7 +60,7 @@ fun HealthScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchHealth() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Health",
+                key = OnlineMenuPage.Health.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )

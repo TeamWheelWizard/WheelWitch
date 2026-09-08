@@ -46,6 +46,7 @@ import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.RaceStatsState
 
@@ -72,7 +73,7 @@ fun RaceStatsScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchRaceStats() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_RaceStats",
+                key = OnlineMenuPage.RaceStats.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             ),

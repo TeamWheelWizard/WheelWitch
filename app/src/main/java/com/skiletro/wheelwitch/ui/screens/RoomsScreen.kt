@@ -49,6 +49,7 @@ import com.skiletro.wheelwitch.ui.components.VerticalDivider
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.statusColors
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.RoomsState
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -78,7 +79,7 @@ fun RoomsScreen(
             onBack = onClose,
             onRefresh = onRefresh,
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Rooms",
+                key = OnlineMenuPage.Rooms.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )

@@ -47,6 +47,7 @@ import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.viewmodel.LeaderboardState
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -68,7 +69,7 @@ fun LeaderboardScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchLeaderboard() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Leaderboard",
+                key = OnlineMenuPage.Leaderboard.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
