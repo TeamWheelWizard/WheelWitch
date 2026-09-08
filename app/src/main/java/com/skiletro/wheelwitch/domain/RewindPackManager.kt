@@ -82,48 +82,33 @@ class RewindPackManager(
    * Downloads the full pack zip and extracts it into the SAF tree.
    * Always overwrites the local install. Use this for a fresh install
    * or to recover from a corrupted state.
-   *
-   * Wrapped in [withContext] [Dispatchers.IO] because the initial
-   * server-info call hits the network; without it, a [viewModelScope]
-   * caller (which defaults to `Dispatchers.Main.immediate`) trips
-   * Android's `NetworkOnMainThreadException` strict-mode check.
    */
   suspend fun installLatest(onProgress: (InstallProgress) -> Unit): Result<Unit> =
-    withContext(Dispatchers.IO) {
-      try {
+    runInstall(
+      fetchUrl = { progress ->
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         Timber.tag(TAG).i("Starting full install of %s", server.latestVersion)
-        performInstall(VersionFileParser.getFullZipUrl(), onProgress)
-        if (tree.readVersion() != server.latestVersion) {
-          tree.writeVersion(server.latestVersion)
-        }
-        writeRrMetadataSafe(server.latestVersion)
-        Result.success(Unit)
-      } catch (ce: CancellationException) {
-        throw ce
-      } catch (t: Throwable) {
-        Result.failure(t)
-      }
-    }
+        performInstall(VersionFileParser.getFullZipUrl(), progress)
+        server.latestVersion
+      },
+      onProgress = onProgress,
+    )
 
   /**
    * Performs the smallest set of incremental updates that takes the
    * local pack from its current version to the server's latest
    * version. Falls back to a full reinstall if the local version is
    * missing (e.g. first install or corrupted state).
-   *
-   * Same `Dispatchers.IO` wrapper as [installLatest]. See the kdoc
-   * there for why.
    */
   suspend fun update(onProgress: (InstallProgress) -> Unit): Result<Unit> =
-    withContext(Dispatchers.IO) {
-      try {
+    runInstall(
+      fetchUrl = { progress ->
         val local = tree.readVersion()
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         if (local == null) {
           Timber.tag(TAG)
             .i("Local version missing; doing full reinstall")
-          performInstall(VersionFileParser.getFullZipUrl(), onProgress)
+          performInstall(VersionFileParser.getFullZipUrl(), progress)
         } else {
           val steps =
             server.allUpdates
@@ -137,39 +122,49 @@ class RewindPackManager(
               server.latestVersion,
             )
           for (step in steps) {
-            performInstall(step.url, onProgress)
+            performInstall(step.url, progress)
           }
         }
-        if (tree.readVersion() != server.latestVersion) {
-          tree.writeVersion(server.latestVersion)
-        }
-        writeRrMetadataSafe(server.latestVersion)
-        Result.success(Unit)
-      } catch (ce: CancellationException) {
-        throw ce
-      } catch (t: Throwable) {
-        Result.failure(t)
-      }
-    }
+        server.latestVersion
+      },
+      onProgress = onProgress,
+    )
 
   /**
    * Performs a fresh full install from the server's full zip URL.
    * Use this to recover from a corrupted or inconsistent state that
    * incremental updates cannot fix.
-   *
-   * Same [Dispatchers.IO] wrapper as [installLatest]. See the kdoc
-   * there for why.
    */
   suspend fun reinstall(onProgress: (InstallProgress) -> Unit): Result<Unit> =
-    withContext(Dispatchers.IO) {
-      try {
+    runInstall(
+      fetchUrl = { progress ->
         val server = VersionFileParser.fetchServerInfo().getOrThrow()
         Timber.tag(TAG).i("Starting full reinstall of %s", server.latestVersion)
-        performInstall(VersionFileParser.getFullZipUrl(), onProgress)
-        if (tree.readVersion() != server.latestVersion) {
-          tree.writeVersion(server.latestVersion)
+        performInstall(VersionFileParser.getFullZipUrl(), progress)
+        server.latestVersion
+      },
+      onProgress = onProgress,
+    )
+
+  /**
+   * Shared skeleton for every install path: runs the URL-resolving
+   * step on [Dispatchers.IO] (so the step's network calls stay off the
+   * main thread), synchronises the local `version.txt` with the
+   * installed version, refreshes the `rr_autostartfile.xml` metadata,
+   * and folds any failure into a [Result] — always rethrowing
+   * [CancellationException] so coroutine cancellation stays intact.
+   */
+  private suspend fun runInstall(
+    fetchUrl: suspend (onProgress: (InstallProgress) -> Unit) -> SemVersion,
+    onProgress: (InstallProgress) -> Unit,
+  ): Result<Unit> =
+    withContext(Dispatchers.IO) {
+      try {
+        val version = fetchUrl(onProgress)
+        if (tree.readVersion() != version) {
+          tree.writeVersion(version)
         }
-        writeRrMetadataSafe(server.latestVersion)
+        writeRrMetadataSafe(version)
         Result.success(Unit)
       } catch (ce: CancellationException) {
         throw ce
