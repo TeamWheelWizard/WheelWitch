@@ -13,6 +13,7 @@ import com.skiletro.wheelwitch.model.TimeTrialLeaderboardResponse
 import com.skiletro.wheelwitch.model.TimeTrialTrack
 import com.skiletro.wheelwitch.model.UpdateEntry
 import com.skiletro.wheelwitch.util.net.HttpClientProvider
+import com.skiletro.wheelwitch.util.net.fetchUrl
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -81,7 +82,6 @@ object VersionFileParser {
     private const val TIME_TRIAL_LEADERBOARD_URL = "$RWFC_API/api/timetrial/leaderboard"
     private const val BADGES_BASE = "$RWFC_API/api/badges/by-pid/"
 
-    private val httpClient get() = HttpClientProvider.client
     private val probeClient get() = HttpClientProvider.probeClient
 
     /** Fetches the full update manifest: latest version, all update steps, and file deletions. */
@@ -190,17 +190,4 @@ object VersionFileParser {
             Timber.tag("Network").w(it, "Failed to fetch badges for %d", pid)
             emptyList()
         }
-
-    /** Blocking HTTP GET. Throws on non-2xx or empty body. */
-    private fun fetchUrl(urlString: String): String {
-        val request = Request.Builder().url(urlString).build()
-        httpClient.newCall(request).execute().use { response ->
-            val body = response.body?.string() ?: error("Empty response from $urlString")
-            if (!response.isSuccessful) {
-                Timber.tag("Network").w("%s returned %d", urlString, response.code)
-                error("$urlString returned ${response.code}: $body")
-            }
-            return body
-        }
-    }
 }
