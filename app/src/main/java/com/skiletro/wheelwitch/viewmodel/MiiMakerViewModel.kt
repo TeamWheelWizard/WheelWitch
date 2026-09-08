@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.util.mii.MiiWadInstaller
 import com.skiletro.wheelwitch.util.net.isNetworkAvailable
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,10 @@ import timber.log.Timber
  * [installMiiMakerWad] is guarded by a [Mutex] so concurrent user taps
  * cannot trigger parallel installs.
  */
-class MiiMakerViewModel(application: Application) : AndroidViewModel(application) {
+class MiiMakerViewModel(
+    application: Application,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : AndroidViewModel(application) {
     private val app = application
     private val _hasWad = MutableStateFlow(false)
     val hasWad: StateFlow<Boolean> = _hasWad.asStateFlow()
@@ -45,7 +49,7 @@ class MiiMakerViewModel(application: Application) : AndroidViewModel(application
 
   /** Re-checks whether a cached WAD exists and updates [hasWad]. */
   fun refreshHasWad() {
-    viewModelScope.launch(Dispatchers.IO) {
+    viewModelScope.launch(ioDispatcher) {
       _hasWad.value = MiiWadInstaller.getCachedWadFile(app) != null
     }
   }
@@ -54,7 +58,7 @@ class MiiMakerViewModel(application: Application) : AndroidViewModel(application
     fun launchMiiMaker() {
         viewModelScope.launch {
             try {
-                val cached = withContext(Dispatchers.IO) {
+                val cached = withContext(ioDispatcher) {
                     MiiWadInstaller.getCachedWadFile(app)
                 }
                 if (cached != null) {
@@ -87,7 +91,7 @@ class MiiMakerViewModel(application: Application) : AndroidViewModel(application
                         return@withLock
                     }
                     Timber.tag("MiiMaker").i("Starting WAD download/extract")
-                    withContext(Dispatchers.IO) {
+                    withContext(ioDispatcher) {
                         MiiWadInstaller.downloadAndExtractWad(app)
                     }
                     refreshHasWad()
@@ -108,7 +112,7 @@ class MiiMakerViewModel(application: Application) : AndroidViewModel(application
     /** Deletes the cached WAD and refreshes [hasWad]. */
     fun deleteWad() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 MiiWadInstaller.clearCache(app)
             }
             refreshHasWad()
