@@ -1,10 +1,10 @@
 package com.skiletro.wheelwitch.domain
 
-import android.content.Context
 import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.ExtractingPhase
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.SemVersion
+import com.skiletro.wheelwitch.model.ServerInfo
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.io.DownloadProgress
 import com.skiletro.wheelwitch.util.io.FileDownloader
@@ -22,22 +22,23 @@ import timber.log.Timber
  * Reads the local pack version from [DolphinTree.readVersion] (the
  * `pack/RetroRewind6/version.txt` inside the SAF tree) and compares
  * it against the server manifest; performs full or incremental
- * installs by downloading the pack zip to [Context.getCacheDir]
- * (where `java.io.File` works) and then streaming it into the SAF
- * tree via [DolphinTree.extractZipToPack]. After a successful
- * extract, the version file is only written if the pack zip's own
- * `version.txt` is missing or stale (typical for hotfix zips that
- * don't ship a new `version.txt`), and the `rr_autostartfile.xml`
- * metadata in `rom/` is always re-templated with the installed
- * version so Dolphin's launch-descriptor UI shows the right value.
+ * installs by downloading the pack zip to [cacheDir] (where
+ * `java.io.File` works) and then streaming it into the SAF tree via
+ * [DolphinTree.extractZipToPack]. After a successful extract, the
+ * version file is only written if the pack zip's own `version.txt` is
+ * missing or stale (typical for hotfix zips that don't ship a new
+ * `version.txt`), and the `rr_autostartfile.xml` metadata in `rom/` is
+ * always re-templated with the installed version so Dolphin's
+ * launch-descriptor UI shows the right value.
  *
  * The downloader is [FileDownloader], the hand-rolled OkHttp wrapper.
  * The pack zip is multi-MB so we use the
  * [HttpClientProvider.largeDownloadClient] (60s read timeout).
  */
 class RewindPackManager(
-  private val context: Context,
   private val tree: DolphinTree,
+  private val cacheDir: File,
+  private val server: PackServerSource = DefaultPackServer,
 ) {
   /**
    * Reads the local pack version and the server manifest and returns
@@ -51,8 +52,8 @@ class RewindPackManager(
    */
   suspend fun checkStatus(): PackStatus = withContext(Dispatchers.IO) {
     val local = tree.readVersion()
-    val server = VersionFileParser.fetchServerInfo().getOrNull()
-    if (server == null) {
+    val info = server.fetchServerInfo().getOrNull()
+    if (info == null) {
       Timber.tag(TAG).w("Server info unavailable; localVersion=%s", local)
       return@withContext if (local != null) {
         PackStatus.CheckFailed(local)
@@ -62,18 +63,18 @@ class RewindPackManager(
     }
     when {
       local == null -> {
-        Timber.tag(TAG).d("Not installed; server latest=%s", server.latestVersion)
+        Timber.tag(TAG).d("Not installed; server latest=%s", info.latestVersion)
         PackStatus.NotInstalled
       }
-      local >= server.latestVersion -> {
+      local >= info.latestVersion -> {
         Timber.tag(TAG)
-          .d("Up to date: local=%s server=%s", local, server.latestVersion)
-        PackStatus.UpToDate(local, server.latestVersion)
+          .d("Up to date: local=%s server=%s", local, info.latestVersion)
+        PackStatus.UpToDate(local, info.latestVersion)
       }
       else -> {
         Timber.tag(TAG)
-          .i("Update available: %s -> %s", local, server.latestVersion)
-        PackStatus.UpdateAvailable(local, server.latestVersion, server)
+          .i("Update available: %s -> %s", local, info.latestVersion)
+        PackStatus.UpdateAvailable(local, info.latestVersion, info)
       }
     }
   }
@@ -86,10 +87,10 @@ class RewindPackManager(
   suspend fun installLatest(onProgress: (InstallProgress) -> Unit): Result<Unit> =
     runInstall(
       fetchUrl = { progress ->
-        val server = VersionFileParser.fetchServerInfo().getOrThrow()
-        Timber.tag(TAG).i("Starting full install of %s", server.latestVersion)
-        performInstall(VersionFileParser.getFullZipUrl(), progress)
-        server.latestVersion
+        val info = server.fetchServerInfo().getOrThrow()
+        Timber.tag(TAG).i("Starting full install of %s", info.latestVersion)
+        performInstall(server.fetchFullZipUrl(), progress)
+        info.latestVersion
       },
       onProgress = onProgress,
     )
@@ -104,28 +105,28 @@ class RewindPackManager(
     runInstall(
       fetchUrl = { progress ->
         val local = tree.readVersion()
-        val server = VersionFileParser.fetchServerInfo().getOrThrow()
+        val info = server.fetchServerInfo().getOrThrow()
         if (local == null) {
           Timber.tag(TAG)
             .i("Local version missing; doing full reinstall")
-          performInstall(VersionFileParser.getFullZipUrl(), progress)
+          performInstall(server.fetchFullZipUrl(), progress)
         } else {
           val steps =
-            server.allUpdates
-              .filter { it.version > local && it.version <= server.latestVersion }
+            info.allUpdates
+              .filter { it.version > local && it.version <= info.latestVersion }
               .sortedBy { it.version }
           Timber.tag(TAG)
             .i(
               "Applying %d incremental update steps from %s to %s",
               steps.size,
               local,
-              server.latestVersion,
+              info.latestVersion,
             )
           for (step in steps) {
             performInstall(step.url, progress)
           }
         }
-        server.latestVersion
+        info.latestVersion
       },
       onProgress = onProgress,
     )
@@ -138,10 +139,10 @@ class RewindPackManager(
   suspend fun reinstall(onProgress: (InstallProgress) -> Unit): Result<Unit> =
     runInstall(
       fetchUrl = { progress ->
-        val server = VersionFileParser.fetchServerInfo().getOrThrow()
-        Timber.tag(TAG).i("Starting full reinstall of %s", server.latestVersion)
-        performInstall(VersionFileParser.getFullZipUrl(), progress)
-        server.latestVersion
+        val info = server.fetchServerInfo().getOrThrow()
+        Timber.tag(TAG).i("Starting full reinstall of %s", info.latestVersion)
+        performInstall(server.fetchFullZipUrl(), progress)
+        info.latestVersion
       },
       onProgress = onProgress,
     )
@@ -225,7 +226,7 @@ class RewindPackManager(
     url: String,
     onProgress: (InstallProgress) -> Unit,
   ) {
-    val zipFile = File(context.cacheDir, PACK_ZIP_NAME)
+    val zipFile = File(cacheDir, PACK_ZIP_NAME)
     FileDownloader.downloadInParallel(
       url = url,
       targetFile = zipFile,
@@ -276,9 +277,15 @@ class RewindPackManager(
     )
 
   private companion object {
-    /** Cached pack zip filename inside [Context.getCacheDir]. */
+    /** Cached pack zip filename inside the injected [cacheDir]. */
     const val PACK_ZIP_NAME = "RetroRewind.zip"
 
     const val TAG = "RewindPack"
   }
+}
+
+private object DefaultPackServer : PackServerSource {
+  override fun fetchServerInfo(): Result<ServerInfo> = VersionFileParser.fetchServerInfo()
+
+  override fun fetchFullZipUrl(): String = VersionFileParser.getFullZipUrl()
 }
