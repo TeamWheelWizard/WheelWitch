@@ -25,12 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.model.RANK_NAMES
-import com.skiletro.wheelwitch.model.RANK_THRESH
+import com.skiletro.wheelwitch.domain.RANK_NAMES
+import com.skiletro.wheelwitch.domain.RANK_THRESH
+import com.skiletro.wheelwitch.domain.rankFromScore
+import com.skiletro.wheelwitch.domain.wouldBeRank
+import com.skiletro.wheelwitch.domain.wouldBeScore
 import com.skiletro.wheelwitch.model.ScoreResult
-import com.skiletro.wheelwitch.model.rankFromScore
-import com.skiletro.wheelwitch.model.wouldBeRank
-import com.skiletro.wheelwitch.model.wouldBeScore
 
 private fun rankIconRes(rank: Int): Int? = when (rank) {
   1 -> R.drawable.ic_rank_e

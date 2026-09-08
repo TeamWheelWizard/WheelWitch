@@ -19,11 +19,11 @@ import com.skiletro.wheelwitch.domain.LeaderboardMerger
 import com.skiletro.wheelwitch.domain.SaveBackupCoordinator
 import com.skiletro.wheelwitch.domain.SaveOpOutcome
 import com.skiletro.wheelwitch.model.LicenseInfo
+import com.skiletro.wheelwitch.domain.computeScore
 import com.skiletro.wheelwitch.model.LicenseStats
 import com.skiletro.wheelwitch.model.SaveFileInfo
 import com.skiletro.wheelwitch.model.ScoreResult
 import com.skiletro.wheelwitch.model.BadgeType
-import com.skiletro.wheelwitch.model.computeScore
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
