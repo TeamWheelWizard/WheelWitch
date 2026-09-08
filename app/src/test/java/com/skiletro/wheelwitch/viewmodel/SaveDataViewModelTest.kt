@@ -7,6 +7,7 @@ import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
+import com.skiletro.wheelwitch.domain.LeaderboardMerger
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.model.SemVersion
@@ -67,41 +68,13 @@ class SaveDataViewModelTest {
       leaderboardCalls++
       leaderboardResult[code] ?: Result.failure(RuntimeException("no stub for $code"))
     },
-    backupSaver:
-      suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
-        Result.success(
-          SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
-        )
-      },
-    backupRRSaver:
-      suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
-        Result.success(
-          SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
-        )
-      },
-    restoreSaver:
-      suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = { _, _ ->
-        Result.success(SaveManager.RestoreSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0))
-      },
-    restoreRRSaver:
-      suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = { _, _ ->
-        Result.success(SaveManager.RestoreSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0))
-      },
-    deleteSaver: suspend (DolphinTree) -> Result<Unit> = { Result.success(Unit) },
-    deleteRRSaver: suspend (DolphinTree) -> Result<Unit> = { Result.success(Unit) },
     now: () -> Long = { fixedNow },
   ): SaveDataViewModel =
     SaveDataViewModel(
       application = app,
       packStatusFlow = packStatus as StateFlow<UiState>,
       treeFactory = { tree },
-      leaderboardFetcher = leaderboard,
-      backupAllSaver = backupSaver,
-      backupRRSaver = backupRRSaver,
-      restoreAllSaver = restoreSaver,
-      restoreRRSaver = restoreRRSaver,
-      deleteAllSaver = deleteSaver,
-      deleteRRSaver = deleteRRSaver,
+      leaderboardMerger = LeaderboardMerger(leaderboard, ioDispatcher),
       now = now,
       ioDispatcher = ioDispatcher,
     )
@@ -378,37 +351,30 @@ class SaveDataViewModelTest {
   // --- unified save data tests ----------------------------------------
 
   @Test
-  fun `backupAll delegates to the saver and persists the timestamp on success`() = runTest {
+  fun `backupAll delegates to SaveManager and persists the timestamp on success`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    var savedUri: Uri? = null
-    var savedTree: DolphinTree? = null
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { tree, u ->
-      savedTree = tree
-      savedUri = u
+    coEvery { SaveManager.backupAll(mockTree, uri) } returns
       Result.success(
         SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = true, pulsar = 3, ghosts = 4, bytes = 100L)
       )
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupSaver = saver)
+    vm = buildVm()
 
     vm.backupAll(uri)
 
-    assertThat(savedTree).isEqualTo(mockTree)
-    assertThat(savedUri).isEqualTo(uri)
+    coVerify { SaveManager.backupAll(mockTree, uri) }
     assertThat(vm.lastBackupTimestamp.value).isEqualTo(fixedNow)
   }
 
   @Test
-  fun `backupAll sets an error when the saver fails and does not persist a timestamp`() = runTest {
+  fun `backupAll sets an error when SaveManager fails and does not persist a timestamp`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
+    coEvery { SaveManager.backupAll(mockTree, uri) } returns
       Result.failure(RuntimeException("disk full"))
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupSaver = saver)
+    vm = buildVm()
 
     vm.backupAll(uri)
 
@@ -430,23 +396,18 @@ class SaveDataViewModelTest {
   }
 
   @Test
-  fun `restoreAll delegates to the saver and refreshes on success`() = runTest {
+  fun `restoreAll delegates to SaveManager and refreshes on success`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    var savedUri: Uri? = null
-    var savedTree: DolphinTree? = null
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = { tree, u ->
-      savedTree = tree
-      savedUri = u
+    coEvery { SaveManager.restoreAll(mockTree, uri) } returns
       Result.success(SaveManager.RestoreSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = true, pulsar = 3, ghosts = 4))
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns false
-    vm = buildVm(restoreSaver = saver)
+    vm = buildVm()
 
     vm.restoreAll(uri)
 
-    assertThat(savedTree).isEqualTo(mockTree)
-    assertThat(savedUri).isEqualTo(uri)
+    coVerify { SaveManager.restoreAll(mockTree, uri) }
+    coVerify { SaveManager.listRegions(mockTree) }
   }
 
   @Test
@@ -463,19 +424,15 @@ class SaveDataViewModelTest {
   }
 
   @Test
-  fun `deleteAll delegates to the saver and refreshes on success`() = runTest {
-    var calls = 0
-    val saver: suspend (DolphinTree) -> Result<Unit> = {
-      calls++
-      Result.success(Unit)
-    }
+  fun `deleteAll delegates to SaveManager and refreshes on success`() = runTest {
+    coEvery { SaveManager.deleteAll(mockTree) } returns Result.success(Unit)
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns false
-    vm = buildVm(deleteSaver = saver)
+    vm = buildVm()
 
     vm.deleteAll()
 
-    assertThat(calls).isEqualTo(1)
+    coVerify(exactly = 1) { SaveManager.deleteAll(mockTree) }
   }
 
   @Test
@@ -487,37 +444,30 @@ class SaveDataViewModelTest {
   // --- RR-only save data tests ----------------------------------------
 
   @Test
-  fun `backupRR delegates to the saver and persists the RR timestamp on success`() = runTest {
+  fun `backupRR delegates to SaveManager and persists the RR timestamp on success`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    var savedUri: Uri? = null
-    var savedTree: DolphinTree? = null
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { tree, u ->
-      savedTree = tree
-      savedUri = u
+    coEvery { SaveManager.backupRR(mockTree, uri) } returns
       Result.success(
         SaveManager.BackupSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 100L)
       )
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupRRSaver = saver)
+    vm = buildVm()
 
     vm.backupRR(uri)
 
-    assertThat(savedTree).isEqualTo(mockTree)
-    assertThat(savedUri).isEqualTo(uri)
+    coVerify { SaveManager.backupRR(mockTree, uri) }
     assertThat(vm.lastBackupRRTimestamp.value).isEqualTo(fixedNow)
   }
 
   @Test
-  fun `backupRR sets an error when the saver fails and does not persist a timestamp`() = runTest {
+  fun `backupRR sets an error when SaveManager fails and does not persist a timestamp`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
+    coEvery { SaveManager.backupRR(mockTree, uri) } returns
       Result.failure(RuntimeException("disk full"))
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupRRSaver = saver)
+    vm = buildVm()
 
     vm.backupRR(uri)
 
@@ -539,23 +489,17 @@ class SaveDataViewModelTest {
   }
 
   @Test
-  fun `restoreRR delegates to the saver and refreshes on success`() = runTest {
+  fun `restoreRR delegates to SaveManager and refreshes on success`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    var savedUri: Uri? = null
-    var savedTree: DolphinTree? = null
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = { tree, u ->
-      savedTree = tree
-      savedUri = u
+    coEvery { SaveManager.restoreRR(mockTree, uri) } returns
       Result.success(SaveManager.RestoreSummary(rksys = 2, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0))
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns false
-    vm = buildVm(restoreRRSaver = saver)
+    vm = buildVm()
 
     vm.restoreRR(uri)
 
-    assertThat(savedTree).isEqualTo(mockTree)
-    assertThat(savedUri).isEqualTo(uri)
+    coVerify { SaveManager.restoreRR(mockTree, uri) }
   }
 
   @Test
@@ -572,19 +516,15 @@ class SaveDataViewModelTest {
   }
 
   @Test
-  fun `deleteRR delegates to the saver and refreshes on success`() = runTest {
-    var calls = 0
-    val saver: suspend (DolphinTree) -> Result<Unit> = {
-      calls++
-      Result.success(Unit)
-    }
+  fun `deleteRR delegates to SaveManager and refreshes on success`() = runTest {
+    coEvery { SaveManager.deleteRR(mockTree) } returns Result.success(Unit)
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns false
-    vm = buildVm(deleteRRSaver = saver)
+    vm = buildVm()
 
     vm.deleteRR()
 
-    assertThat(calls).isEqualTo(1)
+    coVerify(exactly = 1) { SaveManager.deleteRR(mockTree) }
   }
 
   @Test
@@ -596,14 +536,13 @@ class SaveDataViewModelTest {
   @Test
   fun `formatLastBackupRR returns a localized timestamp after a successful RR backup`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
+    coEvery { SaveManager.backupRR(mockTree, uri) } returns
       Result.success(
         SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
       )
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupRRSaver = saver)
+    vm = buildVm()
 
     vm.backupRR(uri)
 
@@ -615,14 +554,13 @@ class SaveDataViewModelTest {
   @Test
   fun `formatLastBackup returns a localized timestamp after a successful backup`() = runTest {
     val uri = mockk<Uri>(relaxed = true)
-    val saver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> = { _, _ ->
+    coEvery { SaveManager.backupAll(mockTree, uri) } returns
       Result.success(
         SaveManager.BackupSummary(rksys = 1, vanillaSaves = 0, patchedIso = false, faceLib = false, pulsar = 0, ghosts = 0, bytes = 0L)
       )
-    }
     every { SaveManager.listRegions(mockTree) } returns emptyList()
     every { SaveManager.hasAnySave(mockTree) } returns true
-    vm = buildVm(backupSaver = saver)
+    vm = buildVm()
 
     vm.backupAll(uri)
 
