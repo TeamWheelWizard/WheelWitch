@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.PlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
@@ -40,9 +41,19 @@ class SaveDataViewModelTest {
   private lateinit var mockTree: DolphinTree
   private lateinit var vm: SaveDataViewModel
 
-  private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardData>>()
+private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardData>>()
   private var leaderboardCalls = 0
   private var fixedNow: Long = 1_700_000_000_000L
+
+  private class InMemoryCache : PlayerLeaderboardCache {
+    private val entries = mutableMapOf<String, PlayerLeaderboardData>()
+
+    override fun load(friendCode: String): PlayerLeaderboardData? = entries[friendCode]
+
+    override fun save(friendCode: String, data: PlayerLeaderboardData) {
+      entries[friendCode] = data
+    }
+  }
 
   @BeforeEach
   fun setUp() {
@@ -51,7 +62,7 @@ class SaveDataViewModelTest {
     ioDispatcher = testDispatcher
     packStatus = MutableStateFlow(UiState.Idle)
     mockTree = mockk(relaxed = true)
-mockkObject(SaveManager)
+    mockkObject(SaveManager)
     mockkObject(VersionFileParser)
     leaderboardResult.clear()
     leaderboardCalls = 0
@@ -79,7 +90,7 @@ mockkObject(SaveManager)
       application = app,
       packStatusFlow = packStatus as StateFlow<UiState>,
       treeFactory = { tree },
-      leaderboardMerger = LeaderboardMerger(leaderboard, ioDispatcher),
+      leaderboardMerger = LeaderboardMerger(leaderboard, InMemoryCache(), ioDispatcher),
       now = now,
       ioDispatcher = ioDispatcher,
     )
@@ -248,6 +259,26 @@ mockkObject(SaveManager)
     assertThat(merged[0].friendCode).isEqualTo(friendCode)
     assertThat(merged[0].leaderboardVr).isEqualTo(9999)
     assertThat(merged[0].miiName).isEqualTo("NewName")
+  }
+
+  @Test
+  fun `scoreResults computes VR norm from leaderboard VR not local rating`() = runTest {
+    val bytes = rksysWithLicense(pid = 0x00000001L, name = "X", slot = 0)
+    val info = RksysParser.parse(bytes)
+    val friendCode = info.licenses[0].friendCode!!
+    leaderboardResult[friendCode] = Result.success(PlayerLeaderboardData(9999, null, null))
+
+    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
+    coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
+    every { SaveManager.hasAnySave(mockTree) } returns true
+    vm = buildVm()
+
+    vm.refresh()
+
+    val result = vm.scoreResults.value[0]
+    assertThat(result).isNotNull()
+    assertThat(result!!.vrNorm).isWithin(0.001).of(9.999)
   }
 
   @Test
