@@ -15,6 +15,10 @@ object PrefsKeys {
     /** Per-player leaderboard cache: stores the last successful `/api/leaderboard/player/<fc>/` responses. */
     const val LEADERBOARD_CACHE_PREFS = "leaderboard_cache"
     const val LEADERBOARD_CACHE_KEY = "leaderboard_cache_json"
+
+    /** Per-profile badge cache: stores the last successful `/badges/<pid>` responses. */
+    const val BADGE_CACHE_PREFS = "badge_cache"
+    const val BADGE_CACHE_KEY = "badge_cache_json"
     const val WHEELWITCH_TREE_URI_KEY = "wheelwitch_tree_uri"
     const val SELECTED_REGION_KEY = "selected_region"
     const val THEME_MODE_KEY = "theme_mode"
