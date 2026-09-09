@@ -308,7 +308,7 @@
     <string name="rank_locked">Locked</string>
     <string name="rank_races_format">%d/100 races</string>
     <string name="rank_score_label">Score:</string>
-    <string name="rank_pts_to_format">%1$d pts to </string>
+    <string name="rank_pts_to_format">%1$s pts to </string>
 
     <!-- logging / bug report -->
     <string name="settings_logging">Logging</string>

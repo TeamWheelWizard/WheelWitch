@@ -31,6 +31,7 @@ import com.skiletro.wheelwitch.domain.rankFromScore
 import com.skiletro.wheelwitch.domain.wouldBeRank
 import com.skiletro.wheelwitch.domain.wouldBeScore
 import com.skiletro.wheelwitch.model.ScoreResult
+import com.skiletro.wheelwitch.util.formatRankPoints
 import com.skiletro.wheelwitch.util.formatScore
 
 private fun rankIconRes(rank: Int): Int? = when (rank) {
@@ -143,12 +144,12 @@ private fun PopulatedBadge(
 
     Spacer(Modifier.height(1.dp))
 
-    val pointsNeeded = (nextThresh - result.score).toInt()
+    val pointsNeeded = nextThresh - result.score
     Row(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Text(
-        text = stringResource(R.string.rank_pts_to_format, pointsNeeded),
+        text = stringResource(R.string.rank_pts_to_format, formatRankPoints(pointsNeeded)),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = maybeCompactFontSize,
