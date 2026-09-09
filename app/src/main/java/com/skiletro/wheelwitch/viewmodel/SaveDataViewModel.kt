@@ -9,7 +9,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewModelScope
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.data.BadgeCache
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.PrefsBadgeCache
 import com.skiletro.wheelwitch.data.PrefsPlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RRRatingParser
 import com.skiletro.wheelwitch.data.RksysParser
@@ -105,6 +107,8 @@ class SaveDataViewModel(
           key = PrefsKeys.LEADERBOARD_CACHE_KEY,
         ),
     ),
+  private val badgeCache: BadgeCache =
+    PrefsBadgeCache(prefs = Prefs.badgeCache(application), key = PrefsKeys.BADGE_CACHE_KEY),
   private val saveManager: SaveManager = SaveManager,
   private val now: () -> Long = System::currentTimeMillis,
   private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -310,9 +314,19 @@ class SaveDataViewModel(
         coroutineScope {
           launch {
             val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
-            val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
-            Timber.tag(TAG).d("Fetched %d badge entries", badges.size)
-            _badges.value = badges
+            // Cold start: seed from the cache so badge tiers render without
+            // waiting for the network round trip. Only applied when badges
+            // are still blank, so a fresh set cannot be overwritten by
+            // stale cached data.
+            if (_badges.value.isEmpty()) {
+              val cached =
+                profileIds.mapNotNull { pid -> badgeCache.load(pid)?.let { pid to it } }.toMap()
+              if (cached.isNotEmpty()) _badges.value = cached
+            }
+            val fresh = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
+            Timber.tag(TAG).d("Fetched %d badge entries", fresh.size)
+            _badges.value = fresh
+            fresh.forEach { (pid, badges) -> badgeCache.save(pid, badges) }
           }
           if (target != null) {
             launch { publishMerged(target, infos[target]) }

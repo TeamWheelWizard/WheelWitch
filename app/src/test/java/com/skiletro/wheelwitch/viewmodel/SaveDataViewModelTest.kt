@@ -3,6 +3,7 @@ package com.skiletro.wheelwitch.viewmodel
 import android.app.Application
 import android.net.Uri
 import com.google.common.truth.Truth.assertThat
+import com.skiletro.wheelwitch.data.BadgeCache
 import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.PlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RksysParser
@@ -55,6 +56,16 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
     }
   }
 
+  private class InMemoryBadgeCache : BadgeCache {
+    private val entries = mutableMapOf<Long, List<BadgeType>>()
+
+    override fun load(profileId: Long): List<BadgeType>? = entries[profileId]
+
+    override fun save(profileId: Long, badges: List<BadgeType>) {
+      entries[profileId] = badges
+    }
+  }
+
   @BeforeEach
   fun setUp() {
     val testDispatcher = UnconfinedTestDispatcher()
@@ -84,6 +95,7 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
       leaderboardCalls++
       leaderboardResult[code] ?: Result.failure(RuntimeException("no stub for $code"))
     },
+    badgeCache: BadgeCache = InMemoryBadgeCache(),
     now: () -> Long = { fixedNow },
   ): SaveDataViewModel =
     SaveDataViewModel(
@@ -91,6 +103,7 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
       packStatusFlow = packStatus as StateFlow<UiState>,
       treeFactory = { tree },
       leaderboardMerger = LeaderboardMerger(leaderboard, InMemoryCache(), ioDispatcher),
+      badgeCache = badgeCache,
       now = now,
       ioDispatcher = ioDispatcher,
     )
@@ -310,6 +323,52 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
     assertThat(merged!![0].leaderboardVr).isEqualTo(2222)
     assertThat(merged[0].friendCode).isEqualTo(usaFc)
     assertThat(leaderboardCalls - callsAfterRefresh).isEqualTo(1)
+  }
+
+  @Test
+  fun `refresh seeds badges from cache before the fetch completes`() = runTest {
+    val bytes = rksysWithLicense(pid = 0x00000010L, name = "Alice", slot = 0)
+    val info = RksysParser.parse(bytes)
+    val pid = info.licenses[0].profileId!!
+    val cache = InMemoryBadgeCache().apply { save(pid, listOf(BadgeType.SUPPORTER)) }
+    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
+    coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
+    every { SaveManager.hasAnySave(mockTree) } returns true
+    val gate = CompletableDeferred<Unit>()
+    coEvery { VersionFileParser.fetchBadges(any()) } coAnswers {
+      gate.await()
+      mapOf(pid to listOf(BadgeType.HEART))
+    }
+    vm = buildVm(badgeCache = cache)
+
+    vm.refresh()
+
+    assertThat(vm.badges.value).isEqualTo(mapOf(pid to listOf(BadgeType.SUPPORTER)))
+
+    gate.complete(Unit)
+    testScheduler.advanceUntilIdle()
+    assertThat(vm.badges.value).isEqualTo(mapOf(pid to listOf(BadgeType.HEART)))
+  }
+
+  @Test
+  fun `refresh persists fresh badges to the cache`() = runTest {
+    val bytes = rksysWithLicense(pid = 0x00000010L, name = "Alice", slot = 0)
+    val info = RksysParser.parse(bytes)
+    val pid = info.licenses[0].profileId!!
+    val cache = InMemoryBadgeCache()
+    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
+    coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
+    every { SaveManager.hasAnySave(mockTree) } returns true
+    val fresh = listOf(BadgeType.SUPPORTER, BadgeType.HEART)
+    coEvery { VersionFileParser.fetchBadges(any()) } returns mapOf(pid to fresh)
+    vm = buildVm(badgeCache = cache)
+
+    vm.refresh()
+
+    assertThat(vm.badges.value).isEqualTo(mapOf(pid to fresh))
+    assertThat(cache.load(pid)).isEqualTo(fresh)
   }
 
   @Test
