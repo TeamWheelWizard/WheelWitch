@@ -199,6 +199,16 @@ class SaveDataViewModel(
    */
   private var refreshJob: Job? = null
 
+  /**
+   * Monotonic generation bumped on every [refresh]. Background work
+   * captured under an older generation (e.g. a badge fetch that resumes
+   * after a newer refresh replaced it) drops its result instead of
+   * overwriting the newer refresh's output. Belt-and-braces on top of
+   * [refreshJob] cancellation, which is not observable at a resumed
+   * continuation's every step.
+   */
+  private var refreshGeneration = 0
+
   init {
     // Read persisted state synchronously — SharedPreferences get*()
     // calls are fast and running them inline guarantees the persisted
@@ -242,6 +252,7 @@ class SaveDataViewModel(
    */
   fun refresh() {
     refreshJob?.cancel()
+    refreshGeneration++
     refreshJob =
       viewModelScope.launch {
       _isLoading.value = true
@@ -313,6 +324,7 @@ class SaveDataViewModel(
         // the license grid from rendering local save data.
         coroutineScope {
           launch {
+            val generation = refreshGeneration
             val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
             // Cold start: seed from the cache so badge tiers render without
             // waiting for the network round trip. Only applied when badges
@@ -325,8 +337,12 @@ class SaveDataViewModel(
             }
             val fresh = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
             Timber.tag(TAG).d("Fetched %d badge entries", fresh.size)
-            _badges.value = fresh
-            fresh.forEach { (pid, badges) -> badgeCache.save(pid, badges) }
+            // Drop the result if a newer refresh superseded this one, so a
+            // stale fetch cannot overwrite fresher badges or the cache.
+            if (generation == refreshGeneration) {
+              _badges.value = fresh
+              fresh.forEach { (pid, badges) -> badgeCache.save(pid, badges) }
+            }
           }
           if (target != null) {
             launch { publishMerged(target, infos[target]) }

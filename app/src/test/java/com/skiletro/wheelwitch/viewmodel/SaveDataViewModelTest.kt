@@ -402,6 +402,40 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
     }
 
   @Test
+  fun `a stale badge result from an older refresh cannot overwrite a newer refresh`() = runTest {
+    val bytes = rksysWithLicense(pid = 0x00000010L, name = "Alice", slot = 0)
+    val info = RksysParser.parse(bytes)
+    val pid = info.licenses[0].profileId!!
+    val cache = InMemoryBadgeCache()
+    every { SaveManager.listRegions(mockTree) } returns listOf(Region.PAL)
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns bytes
+    coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns true
+    every { SaveManager.hasAnySave(mockTree) } returns true
+    val gate = CompletableDeferred<Unit>()
+    var calls = 0
+    val fresh = listOf(BadgeType.CONTRIBUTOR)
+    val stale = listOf(BadgeType.SUPPORTER)
+    coEvery { VersionFileParser.fetchBadges(any()) } coAnswers {
+      val seq = calls
+      calls++
+      if (seq == 0) gate.await()
+      if (seq == 0) mapOf(pid to stale) else mapOf(pid to fresh)
+    }
+    vm = buildVm(badgeCache = cache)
+
+    vm.refresh()
+    vm.refresh()
+    assertThat(vm.badges.value).isEqualTo(mapOf(pid to fresh))
+
+    gate.complete(Unit)
+    testScheduler.advanceUntilIdle()
+
+    assertThat(vm.badges.value).isEqualTo(mapOf(pid to fresh))
+    assertThat(cache.load(pid)).isEqualTo(fresh)
+    assertThat(calls).isEqualTo(2)
+  }
+
+  @Test
   fun `selectRegion with the same region is a no-op`() = runTest {
     val bytes = rksysWithLicense(pid = 0x00000001L, name = "X", slot = 0)
     val info = RksysParser.parse(bytes)
