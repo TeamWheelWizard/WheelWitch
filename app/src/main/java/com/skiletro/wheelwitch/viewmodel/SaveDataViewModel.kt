@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewModelScope
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.PrefsPlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RRRatingParser
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
@@ -96,7 +97,14 @@ class SaveDataViewModel(
   private val treeFactory: (Context) -> DolphinTree? = ::defaultTreeFactory,
   private val parser: (ByteArray) -> SaveFileInfo = RksysParser::parse,
   private val leaderboardMerger: LeaderboardMerger =
-    LeaderboardMerger(VersionFileParser::fetchPlayerLeaderboard),
+    LeaderboardMerger(
+      VersionFileParser::fetchPlayerLeaderboard,
+      cache =
+        PrefsPlayerLeaderboardCache(
+          prefs = Prefs.leaderboardCache(application),
+          key = PrefsKeys.LEADERBOARD_CACHE_KEY,
+        ),
+    ),
   private val saveManager: SaveManager = SaveManager,
   private val now: () -> Long = System::currentTimeMillis,
   private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -139,9 +147,12 @@ class SaveDataViewModel(
 
   private fun buildScoreResult(license: LicenseInfo): ScoreResult? {
     if (!license.exists) return null
-    val vrPoints = license.profileId?.let { pid ->
-      ratingVrMap[pid]?.let { java.lang.Math.round(it * 100.0).toDouble() }
-    } ?: (license.vr ?: 0).toDouble()
+    val vrPoints =
+      license.leaderboardVr?.toDouble()
+        ?: license.profileId?.let { pid ->
+            ratingVrMap[pid]?.let { java.lang.Math.round(it * 100.0).toDouble() }
+          }
+        ?: (license.vr ?: 0).toDouble()
     return computeScore(
       LicenseStats(
         vrPoints = vrPoints,
@@ -284,10 +295,13 @@ class SaveDataViewModel(
         if (target != _selectedRegion.value) {
           _selectedRegion.value = target
         }
-        // Publish local un-merged licenses immediately so the UI shows
-        // local data (Mii name, local VR) without waiting for network.
+        // Publish the last-known-good licenses immediately so the UI has
+        // something to render without waiting for the network round trips.
+        // Cached API data wins; slots without a cache entry keep their
+        // local save data.
         if (target != null && infos[target] != null && mergedLicenses.value[target] == null) {
-          _mergedLicenses.value = mergedLicenses.value + (target to infos[target]!!.licenses)
+          val premerged = leaderboardMerger.enrichOffline(target, infos[target])
+          _mergedLicenses.value = mergedLicenses.value + (target to premerged)
         }
         _isLoading.value = false
 

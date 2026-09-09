@@ -230,7 +230,7 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badges: List<
           )
         }
         Spacer(modifier = Modifier.height(3.dp))
-        val vr = license.ratingVr ?: license.vr ?: 0
+        val vr = license.leaderboardVr ?: license.ratingVr ?: license.vr ?: 0
         val wins = license.raceWins ?: 0
         val losses = license.raceLosses ?: 0
         val total = wins + losses
