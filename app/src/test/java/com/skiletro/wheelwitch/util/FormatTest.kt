@@ -50,4 +50,12 @@ class FormatTest {
         assertThat(formatScore(9.0)).isEqualTo("9.00")
         assertThat(formatScore(1234.567)).isEqualTo("1234.57")
     }
+
+    @Test
+    fun `formatRankPoints prefixes a plus and prints two decimal places`() {
+        assertThat(formatRankPoints(10.52)).isEqualTo("+10.52")
+        assertThat(formatRankPoints(10.5)).isEqualTo("+10.50")
+        assertThat(formatRankPoints(0.0)).isEqualTo("+0.00")
+        assertThat(formatRankPoints(1234.567)).isEqualTo("+1234.57")
+    }
 }
