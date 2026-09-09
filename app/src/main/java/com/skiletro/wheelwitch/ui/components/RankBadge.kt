@@ -31,6 +31,7 @@ import com.skiletro.wheelwitch.domain.rankFromScore
 import com.skiletro.wheelwitch.domain.wouldBeRank
 import com.skiletro.wheelwitch.domain.wouldBeScore
 import com.skiletro.wheelwitch.model.ScoreResult
+import com.skiletro.wheelwitch.util.formatScore
 
 private fun rankIconRes(rank: Int): Int? = when (rank) {
   1 -> R.drawable.ic_rank_e
@@ -115,7 +116,7 @@ private fun PopulatedBadge(
     )
     Spacer(Modifier.width(3.dp))
     RollingNumbers(
-      text = result.score.toInt().toString(),
+      text = formatScore(result.score),
       textStyle = MaterialTheme.typography.titleSmall.copy(
         fontWeight = FontWeight.Bold,
         fontSize = maybeCompactFontSize,
@@ -192,7 +193,7 @@ private fun LockedBadge(
       )
       Spacer(Modifier.width(3.dp))
       RollingNumbers(
-        text = wouldBeScore(result).toInt().toString(),
+        text = formatScore(wouldBeScore(result)),
         textStyle = MaterialTheme.typography.titleSmall.copy(
           fontWeight = FontWeight.Bold,
           fontSize = maybeCompactFontSize,
