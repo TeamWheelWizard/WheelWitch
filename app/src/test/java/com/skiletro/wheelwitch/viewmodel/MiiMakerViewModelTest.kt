@@ -2,6 +2,7 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.MutableCreationExtras
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.util.mii.MiiWadInstaller
@@ -42,8 +43,14 @@ class MiiMakerViewModelTest {
         val extras = MutableCreationExtras()
         extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] = application
 
+        val store = ViewModelStore()
         val vm = MiiMakerViewModel.Factory.create(MiiMakerViewModel::class.java, extras)
+        store.put("vm", vm)
 
         assertThat(vm).isInstanceOf(MiiMakerViewModel::class.java)
+
+        // Cancel the viewModelScope before the main dispatcher is reset so no
+        // coroutine outlives the test into teardown.
+        store.clear()
     }
 }
