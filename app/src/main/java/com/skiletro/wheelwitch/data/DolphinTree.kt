@@ -7,7 +7,6 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.data.DolphinTree.Companion.GAME_INI_NOTICE
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.io.ZipSafety
@@ -38,6 +37,18 @@ enum class ExtractingPhase {
   /** Files are being written. */
   WritingFiles,
 }
+
+enum class InvalidTreeReason {
+  NotTreeUri,
+  NotDolphinFolder,
+  SubfolderExternal,
+  SubfolderInternal,
+}
+
+class InvalidTreeUriException(
+  val reason: InvalidTreeReason,
+  message: String,
+) : IllegalArgumentException(message)
 
 /**
  * Per-file progress snapshot emitted by [DolphinTree.extractZipToPack].
@@ -555,63 +566,112 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * value pairs are present and correct.
    */
   fun ensureRmcGameInis() {
-    var requiredSuffix = "\n$GAME_INI_NOTICE"
+    ensureRmcGameIni()
+    forceDisableAchievementsGlobally()
+    stripConflictingKeysFromSiblingGameInis()
+  }
+
+  /** Ensures `GameSettings/RMC.ini` contains the force-disable settings. */
+  private fun ensureRmcGameIni() {
+    val gameIni = DolphinGameIni
+    var requiredSuffix = "\n${gameIni.GAME_INI_NOTICE}"
     // The order of these sections is important here for the force-disabling to work.
-    requiredSuffix = addIniKeyValueAtTheEnd(requiredSuffix, "[Core]", CHEATS_KEY, FORCE_DISABLE_VALUE)
+    requiredSuffix = gameIni.addIniKeyValueAtTheEnd(
+      requiredSuffix,
+      "[Core]",
+      gameIni.CHEATS_KEY,
+      gameIni.FORCE_DISABLE_VALUE
+    )
     // If the force-disabling should not be as aggressive, the following single line could be
     // commented out (it breaks some game-specific settings in the "General" section as well,
     // but this should not matter, as those settings are usually globally configured).
-    requiredSuffix = addIniKeyValueAtTheEnd(requiredSuffix, "[Dolphin.Core]", CHEATS_KEY, FORCE_DISABLE_VALUE)
+    requiredSuffix = gameIni.addIniKeyValueAtTheEnd(
+      requiredSuffix,
+      "[Dolphin.Core]",
+      gameIni.CHEATS_KEY,
+      gameIni.FORCE_DISABLE_VALUE
+    )
     requiredSuffix =
-      addIniKeyValueAtTheEnd(requiredSuffix, "[Achievements.Achievements]", ACHIEVEMENTS_KEY, FORCE_DISABLE_VALUE)
-    val existing = readGameIni(RMC_PREFIX).orEmpty()
+      gameIni.addIniKeyValueAtTheEnd(
+        requiredSuffix,
+        "[Achievements.Achievements]",
+        gameIni.ACHIEVEMENTS_KEY,
+        gameIni.FORCE_DISABLE_VALUE
+      )
+    val existing = readGameIni(gameIni.RMC_PREFIX).orEmpty()
     var content = existing
     // Remove our required settings if they were already present to work with the user-specific settings.
     content = content.removeSuffix(requiredSuffix)
     // Perform section rename operations on the settings not configured by Wheel Witch to preserve
     // the required ordering of our sections.
-    content = renameSection(content, "[Core]", "[Core]")
-    content = renameSection(content, "[Dolphin.Core]", "[Core]")
-    content = renameSection(content, "[Achievements.Achievements]", "[Achievements.Achievements]")
+    content = gameIni.renameSection(content, "[Core]", "[Core]")
+    content = gameIni.renameSection(content, "[Dolphin.Core]", "[Core]")
+    content = gameIni.renameSection(content, "[Achievements.Achievements]", "[Achievements.Achievements]")
     // Remove stuff we should not need or want anymore, the user has been warned.
-    content = removeAllBelowNotice(content)
-    content = removeIniKeyInSection(content, "[Core]", CHEATS_KEY)
-    content = removeIniKeyInSection(content, "[Dolphin.Core]", CHEATS_KEY)
-    content = removeIniKeyInSection(content, "[Achievements.Achievements]", ACHIEVEMENTS_KEY)
+    content = gameIni.removeAllBelowNotice(content)
+    content = gameIni.removeIniKeyInSection(content, "[Core]", gameIni.CHEATS_KEY)
+    content = gameIni.removeIniKeyInSection(content, "[Dolphin.Core]", gameIni.CHEATS_KEY)
+    content = gameIni.removeIniKeyInSection(
+      content,
+      "[Achievements.Achievements]",
+      gameIni.ACHIEVEMENTS_KEY
+    )
     // Finally, append our required settings.
     content += requiredSuffix
     if (content != existing) {
-      writeGameIni(RMC_PREFIX, content)
+      writeGameIni(gameIni.RMC_PREFIX, content)
     }
+  }
 
-    // Fix the RetroAchievements global config as it overrides the game-specific config
+  /** Fixes the global RetroAchievements config as it overrides the game-specific config. */
+  private fun forceDisableAchievementsGlobally() {
+    val gameIni = DolphinGameIni
     val existingAchievements = readConfigIni(ACHIEVEMENTS_INI_NAME).orEmpty()
     var achievementsContent = existingAchievements
-    achievementsContent = removeIniKeyInSection(achievementsContent, "[Achievements]", ACHIEVEMENTS_KEY)
+    achievementsContent =
+      gameIni.removeIniKeyInSection(achievementsContent, "[Achievements]", gameIni.ACHIEVEMENTS_KEY)
     // The RetroAchievements disabling seems a bit broken, as Dolphin often needs to be closed
     // and re-opened if the global setting was enabled.
-    achievementsContent = addIniKeyValue(achievementsContent, "[Achievements]", ACHIEVEMENTS_KEY, FORCE_DISABLE_VALUE)
+    achievementsContent = gameIni.addIniKeyValue(
+      achievementsContent,
+      "[Achievements]",
+      gameIni.ACHIEVEMENTS_KEY,
+      gameIni.FORCE_DISABLE_VALUE
+    )
     if (existingAchievements != achievementsContent) {
       writeConfigIni(achievementsContent, ACHIEVEMENTS_INI_NAME)
     }
+  }
 
-    // Strip EnableCheats and Achievements.Enable from other RMC*.ini files
-    // that could override our force-disable.
+  /**
+   * Strips `EnableCheats` and `Achievements.Enabled` from other
+   * `RMC*.ini` files that could override the force-disable.
+   */
+  private fun stripConflictingKeysFromSiblingGameInis() {
+    val gameIni = DolphinGameIni
     val siblings =
       gameSettingsDir.listFiles().filter { file ->
         val name = file.name ?: return@filter false
-        name.startsWith(RMC_PREFIX) &&
+        name.startsWith(gameIni.RMC_PREFIX) &&
           name.endsWith(".ini") &&
-          name != "$RMC_PREFIX.ini"
+          name != "${gameIni.RMC_PREFIX}.ini"
       }
     for (sibling in siblings) {
       val name = sibling.name ?: continue
       val siblingContent = readDolphinText(resolver, sibling) ?: continue
       // For good measure, remove the cheats and RetroAchievements settings from all files which
       // could override the base GameINI file.
-      var cleaned = removeIniKeyInSection(siblingContent, "[Core]", CHEATS_KEY)
-      cleaned = removeIniKeyInSection(cleaned, "[Dolphin.Core]", CHEATS_KEY)
-      cleaned = removeIniKeyInSection(cleaned, "[Achievements.Achievements]", ACHIEVEMENTS_KEY)
+      var cleaned = gameIni.removeIniKeyInSection(siblingContent, "[Core]", gameIni.CHEATS_KEY)
+      cleaned = gameIni.removeIniKeyInSection(
+        cleaned,
+        "[Dolphin.Core]",
+        gameIni.CHEATS_KEY
+      )
+      cleaned = gameIni.removeIniKeyInSection(
+        cleaned,
+        "[Achievements.Achievements]",
+        gameIni.ACHIEVEMENTS_KEY
+      )
       if (cleaned != siblingContent) {
         writeDolphinBytes(
           resolver = resolver,
@@ -694,6 +754,12 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     /** Tag used by Timber in this file's log lines. */
     const val TAG = "DolphinTree"
 
+    /** Memoised tree from [fromPersisted]; kept in sync with [memoUri]. */
+    private var memoTree: DolphinTree? = null
+
+    /** Persisted URI the memoised tree was built from; null when unset. */
+    private var memoUri: String? = null
+
     /** Buffered-copy buffer used when [FileChannel.transferFrom] is not available. */
     const val COPY_BUFFER_SIZE: Int = 256 * 1024
 
@@ -731,25 +797,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     /** Filename of Dolphin's `Config/RetroAchievements.ini` config. */
     const val ACHIEVEMENTS_INI_NAME = "RetroAchievements.ini"
 
-    /** Game-ID prefix used for the shared Mario Kart Wii GameINI. */
-    const val RMC_PREFIX = "RMC"
-
-    /** Notice added to the auto-generated RMC GameINI file. */
-    const val GAME_INI_NOTICE =
-      "# Auto-generated by Wheel Witch. Do NOT touch any of the values below, they might get deleted."
-
-    /** Key of the "Dolphin.Core" section of INI files which determines whether cheats are enabled. */
-    const val CHEATS_KEY = "EnableCheats"
-
-    /**
-     * Key of the "Achievements.Achievements" section of INI files
-     * which determines whether RetroAchievements are enabled.
-     */
-    const val ACHIEVEMENTS_KEY = "Enabled"
-
-    /** The boolean string we use to force-disable settings in Dolphin's INIs. */
-    const val FORCE_DISABLE_VALUE = "False"
-
     /**
      * Returns success if [treeUri] points to the Dolphin user folder.
      * Two URI forms are accepted:
@@ -772,7 +819,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     fun validate(treeUri: Uri): Result<Unit> {
       val treeId =
         runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-          ?: return Result.failure(IllegalArgumentException("Not a tree URI: $treeUri"))
+          ?: return Result.failure(InvalidTreeUriException(InvalidTreeReason.NotTreeUri, "Not a tree URI: $treeUri"))
 
       // Primary external storage: primary:Android/data/<dolphin>/files
       if (
@@ -798,23 +845,33 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       // about which parent to pick, so they don't have to guess.
       // Common case is "root/Dump" or "root/GameSettings" on the
       // Dolphin provider, or "<dolphin>/files/SomeApp" on primary.
-      val parentHint =
+      val reason =
         when {
           treeUri.authority == "com.android.externalstorage.documents" &&
             treeId.startsWith("${DolphinPaths.expectedTreeId()}/") ->
-            "You picked a subfolder of the Dolphin user folder. To use WheelWitch, pick the parent: ${DolphinPaths.expectedTreeId()}"
+            InvalidTreeReason.SubfolderExternal
           treeUri.authority == "org.dolphinemu.dolphinemu.user" &&
             treeId.startsWith("root/") ->
-            "You picked a subfolder of Dolphin's storage. To use WheelWitch, pick the root folder (root/)."
-          else -> null
+            InvalidTreeReason.SubfolderInternal
+          else -> InvalidTreeReason.NotDolphinFolder
         }
 
       return Result.failure(
-        IllegalArgumentException(
-          if (parentHint != null) "$baseMessage $parentHint" else baseMessage
+        InvalidTreeUriException(
+          reason,
+          if (reason !== InvalidTreeReason.NotDolphinFolder) "$baseMessage ${parentHint(reason)}" else baseMessage,
         )
       )
     }
+
+    private fun parentHint(reason: InvalidTreeReason): String =
+      when (reason) {
+        InvalidTreeReason.SubfolderExternal ->
+          "You picked a subfolder of the Dolphin user folder. To use WheelWitch, pick the parent: ${DolphinPaths.expectedTreeId()}"
+        InvalidTreeReason.SubfolderInternal ->
+          "You picked a subfolder of Dolphin's storage. To use WheelWitch, pick the root folder (root/)."
+        else -> error("parentHint called for $reason")
+      }
 
     /**
      * Reconstructs the persisted [DolphinTree] from
@@ -822,7 +879,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
      * is missing or no longer valid (e.g. the user revoked the SAF
      * grant). When the grant is lost, the persisted URI is cleared so
      * the UI can route to onboarding.
+     *
+     * The rebuilt tree is memoised for the process lifetime; repeat
+     * calls with the unchanged URI skip the resolver rebuild. The memo
+     * is invalidated by [persist] (a new folder pick) and on rebuild
+     * failure so a stale grant can never be served a cached tree.
      */
+    @Synchronized
     fun fromPersisted(context: Context): DolphinTree? {
       val prefs = Prefs.main(context)
       val uriString = prefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null)
@@ -830,7 +893,15 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         Timber.tag(TAG)
           .i("fromPersisted: no tree URI under %s; user has not completed onboarding",
             PrefsKeys.WHEELWITCH_TREE_URI_KEY)
+        memoUri = null
+        memoTree = null
         return null
+      }
+      if (memoUri == uriString) {
+        Timber.tag(TAG)
+          .i("fromPersisted: reusing memoised tree for authority=%s",
+            memoTree?.treeUri?.authority)
+        return memoTree
       }
       return try {
         val uri = Uri.parse(uriString)
@@ -839,25 +910,38 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           .i("fromPersisted: rebuilding tree from authority=%s docId=%s",
             uri?.authority, docId)
         val tree = DolphinTree(context, uri)
+        memoUri = uriString
+        memoTree = tree
         Timber.tag(TAG)
           .i("fromPersisted: tree built ok, wheelWitchDir=%s", tree.wheelWitchDir.uri)
         tree
       } catch (e: Exception) {
         Timber.tag(TAG)
           .e(e, "fromPersisted: rebuild failed for uriString=%s; clearing pref", uriString)
+        memoUri = null
+        memoTree = null
         prefs.edit().remove(PrefsKeys.WHEELWITCH_TREE_URI_KEY).apply()
         null
       }
     }
 
     /** Stores [tree]'s URI under [PrefsKeys.WHEELWITCH_TREE_URI_KEY] for [fromPersisted]. */
+    @Synchronized
     fun persist(context: Context, tree: DolphinTree) {
       Prefs.main(context)
         .edit()
         .putString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, tree.treeUri.toString())
         .apply()
+      memoUri = null
+      memoTree = null
       Timber.tag(TAG)
         .i("persist: stored tree URI authority=%s", tree.treeUri.authority)
+    }
+
+    /** Drops the in-process memo, e.g. in tests that build the tree repeatedly. */
+    internal fun resetMemo() {
+      memoUri = null
+      memoTree = null
     }
   }
 }
@@ -984,159 +1068,6 @@ internal fun recursiveCopyToStream(
       out.closeEntry()
     }
   }
-}
-
-/**
- * Ensures [key] = [value] exists under [section] in the INI
- * [content] by inserting a line for it in a correct position.
- */
-internal fun addIniKeyValue(
-  content: String,
-  section: String,
-  key: String,
-  value: String,
-): String {
-  val lines = content.lines()
-  val outLines = mutableListOf<String>()
-  val kvLine = "$key = $value"
-  var added = false
-
-  for (line in lines) {
-    outLines.add(line)
-    extractIniSection(line)?.takeIf { !added && it == section }?.let {
-      outLines.add(kvLine)
-      added = true
-    }
-  }
-
-  if (!added) {
-    if (lines.isNotEmpty() && lines.last().isNotBlank()) outLines.add("")
-    outLines.add(section)
-    outLines.add(kvLine)
-    outLines.add("")
-  }
-
-  return outLines.joinToString("\n")
-}
-
-/**
- * Ensures [key] = [value] exists under [section] in the INI
- * [content] by appending lines at the end for it.
- */
-internal fun addIniKeyValueAtTheEnd(
-  content: String,
-  section: String,
-  key: String,
-  value: String,
-): String {
-  val lines = content.lines().toMutableList()
-  val kvLine = "$key = $value"
-
-  if (lines.isNotEmpty() && lines.last().isNotBlank()) lines.add("")
-  lines.add(section)
-  lines.add(kvLine)
-  lines.add("")
-  return lines.joinToString("\n")
-}
-
-/**
- * Checks whether the [line] of an INI file assigns to a key matching the [keyPredicate].
- */
-internal fun hasIniKeyMatching(line: String, keyPredicate: (String) -> Boolean): Boolean {
-  if (line.isEmpty() || line.first() == '#') {
-    return false
-  }
-
-  val end = line.indexOf('=')
-  if (end < 0) {
-    return false
-  }
-
-  val keyOfLine = line.substring(0, end).trim()
-  return keyPredicate(keyOfLine)
-}
-
-/**
- * Checks whether the [line] of an INI file assigns to [key] in a case-insensitive manner.
- */
-internal fun hasIniKey(line: String, key: String): Boolean {
-  return hasIniKeyMatching(line) { keyOfLine -> keyOfLine.equals(key, ignoreCase = true) }
-}
-
-/**
- * Removes all lines from [content] beginning with the known Wheel Witch GameINI notice, and
- * returns the resulting string.
- */
-internal fun removeAllBelowNotice(content: String): String {
-  val lines = content.lines()
-  val noticeIdx = lines.indexOf(GAME_INI_NOTICE)
-  return (if (noticeIdx < 0) lines else lines.subList(0, noticeIdx)).joinToString("\n")
-}
-
-/**
- * Returns the section name including the brackets if [line] declares an INI section,
- * or null otherwise.
- */
-internal fun extractIniSection(line: String): String? {
-  val sectionEnd = line.indexOf(']')
-  if (sectionEnd < 0 || line[0] != '[') {
-    return null
-  }
-
-  return line.substring(0, sectionEnd + 1)
-}
-
-/**
- * Renames all occurrences of a section [oldSection] (case-insensitive match) to [newSection]
- * and returns the result.
- */
-internal fun renameSection(
-  content: String,
-  oldSection: String,
-  newSection: String,
-): String {
-  val lines = content.lines()
-  val outLines = mutableListOf<String>()
-
-  for (line in lines) {
-    extractIniSection(line)?.let { currentSection ->
-      if (currentSection.equals(oldSection, ignoreCase = true)) {
-        outLines.add(line.replaceFirst(oldSection, newSection, ignoreCase = true))
-        continue
-      }
-    }
-    outLines.add(line)
-  }
-
-  return outLines.joinToString("\n")
-}
-
-/**
- * Removes every line matching [key] (case-insensitive key name)
- * within [section] in the INI [content]. Returns the
- * modified content, or the original if nothing changed.
- */
-internal fun removeIniKeyInSection(
-  content: String,
-  section: String,
-  key: String,
-): String {
-  val lines = content.lines()
-  val outLines = mutableListOf<String>()
-
-  var currentSection: String? = null
-  for (line in lines) {
-    extractIniSection(line)?.let { section ->
-      currentSection = section
-    } ?: run {
-      if (section.equals(currentSection, ignoreCase = true) && hasIniKey(line, key)) {
-        continue
-      }
-    }
-    outLines.add(line)
-  }
-
-  return outLines.joinToString("\n")
 }
 
 /** Recursively deletes [dir] (children first). Missing [dir] is a no-op. */

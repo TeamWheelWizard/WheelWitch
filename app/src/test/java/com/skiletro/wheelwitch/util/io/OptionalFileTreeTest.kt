@@ -83,6 +83,31 @@ class OptionalFileTreeTest {
   }
 
   @Test
+  fun `truncates in place when rename rotation fails`() {
+    file.writeText("x".repeat(1000))
+    val rotated = File(file.parentFile, file.name + ".1")
+    rotated.mkdirs()
+    File(rotated, "blocker").writeText("block")
+
+    appendWithRotation(file, "y".repeat(100), maxBytes = 100)
+
+    assertThat(rotated.exists()).isTrue()
+    assertThat(file.length()).isEqualTo(100L)
+    assertThat(file.readText()).isEqualTo("y".repeat(100))
+  }
+
+  @Test
+  fun `rotates based on utf8 byte length not char count`() {
+    val emoji = "\uD83D\uDE00"
+    file.writeText(emoji)
+    appendWithRotation(file, emoji + emoji, maxBytes = 10)
+
+    val rotated = File(file.parentFile, file.name + ".1")
+    assertThat(rotated.exists()).isTrue()
+    assertThat(file.length()).isEqualTo(emoji.toByteArray(Charsets.UTF_8).size * 2L)
+  }
+
+  @Test
   fun `drops entries below minPriority`() {
     plant(enabled = true, minPriority = Log.WARN)
     Timber.tag("Tag").d("drop")

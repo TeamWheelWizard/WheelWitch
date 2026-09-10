@@ -57,7 +57,7 @@ object DolphinLauncher {
   const val DOLPHIN_DOWNLOAD_URL = "https://dolphin-emu.org/download/"
 
   /** ROM file extensions that count as a valid launch ROM. */
-  private val ROM_EXTENSIONS = setOf("iso", "rvz", "wbfs")
+  val ROM_EXTENSIONS = setOf("iso", "rvz", "wbfs")
 
   /** Tag used by Timber in this object's log lines. */
   private const val TAG = "DolphinLauncher"

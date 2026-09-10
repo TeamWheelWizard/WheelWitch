@@ -33,12 +33,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.model.NamedStat
+import com.skiletro.wheelwitch.model.CountStat
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.WinRateStat
 import com.skiletro.wheelwitch.ui.components.ErrorRetry
@@ -46,6 +49,7 @@ import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.RaceStatsState
 
@@ -72,7 +76,7 @@ fun RaceStatsScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchRaceStats() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_RaceStats",
+                key = OnlineMenuPage.RaceStats.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             ),
@@ -423,7 +427,7 @@ private fun ThinDivider() {
 }
 
 @Composable
-private fun NamedStatList(items: List<NamedStat>) {
+private fun NamedStatList(items: List<CountStat>) {
     val maxCount = items.firstOrNull()?.raceCount ?: 1
     StatsCard {
         items.take(5).forEachIndexed { index, item ->
@@ -531,20 +535,27 @@ private fun WinRateList(items: List<WinRateStat>) {
 
 @Composable
 private fun DayOfWeekChart(
-    days: List<com.skiletro.wheelwitch.model.DayStat>,
+    days: List<com.skiletro.wheelwitch.model.CountStat>,
     modifier: Modifier = Modifier
 ) {
     val maxCount = (days.maxOfOrNull { it.raceCount } ?: 0).coerceAtLeast(1)
     StatsCard(modifier = modifier) {
         days.forEach { day ->
+            val dayDescription = pluralStringResource(
+                R.plurals.race_stats_chart_segment,
+                day.raceCount,
+                day.name,
+                day.raceCount
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .clearAndSetSemantics { contentDescription = dayDescription },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = day.dayName.take(3),
+                    text = day.name.take(3),
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.width(28.dp)
@@ -573,15 +584,22 @@ private fun PeakHoursChart(
     StatsCard(modifier = modifier) {
         hours.filter { it.hour % 3 == 0 }.forEach { hour ->
             val label = when (hour.hour) {
-                0 -> "12a"
-                12 -> "12p"
-                in 1..11 -> "${hour.hour}a"
-                else -> "${hour.hour - 12}p"
+                0 -> stringResource(R.string.race_stats_hour_am, 12)
+                12 -> stringResource(R.string.race_stats_hour_pm, 12)
+                in 1..11 -> stringResource(R.string.race_stats_hour_am, hour.hour)
+                else -> stringResource(R.string.race_stats_hour_pm, hour.hour - 12)
             }
+            val hourDescription = pluralStringResource(
+                R.plurals.race_stats_chart_segment,
+                hour.raceCount,
+                label,
+                hour.raceCount
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .clearAndSetSemantics { contentDescription = hourDescription },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(

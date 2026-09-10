@@ -54,6 +54,18 @@ import kotlin.text.startsWith
  * Dolphin's user folder. Paths are validated against
  * [userDataPathPrefixes] to refuse zip-slip entries.
  */
+class InvalidBackupException(
+  val reason: Reason,
+  message: String,
+  val version: Int = 0,
+) : IOException(message) {
+  enum class Reason {
+    MissingManifest,
+    WrongType,
+    TooNew,
+  }
+}
+
 object SaveManager {
   /** Wii MKW region codes. The [code] is the 4-character ROM-file prefix. */
   enum class Region(val code: String) {
@@ -396,7 +408,6 @@ object SaveManager {
                 faceLib = faceLibAvailable,
                 pulsar = availablePul.size,
                 ghosts = ghostCount,
-                bytes = -1L,
               )
             val what = if (scope == SaveScope.ALL) "user save data" else "RR saves"
             Timber.tag(TAG).i("Backed up %s to %s: %s", what, dest, summary)
@@ -678,17 +689,25 @@ object SaveManager {
 
   private fun readAndValidateManifest(zip: ZipInputStream) {
     val manifestEntry = findManifestEntry(zip)
-      ?: throw IOException("Selected file is not a WheelWitch save backup (no manifest.json)")
+      ?: throw InvalidBackupException(
+        InvalidBackupException.Reason.MissingManifest,
+        "Selected file is not a WheelWitch save backup (no manifest.json)",
+      )
     val raw = zip.readBytes().toString(Charsets.UTF_8)
     val obj = JSONObject(raw)
     val type = obj.optString("type")
     val version = obj.optInt("version", 0)
     if (type != BACKUP_TYPE) {
-      throw IOException("Selected file is not a WheelWitch save backup (type='$type')")
+      throw InvalidBackupException(
+        InvalidBackupException.Reason.WrongType,
+        "Selected file is not a WheelWitch save backup (type='$type')",
+      )
     }
     if (version > BACKUP_FORMAT_VERSION) {
-      throw IOException(
-        "Backup was created with a newer version of Wheel Witch (format v$version); update the app to restore it."
+      throw InvalidBackupException(
+        InvalidBackupException.Reason.TooNew,
+        "Backup was created with a newer version of Wheel Witch (format v$version); update the app to restore it.",
+        version = version,
       )
     }
   }
@@ -745,7 +764,6 @@ object SaveManager {
     val faceLib: Boolean,
     val pulsar: Int,
     val ghosts: Int,
-    val bytes: Long,
   )
 
   /** Counts returned by [restoreAll] for UI feedback. */

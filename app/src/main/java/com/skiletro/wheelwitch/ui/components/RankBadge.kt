@@ -25,19 +25,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.model.RANK_NAMES
-import com.skiletro.wheelwitch.model.RANK_THRESH
+import com.skiletro.wheelwitch.domain.RANK_THRESH
+import com.skiletro.wheelwitch.domain.rankFromScore
+import com.skiletro.wheelwitch.domain.wouldBeRank
+import com.skiletro.wheelwitch.domain.wouldBeScore
 import com.skiletro.wheelwitch.model.ScoreResult
-import com.skiletro.wheelwitch.model.VanityBadge
-import com.skiletro.wheelwitch.model.rankFromScore
-import com.skiletro.wheelwitch.model.wouldBeRank
-import com.skiletro.wheelwitch.model.wouldBeScore
-
-private fun badgeIconRes(badge: VanityBadge): Int = when (badge) {
-  VanityBadge.ANT -> R.drawable.ic_badge_ant
-  VanityBadge.DEVELOPER -> R.drawable.ic_badge_dev
-  VanityBadge.DONATOR -> R.drawable.ic_badge_donator
-}
+import com.skiletro.wheelwitch.util.formatRankPoints
+import com.skiletro.wheelwitch.util.formatScore
 
 private fun rankIconRes(rank: Int): Int? = when (rank) {
   1 -> R.drawable.ic_rank_e
@@ -52,6 +46,19 @@ private fun rankIconRes(rank: Int): Int? = when (rank) {
   else -> null
 }
 
+private fun rankNameRes(rank: Int): Int? = when (rank) {
+  1 -> R.string.rank_name_e
+  2 -> R.string.rank_name_d
+  3 -> R.string.rank_name_c
+  4 -> R.string.rank_name_b
+  5 -> R.string.rank_name_a
+  6 -> R.string.rank_name_1star
+  7 -> R.string.rank_name_2star
+  8 -> R.string.rank_name_3star
+  9 -> R.string.rank_name_crown
+  else -> null
+}
+
 private fun Modifier.badgeIcon(compact: Boolean): Modifier =
   size(width = if (compact) 32.dp else 40.dp, height = if (compact) 32.dp else 40.dp)
 
@@ -61,7 +68,6 @@ private fun Modifier.progressBar(compact: Boolean): Modifier =
 @Composable
 fun RankBadge(
   result: ScoreResult?,
-  vanityBadge: VanityBadge? = null,
   compact: Boolean = false,
   compactFontSize: TextUnit = TextUnit.Unspecified
 ) {
@@ -79,7 +85,7 @@ fun RankBadge(
     if (!result.meetsRaceReq) {
       LockedBadge(result, compact, compactFontSize)
     } else {
-      PopulatedBadge(result, vanityBadge, compact, compactFontSize)
+      PopulatedBadge(result, compact, compactFontSize)
     }
   }
 }
@@ -87,7 +93,6 @@ fun RankBadge(
 @Composable
 private fun PopulatedBadge(
   result: ScoreResult,
-  vanityBadge: VanityBadge?,
   compact: Boolean,
   compactFontSize: TextUnit
 ) {
@@ -103,18 +108,11 @@ private fun PopulatedBadge(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.Center,
   ) {
-    if (vanityBadge != null) {
-      Image(
-        painter = painterResource(badgeIconRes(vanityBadge)),
-        contentDescription = null,
-        modifier = Modifier.badgeIcon(compact),
-      )
-      Spacer(Modifier.width(if (compact) 3.dp else 4.dp))
-    }
     if (image != null) {
       androidx.compose.foundation.Image(
         painter = image,
-        contentDescription = RANK_NAMES.getOrElse(result.rank - 1) { "" },
+        contentDescription =
+          rankNameRes(result.rank)?.let { stringResource(it) },
         modifier = Modifier.badgeIcon(compact),
       )
     }
@@ -132,7 +130,7 @@ private fun PopulatedBadge(
     )
     Spacer(Modifier.width(3.dp))
     RollingNumbers(
-      text = result.score.toInt().toString(),
+      text = formatScore(result.score),
       textStyle = MaterialTheme.typography.titleSmall.copy(
         fontWeight = FontWeight.Bold,
         fontSize = maybeCompactFontSize,
@@ -159,12 +157,12 @@ private fun PopulatedBadge(
 
     Spacer(Modifier.height(1.dp))
 
-    val pointsNeeded = (nextThresh - result.score).toInt()
+    val pointsNeeded = nextThresh - result.score
     Row(
       verticalAlignment = Alignment.CenterVertically,
     ) {
       Text(
-        text = "$pointsNeeded pts to ",
+        text = stringResource(R.string.rank_pts_to_format, formatRankPoints(pointsNeeded)),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = maybeCompactFontSize,
@@ -209,7 +207,7 @@ private fun LockedBadge(
       )
       Spacer(Modifier.width(3.dp))
       RollingNumbers(
-        text = wouldBeScore(result).toInt().toString(),
+        text = formatScore(wouldBeScore(result)),
         textStyle = MaterialTheme.typography.titleSmall.copy(
           fontWeight = FontWeight.Bold,
           fontSize = maybeCompactFontSize,

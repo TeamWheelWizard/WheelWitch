@@ -351,7 +351,7 @@ fun HomeScreen(
           val selectedRegion by saveData.selectedRegion.collectAsState()
           val mergedLicenses by saveData.mergedLicenses.collectAsState()
           val scoreResults by saveData.scoreResults.collectAsState()
-          val badges by saveData.vanityBadges.collectAsState()
+          val badges by saveData.badges.collectAsState()
           val isLoading by saveData.isLoading.collectAsState()
 
           val licenses = selectedRegion?.let { mergedLicenses[it] }
@@ -494,7 +494,7 @@ private fun HomeBottomBar(
                     text = stringResource(R.string.home_launch_retro_rewind),
                     onClick = onLaunch,
                     enabled = !isBusy,
-                    subText = "\u2022 ${stringResource(R.string.home_offline)}",
+                    subText = stringResource(R.string.home_bulleted_format, stringResource(R.string.home_offline)),
                   )
                 }
               } else {
@@ -550,7 +550,7 @@ private fun HomeBottomBar(
                   text = stringResource(R.string.home_launch_retro_rewind),
                   onClick = onLaunch,
                   enabled = !isBusy,
-                  subText = "\u2022 ${stringResource(R.string.home_offline)}",
+                  subText = stringResource(R.string.home_bulleted_format, stringResource(R.string.home_offline)),
                 )
               }
             } else {
@@ -795,17 +795,27 @@ private fun StatusRow(
           enabled = !isBusy,
         )
       else -> {
-        val bullet = "\u2022 "
         val launchSubText =
           when (serverConnectivity) {
             ServerConnectivity.Online -> {
               val count = playerCount
-              if (count != null) "$bullet${stringResource(R.string.home_racers_online, count)}"
+              if (count != null)
+                stringResource(
+                  R.string.home_bulleted_format,
+                  stringResource(R.string.home_racers_online, count),
+                )
               else null
             }
-            ServerConnectivity.Offline -> "$bullet${stringResource(R.string.home_offline)}"
+            ServerConnectivity.Offline ->
+              stringResource(
+                R.string.home_bulleted_format,
+                stringResource(R.string.home_offline),
+              )
             ServerConnectivity.NoInternet ->
-              "$bullet${stringResource(R.string.status_no_internet)}"
+              stringResource(
+                R.string.home_bulleted_format,
+                stringResource(R.string.status_no_internet),
+              )
             ServerConnectivity.Unknown -> null
           }
         PrimaryActionButton(

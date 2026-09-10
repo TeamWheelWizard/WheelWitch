@@ -29,7 +29,7 @@ See [CONTRIBUTING.md#build](CONTRIBUTING.md#build) for build commands and signin
 
 ## Architecture
 
-- **Min SDK**: 31, **Target SDK**: 36, **Java 11**, **Compose + Material3** with dynamic color
+- **Min SDK**: 31, **Target SDK**: 36, **JVM 17**, **Compose + Material3** with dynamic color
 - **No Google Play Services**: sideloaded APK only
 - **Landscape-locked** fullscreen via `WindowCompat.getInsetsController`
 - **Navigation**: flat overlay pattern via `AnimatedVisibility`. No NavHost.

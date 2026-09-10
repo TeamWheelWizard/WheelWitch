@@ -16,4 +16,12 @@ object Prefs {
   /** Race-stats JSON cache: stores the last successful `/api/racestats/global` response. */
   fun raceStatsCache(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.RACE_STATS_PREFS, Context.MODE_PRIVATE)
+
+  /** Per-player leaderboard cache: stores the last successful `/api/leaderboard/player/<fc>/` responses. */
+  fun leaderboardCache(context: Context): SharedPreferences =
+      context.getSharedPreferences(PrefsKeys.LEADERBOARD_CACHE_PREFS, Context.MODE_PRIVATE)
+
+  /** Per-profile badge cache: stores the last successful `/badges/<pid>` responses. */
+  fun badgeCache(context: Context): SharedPreferences =
+      context.getSharedPreferences(PrefsKeys.BADGE_CACHE_PREFS, Context.MODE_PRIVATE)
 }

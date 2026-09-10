@@ -2,7 +2,10 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.RaceStats
 import com.skiletro.wheelwitch.model.ServerConnectivity
@@ -13,6 +16,7 @@ import com.skiletro.wheelwitch.network.parseRaceStats
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel.Companion.MAX_CACHE_AGE_MS
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +37,10 @@ private data class RaceStatsCache(val stats: RaceStats, val cachedAt: Long)
  * tracks state. Each sub-screen has its own state machine; pagination
  * for the leaderboard is race-free via a conflated channel.
  */
-class OnlineViewModel(application: Application) : AndroidViewModel(application) {
+class OnlineViewModel(
+    application: Application,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : AndroidViewModel(application) {
     private val app = application
     private val prefs = Prefs.raceStatsCache(application)
 
@@ -99,7 +106,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                 if (nextPage == 1) {
                     _leaderboardState.value = LeaderboardState.Loading
                 }
-                val result = withContext(Dispatchers.IO) {
+                val result = withContext(ioDispatcher) {
                     VersionFileParser.fetchLeaderboard(page = nextPage)
                 }
                 result.onSuccess { response ->
@@ -129,7 +136,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun initialFetch() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 // Quick probe first — avoids 15s timeout when the server
                 // is unreachable and immediately shows the Offline state.
                 if (!VersionFileParser.probeServer()) {
@@ -185,7 +192,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
      */
     private fun refreshConnectivity() {
         viewModelScope.launch {
-            val online = withContext(Dispatchers.IO) { VersionFileParser.probeServer() }
+            val online = withContext(ioDispatcher) { VersionFileParser.probeServer() }
             if (online) {
                 val current = _roomsState.value
                 if (current is RoomsState.Success && current.serverConnectivity != ServerConnectivity.Online) {
@@ -196,7 +203,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Runs a fetch on [Dispatchers.IO], setting the loading state first
+     * Runs a fetch on [ioDispatcher], setting the loading state first
      * and routing success/failure to the caller. Failure is logged with
      * [logMessage]; the caller decides the resulting state.
      */
@@ -209,7 +216,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             setLoading()
-            val result = withContext(Dispatchers.IO) { fetch() }
+            val result = withContext(ioDispatcher) { fetch() }
             result.onSuccess(onSuccess).onFailure { e ->
                 Timber.tag(TAG).w(e, "%s", logMessage)
                 onFailure(e)
@@ -250,7 +257,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
             fetch = { VersionFileParser.fetchHealth() },
             onSuccess = { health -> _healthState.value = HealthState.Success(health) },
             onFailure = { e ->
-                val liveOk = withContext(Dispatchers.IO) { VersionFileParser.probeServer() }
+                val liveOk = withContext(ioDispatcher) { VersionFileParser.probeServer() }
                 if (liveOk) {
                     // Live endpoint reachable but detailed health failed; synthesize a
                     // minimal "ok" health so the UI can show the server is up.
@@ -278,7 +285,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             // Move the SharedPreferences read + JSON parse off the
             // main thread; the cache can be a few hundred KB.
-            val cached = withContext(Dispatchers.IO) { loadRaceStatsCache() }
+            val cached = withContext(ioDispatcher) { loadRaceStatsCache() }
             if (cached != null) {
                 _raceStatsState.value = RaceStatsState.Success(cached.stats, cached.cachedAt)
                 if (System.currentTimeMillis() - cached.cachedAt < MAX_CACHE_AGE_MS) return@launch
@@ -299,7 +306,7 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
                 _raceStatsState.value = RaceStatsState.Success(stats, now)
             },
             onFailure = { e ->
-                val fallback = loadRaceStatsCache()
+                val fallback = withContext(ioDispatcher) { loadRaceStatsCache() }
                 if (fallback != null) {
                     _raceStatsState.value =
                         RaceStatsState.Success(fallback.stats, fallback.cachedAt)
@@ -441,5 +448,19 @@ class OnlineViewModel(application: Application) : AndroidViewModel(application) 
         private const val CACHE_KEY_JSON = "raceStats"
         private const val CACHE_KEY_CACHED_AT = "cachedAt"
         private val MAX_CACHE_AGE_MS = TimeUnit.DAYS.toMillis(1)
+
+        /**
+         * [ViewModelProvider.Factory] for the composition root. The default
+         * [ViewModelProvider] for [AndroidViewModel] only handles a single
+         * `(Application)` constructor, so the injected [ioDispatcher]
+         * parameter requires a custom factory.
+         */
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app =
+                    this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as Application
+                OnlineViewModel(app)
+            }
+        }
     }
 }

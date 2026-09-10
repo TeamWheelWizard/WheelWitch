@@ -162,7 +162,7 @@ private fun HubPage(
                 description = stringResource(R.string.online_rooms_desc),
                 onClick = { viewModel.navigateTo(OnlineMenuPage.Rooms) },
                 enabled = isOnline,
-                titleSharedKey = "online_title_Rooms",
+                titleSharedKey = OnlineMenuPage.Rooms.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -172,7 +172,7 @@ private fun HubPage(
                 description = stringResource(R.string.online_leaderboard_desc),
                 onClick = { viewModel.navigateTo(OnlineMenuPage.Leaderboard) },
                 enabled = isOnline,
-                titleSharedKey = "online_title_Leaderboard",
+                titleSharedKey = OnlineMenuPage.Leaderboard.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -181,7 +181,7 @@ private fun HubPage(
                 title = stringResource(R.string.online_server_health),
                 description = stringResource(R.string.online_server_health_desc),
                 onClick = { viewModel.navigateTo(OnlineMenuPage.Health) },
-                titleSharedKey = "online_title_Health",
+                titleSharedKey = OnlineMenuPage.Health.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -191,7 +191,7 @@ private fun HubPage(
                 description = stringResource(R.string.online_race_stats_desc),
                 onClick = { viewModel.navigateTo(OnlineMenuPage.RaceStats) },
                 enabled = isOnline,
-                titleSharedKey = "online_title_RaceStats",
+                titleSharedKey = OnlineMenuPage.RaceStats.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -201,7 +201,7 @@ private fun HubPage(
                 description = stringResource(R.string.online_time_trials_desc),
                 onClick = { viewModel.navigateTo(OnlineMenuPage.TimeTrial) },
                 enabled = isOnline,
-                titleSharedKey = "online_title_TimeTrial",
+                titleSharedKey = OnlineMenuPage.TimeTrial.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )

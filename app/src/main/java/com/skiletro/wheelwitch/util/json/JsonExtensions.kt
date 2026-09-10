@@ -55,5 +55,11 @@ fun jsonArrayFromResponse(jsonString: String, vararg keys: String): JSONArray? {
 }
 
 /** Maps each element of this array through [transform], skipping any non-object element. */
-inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
-    (0 until length()).map { transform(getJSONObject(it)) }
+fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
+    val result = ArrayList<T>(length())
+    for (i in 0 until length()) {
+        val obj = optJSONObject(i) ?: continue
+        result.add(transform(obj))
+    }
+    return result
+}
