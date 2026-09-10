@@ -29,6 +29,7 @@ import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.Player
 import com.skiletro.wheelwitch.model.Room
 import com.skiletro.wheelwitch.ui.components.MiiFace
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.chipShape
@@ -82,7 +83,7 @@ fun RoomDetail(room: Room) {
 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.rooms_meta_format, room.id, room.roomType),
+                    text = stringResource(R.string.rooms_meta_format, room.id, unknownOrValue(room.roomType)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -142,7 +143,7 @@ fun MiiPlayerCard(player: Player) {
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = player.name,
+                            text = unknownOrValue(player.name),
                             fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.bodyLarge,
                             fontFamily = CtmkfFontFamily

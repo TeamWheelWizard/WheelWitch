@@ -45,6 +45,7 @@ import com.skiletro.wheelwitch.ui.components.FocusableSurface
 import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.components.VerticalDivider
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.statusColors
@@ -182,7 +183,7 @@ fun RoomListItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = room.players.firstOrNull()?.name
+                    text = room.players.firstOrNull()?.name?.let { unknownOrValue(it) }
                             ?: stringResource(R.string.status_empty),
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.bodyMedium,

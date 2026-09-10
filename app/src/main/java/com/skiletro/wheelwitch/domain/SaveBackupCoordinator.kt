@@ -7,7 +7,7 @@ import timber.log.Timber
 /** Outcome of one unified save operation (backup/restore/delete). */
 sealed interface SaveOpOutcome {
   data object Success : SaveOpOutcome
-  data class Failure(val message: String) : SaveOpOutcome
+  data class Failure(val message: String, val throwable: Throwable? = null) : SaveOpOutcome
 }
 
 /**
@@ -40,7 +40,7 @@ class SaveBackupCoordinator(
     val failure = op(tree).exceptionOrNull()
     return if (failure != null) {
       Timber.tag(TAG).e(failure, "$logTag failed")
-      SaveOpOutcome.Failure(failure.message ?: fallbackError())
+      SaveOpOutcome.Failure(failure.message ?: fallbackError(), failure)
     } else {
       onSuccess()
       SaveOpOutcome.Success

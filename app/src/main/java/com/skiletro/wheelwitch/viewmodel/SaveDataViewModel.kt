@@ -14,6 +14,7 @@ import com.skiletro.wheelwitch.data.DolphinTree
 import com.skiletro.wheelwitch.data.PrefsBadgeCache
 import com.skiletro.wheelwitch.data.PrefsPlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RRRatingParser
+import com.skiletro.wheelwitch.data.InvalidBackupException
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
@@ -533,10 +534,23 @@ class SaveDataViewModel(
             op = op,
           )
       ) {
-        is SaveOpOutcome.Failure -> _error.value = outcome.message
+        is SaveOpOutcome.Failure -> _error.value = friendlySaveError(outcome)
         SaveOpOutcome.Success -> Unit
       }
     }
+  }
+
+  private fun friendlySaveError(outcome: SaveOpOutcome.Failure): String {
+    val error = outcome.throwable
+    if (error is InvalidBackupException) {
+      return when (error.reason) {
+        InvalidBackupException.Reason.MissingManifest,
+        InvalidBackupException.Reason.WrongType -> app.getString(R.string.save_restore_invalid)
+        InvalidBackupException.Reason.TooNew ->
+          app.getString(R.string.save_restore_too_new_format, error.version.toString())
+      }
+    }
+    return outcome.message
   }
 
   /**

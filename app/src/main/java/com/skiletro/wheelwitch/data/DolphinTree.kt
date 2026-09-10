@@ -38,6 +38,18 @@ enum class ExtractingPhase {
   WritingFiles,
 }
 
+enum class InvalidTreeReason {
+  NotTreeUri,
+  NotDolphinFolder,
+  SubfolderExternal,
+  SubfolderInternal,
+}
+
+class InvalidTreeUriException(
+  val reason: InvalidTreeReason,
+  message: String,
+) : IllegalArgumentException(message)
+
 /**
  * Per-file progress snapshot emitted by [DolphinTree.extractZipToPack].
  * Replaces the previous bare `Int` (file index) callback so the UI can
@@ -807,7 +819,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     fun validate(treeUri: Uri): Result<Unit> {
       val treeId =
         runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
-          ?: return Result.failure(IllegalArgumentException("Not a tree URI: $treeUri"))
+          ?: return Result.failure(InvalidTreeUriException(InvalidTreeReason.NotTreeUri, "Not a tree URI: $treeUri"))
 
       // Primary external storage: primary:Android/data/<dolphin>/files
       if (
@@ -833,23 +845,33 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       // about which parent to pick, so they don't have to guess.
       // Common case is "root/Dump" or "root/GameSettings" on the
       // Dolphin provider, or "<dolphin>/files/SomeApp" on primary.
-      val parentHint =
+      val reason =
         when {
           treeUri.authority == "com.android.externalstorage.documents" &&
             treeId.startsWith("${DolphinPaths.expectedTreeId()}/") ->
-            "You picked a subfolder of the Dolphin user folder. To use WheelWitch, pick the parent: ${DolphinPaths.expectedTreeId()}"
+            InvalidTreeReason.SubfolderExternal
           treeUri.authority == "org.dolphinemu.dolphinemu.user" &&
             treeId.startsWith("root/") ->
-            "You picked a subfolder of Dolphin's storage. To use WheelWitch, pick the root folder (root/)."
-          else -> null
+            InvalidTreeReason.SubfolderInternal
+          else -> InvalidTreeReason.NotDolphinFolder
         }
 
       return Result.failure(
-        IllegalArgumentException(
-          if (parentHint != null) "$baseMessage $parentHint" else baseMessage
+        InvalidTreeUriException(
+          reason,
+          if (reason !== InvalidTreeReason.NotDolphinFolder) "$baseMessage ${parentHint(reason)}" else baseMessage,
         )
       )
     }
+
+    private fun parentHint(reason: InvalidTreeReason): String =
+      when (reason) {
+        InvalidTreeReason.SubfolderExternal ->
+          "You picked a subfolder of the Dolphin user folder. To use WheelWitch, pick the parent: ${DolphinPaths.expectedTreeId()}"
+        InvalidTreeReason.SubfolderInternal ->
+          "You picked a subfolder of Dolphin's storage. To use WheelWitch, pick the root folder (root/)."
+        else -> error("parentHint called for $reason")
+      }
 
     /**
      * Reconstructs the persisted [DolphinTree] from
