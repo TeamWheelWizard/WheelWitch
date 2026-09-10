@@ -28,6 +28,7 @@
     <!-- general errors -->
     <string name="error_storage_not_configured">Storage not configured</string>
     <string name="error_no_internet">No internet connection. Please connect to the internet and try again.</string>
+    <string name="common_unknown">Unknown</string>
 
     <!-- viewmodel error messages -->
     <string name="vm_failed_format">Failed to %s</string>
@@ -91,6 +92,8 @@
     <string name="onboarding_complete_title">You\'re all set!</string>
     <string name="onboarding_complete_body">Everything is ready. Let\'s get you into the main app.</string>
     <string name="onboarding_storage_wrong_folder">Wrong folder. Please pick Android/data/org.dolphinemu.dolphinemu/files.</string>
+    <string name="onboarding_storage_subfolder_external_format">You picked a subfolder of the Dolphin user folder. To use WheelWitch, pick the parent: %1$s</string>
+    <string name="onboarding_storage_subfolder_internal">You picked a subfolder of Dolphin\'s storage. To use WheelWitch, pick the root folder (root/).</string>
     <string name="onboarding_storage_read_failed">Cannot read the selected folder.</string>
     <string name="onboarding_iso_invalid">This doesn\'t look like a Mario Kart Wii ROM. Pick an .iso, .rvz, or .wbfs file.</string>
     <string name="onboarding_iso_copy_failed">Couldn\'t copy the ROM into your Dolphin folder.</string>
@@ -243,6 +246,8 @@
     <string name="save_info_loading">Loading save…</string>
     <string name="save_info_empty_slot">Empty slot</string>
     <string name="save_info_no_name">(no name)</string>
+    <string name="license_vr_format">%1$d VR</string>
+    <string name="license_wr_format">%1$.1f%% WR</string>
 
     <!-- badges -->
     <string name="badge_retro_rewind_developer">Retro Rewind Developer</string>
@@ -295,6 +300,8 @@
     <string name="settings_save_data_rr_restore_confirm_message">This will overwrite your current Retro Rewind saves, rating data, and ghosts. Other data is not affected.</string>
     <string name="settings_save_data_rr_delete_confirm_title">Delete RR save data?</string>
     <string name="settings_save_data_rr_delete_confirm_message">This permanently deletes your Retro Rewind saves and rating data. Other data is not affected.</string>
+    <string name="save_restore_invalid">Selected file is not a Wheel Witch save backup.</string>
+    <string name="save_restore_too_new_format">This backup needs Wheel Witch v%1$s or newer. Update the app to restore it.</string>
 
     <!-- pack -->
     <string name="settings_pack_section">Pack</string>
@@ -309,6 +316,15 @@
     <string name="rank_races_format">%d/100 races</string>
     <string name="rank_score_label">Score:</string>
     <string name="rank_pts_to_format">%1$s pts to </string>
+    <string name="rank_name_e">E</string>
+    <string name="rank_name_d">D</string>
+    <string name="rank_name_c">C</string>
+    <string name="rank_name_b">B</string>
+    <string name="rank_name_a">A</string>
+    <string name="rank_name_1star">1 star</string>
+    <string name="rank_name_2star">2 stars</string>
+    <string name="rank_name_3star">3 stars</string>
+    <string name="rank_name_crown">Crown</string>
 
     <!-- logging / bug report -->
     <string name="settings_logging">Logging</string>

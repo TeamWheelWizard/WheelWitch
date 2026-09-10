@@ -36,7 +36,9 @@ class SaveBackupCoordinatorTest {
         Result.failure<Unit>(RuntimeException("disk full"))
       }
 
-    assertThat(outcome).isEqualTo(SaveOpOutcome.Failure("disk full"))
+    val failure = outcome as SaveOpOutcome.Failure
+    assertThat(failure.message).isEqualTo("disk full")
+    assertThat(failure.throwable).hasMessageThat().isEqualTo("disk full")
   }
 
   @Test
@@ -48,7 +50,9 @@ class SaveBackupCoordinatorTest {
         Result.failure<Unit>(RuntimeException())
       }
 
-    assertThat(outcome).isEqualTo(SaveOpOutcome.Failure("write failed"))
+    val failure = outcome as SaveOpOutcome.Failure
+    assertThat(failure.message).isEqualTo("write failed")
+    assertThat(failure.throwable).isInstanceOf(RuntimeException::class.java)
   }
 
   @Test

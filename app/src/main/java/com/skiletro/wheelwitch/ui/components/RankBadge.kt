@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dontsaybojio.rollingnumbers.RollingNumbers
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.domain.RANK_NAMES
 import com.skiletro.wheelwitch.domain.RANK_THRESH
 import com.skiletro.wheelwitch.domain.rankFromScore
 import com.skiletro.wheelwitch.domain.wouldBeRank
@@ -44,6 +43,19 @@ private fun rankIconRes(rank: Int): Int? = when (rank) {
   7 -> R.drawable.ic_rank_2star
   8 -> R.drawable.ic_rank_3star
   9 -> R.drawable.ic_rank_crown
+  else -> null
+}
+
+private fun rankNameRes(rank: Int): Int? = when (rank) {
+  1 -> R.string.rank_name_e
+  2 -> R.string.rank_name_d
+  3 -> R.string.rank_name_c
+  4 -> R.string.rank_name_b
+  5 -> R.string.rank_name_a
+  6 -> R.string.rank_name_1star
+  7 -> R.string.rank_name_2star
+  8 -> R.string.rank_name_3star
+  9 -> R.string.rank_name_crown
   else -> null
 }
 
@@ -99,7 +111,8 @@ private fun PopulatedBadge(
     if (image != null) {
       androidx.compose.foundation.Image(
         painter = image,
-        contentDescription = RANK_NAMES.getOrElse(result.rank - 1) { "" },
+        contentDescription =
+          rankNameRes(result.rank)?.let { stringResource(it) },
         modifier = Modifier.badgeIcon(compact),
       )
     }

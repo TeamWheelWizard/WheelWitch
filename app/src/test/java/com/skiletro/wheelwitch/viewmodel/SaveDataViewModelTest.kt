@@ -5,6 +5,7 @@ import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.BadgeCache
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.InvalidBackupException
 import com.skiletro.wheelwitch.data.PlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
@@ -580,6 +581,25 @@ private val leaderboardResult = mutableMapOf<String, Result<PlayerLeaderboardDat
     vm.restoreAll(uri)
 
     assertThat(vm.error.value).isEqualTo("no storage")
+  }
+
+  @Test
+  fun `restoreAll maps a too-new backup to the localized message`() = runTest {
+    val uri = mockk<Uri>(relaxed = true)
+    coEvery { SaveManager.restoreAll(mockTree, uri) } returns
+      Result.failure(
+        InvalidBackupException(
+          InvalidBackupException.Reason.TooNew,
+          "old message",
+          version = 99,
+        )
+      )
+    every { app.getString(com.skiletro.wheelwitch.R.string.save_restore_too_new_format, "99") } returns "too new"
+    vm = buildVm()
+
+    vm.restoreAll(uri)
+
+    assertThat(vm.error.value).isEqualTo("too new")
   }
 
   @Test

@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.TimeTrialSubmission
 import com.skiletro.wheelwitch.model.TimeTrialTrack
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.components.EmptyState
 import com.skiletro.wheelwitch.ui.components.ErrorRetry
 import com.skiletro.wheelwitch.ui.components.FocusableSurface
@@ -304,7 +305,7 @@ private fun TrackListItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = track.name,
+                    text = unknownOrValue(track.name),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,
@@ -525,7 +526,7 @@ private fun SubmissionRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = submission.playerName,
+                    text = unknownOrValue(submission.playerName),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,

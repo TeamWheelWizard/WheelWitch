@@ -241,7 +241,7 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badges: List<
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
           RollingNumbers(
-            text = "$vr VR",
+            text = stringResource(R.string.license_vr_format, vr),
             textStyle =
               MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurface,
@@ -254,7 +254,7 @@ fun PopulatedCell(license: LicenseInfo, scoreResult: ScoreResult?, badges: List<
         Spacer(modifier = Modifier.height(1.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
           RollingNumbers(
-            text = "${winRate}% WR",
+            text = stringResource(R.string.license_wr_format, winRate),
             textStyle =
               MaterialTheme.typography.bodyMedium.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
