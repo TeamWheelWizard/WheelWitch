@@ -3,6 +3,7 @@ package com.skiletro.wheelwitch.viewmodel
 import android.app.Application
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.MutableCreationExtras
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.network.VersionFileParser
@@ -64,13 +65,19 @@ class OnlineViewModelTest {
         every { VersionFileParser.fetchGlobalRaceStatsRaw() } returns
             Result.failure(Exception("server boom"))
 
+        val store = ViewModelStore()
         val vm = OnlineViewModel(application, ioDispatcher = ioDispatcher)
+        store.put("vm", vm)
         vm.fetchRaceStats()
         testScheduler.advanceUntilIdle()
 
         // The cached fallback read must be dispatched to the injected io
         // dispatcher, not run inline on the main dispatcher.
         assertThat(readInsideIoDispatcher).isTrue()
+
+        // Cancel the viewModelScope before the main dispatcher is reset so no
+        // coroutine resumes on the missing-Main dispatcher after teardown.
+        store.clear()
     }
 
     @Test
@@ -79,9 +86,15 @@ class OnlineViewModelTest {
         val extras = MutableCreationExtras()
         extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] = application
 
+        val store = ViewModelStore()
         val vm = OnlineViewModel.Factory.create(OnlineViewModel::class.java, extras)
+        store.put("vm", vm)
 
         assertThat(vm).isInstanceOf(OnlineViewModel::class.java)
+
+        // Cancel the viewModelScope before the main dispatcher is reset so no
+        // coroutine resumes on the missing-Main dispatcher after teardown.
+        store.clear()
     }
 
     private val ioDispatcher = InlineFlaggedDispatcher()
