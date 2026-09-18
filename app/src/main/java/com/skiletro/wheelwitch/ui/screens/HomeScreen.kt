@@ -75,6 +75,7 @@ import com.skiletro.wheelwitch.util.io.DownloadProgress
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.viewmodel.AppUpdateState
 import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
+import com.skiletro.wheelwitch.viewmodel.CloudSyncViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
@@ -96,6 +97,7 @@ fun HomeScreen(
   onlineViewModel: OnlineViewModel,
   saveData: SaveDataViewModel,
   appUpdate: AppUpdateViewModel,
+  cloudSync: CloudSyncViewModel,
   onOpenSettings: () -> Unit,
   showDolphinOutdatedDialog: Boolean = false,
   outdatedDolphinVersion: String? = null,
@@ -119,6 +121,7 @@ fun HomeScreen(
       if (event == Lifecycle.Event.ON_RESUME) {
         onlineViewModel.fetchRooms()
         saveData.refreshIfStale()
+        cloudSync.onAppResume()
       }
     }
     lifecycleOwner.lifecycle.addObserver(observer)
@@ -171,6 +174,8 @@ fun HomeScreen(
   val launchStorageNotConfigured = stringResource(R.string.error_storage_not_configured)
 
   val performLaunch: suspend () -> Unit = {
+    // Best-effort advisory lock + pending-push flag; never delays the launch.
+    cloudSync.beginSession()
     val result = withContext(Dispatchers.IO) { DolphinLauncher.launchRetroRewind(context) }
     val message =
       when (result) {

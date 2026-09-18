@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,7 +19,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,117 +39,132 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.BuildConfig
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.components.SettingsCategoryHeader
 import com.skiletro.wheelwitch.ui.components.SettingsItem
 import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
 import com.skiletro.wheelwitch.ui.theme.buttonShape
+import com.skiletro.wheelwitch.util.formatBytes
+import com.skiletro.wheelwitch.util.io.cacheSize
 import com.skiletro.wheelwitch.util.mii.MiiFaceCache
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
-import com.skiletro.wheelwitch.util.io.cacheSize
-import com.skiletro.wheelwitch.util.formatBytes
-import com.skiletro.wheelwitch.model.PackStatus
+import com.skiletro.wheelwitch.viewmodel.CloudSyncViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.SaveDataViewModel
+import com.skiletro.wheelwitch.viewmodel.SyncStatus
+import com.skiletro.wheelwitch.viewmodel.SyncUiState
 import com.skiletro.wheelwitch.viewmodel.UiState
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Settings overlay. Sections, in order: Appearance, Mii Maker, Save
- * Data, Logging, Advanced, About.
+ * Settings overlay. Sections, in order: Appearance, Mii Maker, Save Data, Logging, Advanced, About.
  *
- * The Save Data section was promoted from the Licenses screen so the
- * Licenses UI can be a pure 2x2 viewer: region selection, backup,
- * restore and delete live here. The Save Data section is only
- * rendered when the user has at least one save file; it stays
- * available even if the user has no current save so the region
- * selector can be used to retarget the Licenses view.
+ * The Save Data section was promoted from the Licenses screen so the Licenses UI can be a pure 2x2
+ * viewer: region selection, backup, restore and delete live here. The Save Data section is only
+ * rendered when the user has at least one save file; it stays available even if the user has no
+ * current save so the region selector can be used to retarget the Licenses view.
  */
 @Composable
 fun SettingsScreen(
-  packUpdate: PackUpdateViewModel,
-  miiMaker: MiiMakerViewModel,
-  saveData: SaveDataViewModel,
-  onClose: () -> Unit,
-  onOpenLogViewer: () -> Unit,
-  appTheme: AppTheme,
-  onChangeAppTheme: (AppTheme) -> Unit,
-  themeMode: ThemeMode,
-  onChangeThemeMode: (ThemeMode) -> Unit,
-  onRelaunchOnboarding: () -> Unit,
+    packUpdate: PackUpdateViewModel,
+    miiMaker: MiiMakerViewModel,
+    saveData: SaveDataViewModel,
+    cloudSync: CloudSyncViewModel,
+    onClose: () -> Unit,
+    onOpenLogViewer: () -> Unit,
+    appTheme: AppTheme,
+    onChangeAppTheme: (AppTheme) -> Unit,
+    themeMode: ThemeMode,
+    onChangeThemeMode: (ThemeMode) -> Unit,
+    onRelaunchOnboarding: () -> Unit,
 ) {
   val hasWad by miiMaker.hasWad.collectAsState()
   val isInstallingWad by miiMaker.isInstallingWad.collectAsState()
   val miiMakerError by miiMaker.miiMakerError.collectAsState()
   val hasAnySave by saveData.hasAnySave.collectAsState()
   val hasRRSave by saveData.hasRRSave.collectAsState()
+  val cloudSyncState by cloudSync.uiState.collectAsState()
+  val autoSyncEnabled by cloudSync.autoSyncEnabled.collectAsState()
 
   var showWadDeleteConfirm by remember { mutableStateOf(false) }
 
   if (showWadDeleteConfirm) {
     AlertDialog(
-      onDismissRequest = { showWadDeleteConfirm = false },
-      title = { Text(stringResource(R.string.settings_delete_wad_dialog_title)) },
-      text = { Text(stringResource(R.string.settings_delete_wad_dialog_body)) },
-      confirmButton = {
-        Button(
-          onClick = { miiMaker.deleteWad(); showWadDeleteConfirm = false },
-        ) {
-          Text(stringResource(R.string.settings_delete))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showWadDeleteConfirm = false }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+        onDismissRequest = { showWadDeleteConfirm = false },
+        title = { Text(stringResource(R.string.settings_delete_wad_dialog_title)) },
+        text = { Text(stringResource(R.string.settings_delete_wad_dialog_body)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                miiMaker.deleteWad()
+                showWadDeleteConfirm = false
+              },
+          ) {
+            Text(stringResource(R.string.settings_delete))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showWadDeleteConfirm = false }) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
   Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
     ScreenHeader(
-      title = stringResource(R.string.settings_title),
-      onBack = onClose,
+        title = stringResource(R.string.settings_title),
+        onBack = onClose,
     )
 
     LazyColumn(
-      modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-      verticalArrangement = Arrangement.spacedBy(0.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
       item {
         AppearanceSection(
-          appTheme = appTheme,
-          onChangeAppTheme = onChangeAppTheme,
-          themeMode = themeMode,
-          onChangeThemeMode = onChangeThemeMode,
+            appTheme = appTheme,
+            onChangeAppTheme = onChangeAppTheme,
+            themeMode = themeMode,
+            onChangeThemeMode = onChangeThemeMode,
         )
       }
       item {
         MiiMakerSection(
-          hasWad = hasWad,
-          isInstallingWad = isInstallingWad,
-          miiMakerError = miiMakerError,
-          onInstall = miiMaker::installMiiMakerWad,
-          onRequestDelete = { showWadDeleteConfirm = true },
+            hasWad = hasWad,
+            isInstallingWad = isInstallingWad,
+            miiMakerError = miiMakerError,
+            onInstall = miiMaker::installMiiMakerWad,
+            onRequestDelete = { showWadDeleteConfirm = true },
         )
       }
       item {
         SaveDataSection(
-          saveData = saveData,
-          hasAnySave = hasAnySave,
-          hasRRSave = hasRRSave,
+            saveData = saveData,
+            hasAnySave = hasAnySave,
+            hasRRSave = hasRRSave,
+        )
+      }
+      item {
+        CloudSyncSection(
+            cloudSync = cloudSync,
+            state = cloudSyncState,
+            autoSyncEnabled = autoSyncEnabled,
         )
       }
       item { PackSection(packUpdate = packUpdate) }
       item { LoggingSection(onOpenLogViewer = onOpenLogViewer) }
       item {
         AdvancedSection(
-          onRelaunchOnboarding = onRelaunchOnboarding,
+            onRelaunchOnboarding = onRelaunchOnboarding,
         )
       }
       item { AboutSection() }
@@ -180,147 +193,147 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
   var showRestoreRRConfirm by remember { mutableStateOf(false) }
 
   val backupLauncher =
-    rememberLauncherForActivityResult(
-      contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-      if (uri != null) saveData.backupAll(uri)
-      pendingBackup = false
-    }
+      rememberLauncherForActivityResult(
+          contract = ActivityResultContracts.CreateDocument("application/zip")
+      ) { uri ->
+        if (uri != null) saveData.backupAll(uri)
+        pendingBackup = false
+      }
   val restoreLauncher =
-    rememberLauncherForActivityResult(
-      contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-      if (uri != null) {
-        pendingRestoreUri = uri
-        showRestoreConfirm = true
+      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+          pendingRestoreUri = uri
+          showRestoreConfirm = true
+        }
+        pendingRestore = false
       }
-      pendingRestore = false
-    }
   val backupRRLauncher =
-    rememberLauncherForActivityResult(
-      contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-      if (uri != null) saveData.backupRR(uri)
-      pendingBackupRR = false
-    }
-  val restoreRRLauncher =
-    rememberLauncherForActivityResult(
-      contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-      if (uri != null) {
-        pendingRestoreRRUri = uri
-        showRestoreRRConfirm = true
+      rememberLauncherForActivityResult(
+          contract = ActivityResultContracts.CreateDocument("application/zip")
+      ) { uri ->
+        if (uri != null) saveData.backupRR(uri)
+        pendingBackupRR = false
       }
-      pendingRestoreRR = false
-    }
+  val restoreRRLauncher =
+      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+          pendingRestoreRRUri = uri
+          showRestoreRRConfirm = true
+        }
+        pendingRestoreRR = false
+      }
 
   if (showDeleteConfirm) {
     AlertDialog(
-      onDismissRequest = { showDeleteConfirm = false },
-      title = { Text(stringResource(R.string.settings_save_data_delete_confirm_title)) },
-      text = { Text(stringResource(R.string.settings_save_data_delete_confirm_message)) },
-      confirmButton = {
-        Button(
-          onClick = {
-            saveData.deleteAll()
-            showDeleteConfirm = false
-          },
-        ) {
-          Text(stringResource(R.string.settings_save_data_delete))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showDeleteConfirm = false }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+        onDismissRequest = { showDeleteConfirm = false },
+        title = { Text(stringResource(R.string.settings_save_data_delete_confirm_title)) },
+        text = { Text(stringResource(R.string.settings_save_data_delete_confirm_message)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                saveData.deleteAll()
+                showDeleteConfirm = false
+              },
+          ) {
+            Text(stringResource(R.string.settings_save_data_delete))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showDeleteConfirm = false }) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
   if (showRestoreConfirm) {
     val uri = pendingRestoreUri
     AlertDialog(
-      onDismissRequest = {
-        showRestoreConfirm = false
-        pendingRestoreUri = null
-      },
-      title = { Text(stringResource(R.string.settings_save_data_restore_confirm_title)) },
-      text = { Text(stringResource(R.string.settings_save_data_restore_confirm_message)) },
-      confirmButton = {
-        Button(
-          enabled = uri != null,
-          onClick = {
-            uri?.let { saveData.restoreAll(it) }
-            pendingRestoreUri = null
-            showRestoreConfirm = false
-          },
-        ) {
-          Text(stringResource(R.string.settings_save_data_restore))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = {
-          pendingRestoreUri = null
+        onDismissRequest = {
           showRestoreConfirm = false
-        }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+          pendingRestoreUri = null
+        },
+        title = { Text(stringResource(R.string.settings_save_data_restore_confirm_title)) },
+        text = { Text(stringResource(R.string.settings_save_data_restore_confirm_message)) },
+        confirmButton = {
+          Button(
+              enabled = uri != null,
+              onClick = {
+                uri?.let { saveData.restoreAll(it) }
+                pendingRestoreUri = null
+                showRestoreConfirm = false
+              },
+          ) {
+            Text(stringResource(R.string.settings_save_data_restore))
+          }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = {
+                pendingRestoreUri = null
+                showRestoreConfirm = false
+              }
+          ) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
   if (showDeleteRRConfirm) {
     AlertDialog(
-      onDismissRequest = { showDeleteRRConfirm = false },
-      title = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_title)) },
-      text = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_message)) },
-      confirmButton = {
-        Button(
-          onClick = {
-            saveData.deleteRR()
-            showDeleteRRConfirm = false
-          },
-        ) {
-          Text(stringResource(R.string.settings_save_data_delete))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showDeleteRRConfirm = false }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+        onDismissRequest = { showDeleteRRConfirm = false },
+        title = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_title)) },
+        text = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_message)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                saveData.deleteRR()
+                showDeleteRRConfirm = false
+              },
+          ) {
+            Text(stringResource(R.string.settings_save_data_delete))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showDeleteRRConfirm = false }) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
   if (showRestoreRRConfirm) {
     val uri = pendingRestoreRRUri
     AlertDialog(
-      onDismissRequest = {
-        showRestoreRRConfirm = false
-        pendingRestoreRRUri = null
-      },
-      title = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_title)) },
-      text = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_message)) },
-      confirmButton = {
-        Button(
-          enabled = uri != null,
-          onClick = {
-            uri?.let { saveData.restoreRR(it) }
-            pendingRestoreRRUri = null
-            showRestoreRRConfirm = false
-          },
-        ) {
-          Text(stringResource(R.string.settings_save_data_restore))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = {
-          pendingRestoreRRUri = null
+        onDismissRequest = {
           showRestoreRRConfirm = false
-        }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+          pendingRestoreRRUri = null
+        },
+        title = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_title)) },
+        text = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_message)) },
+        confirmButton = {
+          Button(
+              enabled = uri != null,
+              onClick = {
+                uri?.let { saveData.restoreRR(it) }
+                pendingRestoreRRUri = null
+                showRestoreRRConfirm = false
+              },
+          ) {
+            Text(stringResource(R.string.settings_save_data_restore))
+          }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = {
+                pendingRestoreRRUri = null
+                showRestoreRRConfirm = false
+              }
+          ) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
@@ -350,84 +363,214 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
   SettingsCategoryHeader(stringResource(R.string.settings_save_data_section))
 
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_save),
-    title = stringResource(R.string.settings_save_data_section),
-    summary =
-      when {
-        !hasAnySave -> stringResource(R.string.settings_save_data_no_save)
-        lastBackupLabel != null ->
-          stringResource(R.string.settings_save_data_last_backup_format, lastBackupLabel)
-        else -> null
+      icon = ImageVector.vectorResource(R.drawable.ic_save),
+      title = stringResource(R.string.settings_save_data_section),
+      summary =
+          when {
+            !hasAnySave -> stringResource(R.string.settings_save_data_no_save)
+            lastBackupLabel != null ->
+                stringResource(R.string.settings_save_data_last_backup_format, lastBackupLabel)
+            else -> null
+          },
+      trailing = {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+          TextButton(
+              onClick = { pendingBackup = true },
+              enabled = hasAnySave,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.settings_save_data_backup))
+          }
+          TextButton(
+              onClick = { pendingRestore = true },
+              enabled = hasAnySave,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.settings_save_data_restore))
+          }
+          TextButton(
+              onClick = { showDeleteConfirm = true },
+              enabled = hasAnySave,
+              shape = buttonShape,
+          ) {
+            Text(
+                text = stringResource(R.string.settings_save_data_delete),
+                color = MaterialTheme.colorScheme.error,
+            )
+          }
+        }
       },
-    trailing = {
-      Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(
-          onClick = { pendingBackup = true },
-          enabled = hasAnySave,
-          shape = buttonShape,
-        ) {
-          Text(stringResource(R.string.settings_save_data_backup))
-        }
-        TextButton(
-          onClick = { pendingRestore = true },
-          enabled = hasAnySave,
-          shape = buttonShape,
-        ) {
-          Text(stringResource(R.string.settings_save_data_restore))
-        }
-        TextButton(
-          onClick = { showDeleteConfirm = true },
-          enabled = hasAnySave,
-          shape = buttonShape,
-        ) {
-          Text(
-            text = stringResource(R.string.settings_save_data_delete),
-            color = MaterialTheme.colorScheme.error,
-          )
-        }
-      }
-    },
   )
 
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_save),
-    title = stringResource(R.string.settings_save_data_rr_section),
-    summary =
-      when {
-        !hasRRSave -> stringResource(R.string.settings_save_data_rr_no_save)
-        lastBackupRRLabel != null ->
-          stringResource(R.string.settings_save_data_rr_last_backup_format, lastBackupRRLabel)
-        else -> null
+      icon = ImageVector.vectorResource(R.drawable.ic_save),
+      title = stringResource(R.string.settings_save_data_rr_section),
+      summary =
+          when {
+            !hasRRSave -> stringResource(R.string.settings_save_data_rr_no_save)
+            lastBackupRRLabel != null ->
+                stringResource(R.string.settings_save_data_rr_last_backup_format, lastBackupRRLabel)
+            else -> null
+          },
+      trailing = {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+          TextButton(
+              onClick = { pendingBackupRR = true },
+              enabled = hasRRSave,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.settings_save_data_backup))
+          }
+          TextButton(
+              onClick = { pendingRestoreRR = true },
+              enabled = hasRRSave,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.settings_save_data_restore))
+          }
+          TextButton(
+              onClick = { showDeleteRRConfirm = true },
+              enabled = hasRRSave,
+              shape = buttonShape,
+          ) {
+            Text(
+                text = stringResource(R.string.settings_save_data_delete),
+                color = MaterialTheme.colorScheme.error,
+            )
+          }
+        }
       },
-    trailing = {
-      Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        TextButton(
-          onClick = { pendingBackupRR = true },
-          enabled = hasRRSave,
-          shape = buttonShape,
-        ) {
-          Text(stringResource(R.string.settings_save_data_backup))
-        }
-        TextButton(
-          onClick = { pendingRestoreRR = true },
-          enabled = hasRRSave,
-          shape = buttonShape,
-        ) {
-          Text(stringResource(R.string.settings_save_data_restore))
-        }
-        TextButton(
-          onClick = { showDeleteRRConfirm = true },
-          enabled = hasRRSave,
-          shape = buttonShape,
-        ) {
-          Text(
-            text = stringResource(R.string.settings_save_data_delete),
-            color = MaterialTheme.colorScheme.error,
-          )
-        }
-      }
-    },
   )
+}
+
+/** Cloud Sync section: Dropbox connection, automatic sync, and manual sync. */
+@Composable
+private fun CloudSyncSection(
+    cloudSync: CloudSyncViewModel,
+    state: SyncUiState,
+    autoSyncEnabled: Boolean,
+) {
+  var showDisconnectConfirm by remember { mutableStateOf(false) }
+  val connected = state as? SyncUiState.Connected
+  val statusLabel =
+      connected?.let {
+        stringResource(
+            when (it.status) {
+              SyncStatus.Idle -> R.string.sync_status_idle
+              SyncStatus.Syncing -> R.string.sync_status_syncing
+              SyncStatus.Error -> R.string.sync_status_error
+              SyncStatus.ReconnectNeeded -> R.string.sync_status_reconnect
+            }
+        )
+      }
+  val lastSyncLabel =
+      connected?.lastSyncAtMillis?.takeIf { it > 0 }?.let {
+        stringResource(
+            R.string.sync_last_sync_format,
+            DateFormat.getDateTimeInstance().format(Date(it)),
+        )
+      }
+  val connectedSummary =
+      listOfNotNull(
+              connected?.accountEmail ?: stringResource(R.string.sync_account_email_unavailable),
+              statusLabel,
+              lastSyncLabel,
+          )
+          .joinToString(" · ")
+  val summary =
+      when (state) {
+        SyncUiState.NotConfigured -> stringResource(R.string.sync_not_configured)
+        SyncUiState.SecureStorageUnavailable -> stringResource(R.string.sync_secure_storage_unavailable)
+        SyncUiState.Disconnected -> null
+        is SyncUiState.Connected -> connectedSummary
+      }
+
+  if (showDisconnectConfirm) {
+    AlertDialog(
+        onDismissRequest = { showDisconnectConfirm = false },
+        title = { Text(stringResource(R.string.sync_disconnect_confirm_title)) },
+        text = { Text(stringResource(R.string.sync_disconnect_confirm_message)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                cloudSync.disconnect()
+                showDisconnectConfirm = false
+              }
+          ) {
+            Text(stringResource(R.string.sync_disconnect))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showDisconnectConfirm = false }) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
+    )
+  }
+
+  SettingsCategoryHeader(stringResource(R.string.sync_section_title))
+
+  SettingsItem(
+      icon = ImageVector.vectorResource(R.drawable.ic_cached),
+      title = stringResource(R.string.sync_section_title),
+      summary = summary,
+      trailing = {
+        when (state) {
+          SyncUiState.NotConfigured,
+          SyncUiState.SecureStorageUnavailable -> Unit
+          SyncUiState.Disconnected -> {
+            TextButton(onClick = cloudSync::connect, shape = buttonShape) {
+              Text(stringResource(R.string.sync_connect))
+            }
+          }
+          is SyncUiState.Connected -> {
+            if (state.status == SyncStatus.ReconnectNeeded) {
+              TextButton(onClick = cloudSync::connect, shape = buttonShape) {
+                Text(stringResource(R.string.sync_connect))
+              }
+            }
+          }
+        }
+      },
+  )
+
+  if (connected != null) {
+    SettingsItem(
+        icon = ImageVector.vectorResource(R.drawable.ic_cached),
+        title = stringResource(R.string.sync_auto_toggle),
+        trailing = {
+          Switch(
+              checked = autoSyncEnabled,
+              onCheckedChange = cloudSync::setAutoSync,
+          )
+        },
+    )
+    SettingsItem(
+        icon = ImageVector.vectorResource(R.drawable.ic_refresh),
+        title = stringResource(R.string.sync_now),
+        trailing = {
+          TextButton(
+              onClick = cloudSync::syncNow,
+              enabled = connected.status != SyncStatus.Syncing,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.sync_now))
+          }
+        },
+    )
+    SettingsItem(
+        icon = ImageVector.vectorResource(R.drawable.ic_exit_to_app),
+        title = stringResource(R.string.sync_disconnect),
+        trailing = {
+          TextButton(onClick = { showDisconnectConfirm = true }, shape = buttonShape) {
+            Text(
+                text = stringResource(R.string.sync_disconnect),
+                color = MaterialTheme.colorScheme.error,
+            )
+          }
+        },
+    )
+  }
 }
 
 /** Pack section: current version and full reinstall button. */
@@ -448,43 +591,48 @@ private fun PackSection(packUpdate: PackUpdateViewModel) {
 
   if (showReinstallConfirm) {
     AlertDialog(
-      onDismissRequest = { showReinstallConfirm = false },
-      title = { Text(stringResource(R.string.settings_pack_reinstall_dialog_title)) },
-      text = { Text(stringResource(R.string.settings_pack_reinstall_dialog_body)) },
-      confirmButton = {
-        Button(onClick = { packUpdate.reinstall(); showReinstallConfirm = false }) {
-          Text(stringResource(R.string.action_reinstall))
-        }
-      },
-      dismissButton = {
-        TextButton(onClick = { showReinstallConfirm = false }) {
-          Text(stringResource(R.string.action_cancel))
-        }
-      },
+        onDismissRequest = { showReinstallConfirm = false },
+        title = { Text(stringResource(R.string.settings_pack_reinstall_dialog_title)) },
+        text = { Text(stringResource(R.string.settings_pack_reinstall_dialog_body)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                packUpdate.reinstall()
+                showReinstallConfirm = false
+              }
+          ) {
+            Text(stringResource(R.string.action_reinstall))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showReinstallConfirm = false }) {
+            Text(stringResource(R.string.action_cancel))
+          }
+        },
     )
   }
 
   SettingsCategoryHeader(stringResource(R.string.settings_pack_section))
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_cached),
-    title = stringResource(R.string.topbar_subtitle),
-    summary =
-      if (isInstalled) {
-        stringResource(R.string.settings_pack_version_installed, version.toString())
-      } else {
-        stringResource(R.string.settings_pack_not_installed)
-      },
-    trailing = {
-      if (isInstalled) {
-        TextButton(
-          onClick = { showReinstallConfirm = true },
-          enabled = state !is UiState.Installing,
-          shape = buttonShape,
-        ) {
-          Text(stringResource(R.string.action_reinstall))
+      icon = ImageVector.vectorResource(R.drawable.ic_cached),
+      title = stringResource(R.string.topbar_subtitle),
+      summary =
+          if (isInstalled) {
+            stringResource(R.string.settings_pack_version_installed, version.toString())
+          } else {
+            stringResource(R.string.settings_pack_not_installed)
+          },
+      trailing = {
+        if (isInstalled) {
+          TextButton(
+              onClick = { showReinstallConfirm = true },
+              enabled = state !is UiState.Installing,
+              shape = buttonShape,
+          ) {
+            Text(stringResource(R.string.action_reinstall))
+          }
         }
-      }
-    },
+      },
   )
   Spacer(modifier = Modifier.height(4.dp))
 }
@@ -492,143 +640,146 @@ private fun PackSection(packUpdate: PackUpdateViewModel) {
 /** Appearance section: app theme picker and dark-mode picker. */
 @Composable
 private fun AppearanceSection(
-  appTheme: AppTheme,
-  onChangeAppTheme: (AppTheme) -> Unit,
-  themeMode: ThemeMode,
-  onChangeThemeMode: (ThemeMode) -> Unit,
+    appTheme: AppTheme,
+    onChangeAppTheme: (AppTheme) -> Unit,
+    themeMode: ThemeMode,
+    onChangeThemeMode: (ThemeMode) -> Unit,
 ) {
   SettingsCategoryHeader(stringResource(R.string.settings_appearance))
   var showAppThemeDropdown by remember { mutableStateOf(false) }
   var showThemeDropdown by remember { mutableStateOf(false) }
   val appThemeLabel = stringResource(appTheme.labelRes)
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_palette),
-    title = stringResource(R.string.settings_app_theme),
-    summary = appThemeLabel,
-    trailing = {
-      Box {
-        TextButton(
-          onClick = { showAppThemeDropdown = true },
-          shape = buttonShape,
-        ) {
-          Text(text = appThemeLabel)
-        }
-        DropdownMenu(
-          expanded = showAppThemeDropdown,
-          onDismissRequest = { showAppThemeDropdown = false },
-        ) {
-          AppTheme.entries.forEach { theme ->
-            DropdownMenuItem(
-              text = { Text(stringResource(theme.labelRes)) },
-              onClick = {
-                onChangeAppTheme(theme)
-                showAppThemeDropdown = false
-              },
-            )
+      icon = ImageVector.vectorResource(R.drawable.ic_palette),
+      title = stringResource(R.string.settings_app_theme),
+      summary = appThemeLabel,
+      trailing = {
+        Box {
+          TextButton(
+              onClick = { showAppThemeDropdown = true },
+              shape = buttonShape,
+          ) {
+            Text(text = appThemeLabel)
+          }
+          DropdownMenu(
+              expanded = showAppThemeDropdown,
+              onDismissRequest = { showAppThemeDropdown = false },
+          ) {
+            AppTheme.entries.forEach { theme ->
+              DropdownMenuItem(
+                  text = { Text(stringResource(theme.labelRes)) },
+                  onClick = {
+                    onChangeAppTheme(theme)
+                    showAppThemeDropdown = false
+                  },
+              )
+            }
           }
         }
-      }
-    },
+      },
   )
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_nightlight),
-    title = stringResource(R.string.settings_dark_mode),
-    summary =
-      when (themeMode) {
-        ThemeMode.Light -> stringResource(R.string.settings_always_light)
-        ThemeMode.Dark -> stringResource(R.string.settings_always_dark)
-        ThemeMode.Oled -> stringResource(R.string.settings_oled)
-        ThemeMode.System -> stringResource(R.string.settings_follow_system)
-      },
-    trailing = {
-      Box {
-        TextButton(
-          onClick = { showThemeDropdown = true },
-          shape = buttonShape,
-        ) {
-          Text(
-            text =
-              when (themeMode) {
-                ThemeMode.Light -> stringResource(R.string.settings_theme_light)
-                ThemeMode.Dark -> stringResource(R.string.settings_theme_dark)
-                ThemeMode.Oled -> stringResource(R.string.settings_theme_oled)
-                ThemeMode.System -> stringResource(R.string.settings_theme_system)
-              }
-          )
-        }
-        DropdownMenu(
-          expanded = showThemeDropdown,
-          onDismissRequest = { showThemeDropdown = false },
-        ) {
-          ThemeMode.entries.forEach { mode ->
-            DropdownMenuItem(
-              text = {
-                Text(
-                  when (mode) {
-                    ThemeMode.Light -> stringResource(R.string.settings_theme_light)
-                    ThemeMode.Dark -> stringResource(R.string.settings_theme_dark)
-                    ThemeMode.Oled -> stringResource(R.string.settings_theme_oled)
-                    ThemeMode.System -> stringResource(R.string.settings_theme_system)
-                  }
-                )
-              },
-              onClick = {
-                onChangeThemeMode(mode)
-                showThemeDropdown = false
-              },
+      icon = ImageVector.vectorResource(R.drawable.ic_nightlight),
+      title = stringResource(R.string.settings_dark_mode),
+      summary =
+          when (themeMode) {
+            ThemeMode.Light -> stringResource(R.string.settings_always_light)
+            ThemeMode.Dark -> stringResource(R.string.settings_always_dark)
+            ThemeMode.Oled -> stringResource(R.string.settings_oled)
+            ThemeMode.System -> stringResource(R.string.settings_follow_system)
+          },
+      trailing = {
+        Box {
+          TextButton(
+              onClick = { showThemeDropdown = true },
+              shape = buttonShape,
+          ) {
+            Text(
+                text =
+                    when (themeMode) {
+                      ThemeMode.Light -> stringResource(R.string.settings_theme_light)
+                      ThemeMode.Dark -> stringResource(R.string.settings_theme_dark)
+                      ThemeMode.Oled -> stringResource(R.string.settings_theme_oled)
+                      ThemeMode.System -> stringResource(R.string.settings_theme_system)
+                    }
             )
           }
+          DropdownMenu(
+              expanded = showThemeDropdown,
+              onDismissRequest = { showThemeDropdown = false },
+          ) {
+            ThemeMode.entries.forEach { mode ->
+              DropdownMenuItem(
+                  text = {
+                    Text(
+                        when (mode) {
+                          ThemeMode.Light -> stringResource(R.string.settings_theme_light)
+                          ThemeMode.Dark -> stringResource(R.string.settings_theme_dark)
+                          ThemeMode.Oled -> stringResource(R.string.settings_theme_oled)
+                          ThemeMode.System -> stringResource(R.string.settings_theme_system)
+                        }
+                    )
+                  },
+                  onClick = {
+                    onChangeThemeMode(mode)
+                    showThemeDropdown = false
+                  },
+              )
+            }
+          }
         }
-      }
-    },
+      },
   )
 }
 
 /** Mii Channel WAD section: install or delete the cached WAD. */
 @Composable
 private fun MiiMakerSection(
-  hasWad: Boolean,
-  isInstallingWad: Boolean,
-  miiMakerError: String?,
-  onInstall: () -> Unit,
-  onRequestDelete: () -> Unit,
+    hasWad: Boolean,
+    isInstallingWad: Boolean,
+    miiMakerError: String?,
+    onInstall: () -> Unit,
+    onRequestDelete: () -> Unit,
 ) {
   SettingsCategoryHeader(stringResource(R.string.settings_mii_maker_section))
   val wadStatus =
-    if (hasWad) stringResource(R.string.status_installed)
-    else stringResource(R.string.status_not_installed)
+      if (hasWad) stringResource(R.string.status_installed)
+      else stringResource(R.string.status_not_installed)
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_face_up),
-    title = stringResource(R.string.settings_mii_channel_wad),
-    summary = miiMakerError ?: wadStatus,
-    summaryColor =
-      if (miiMakerError != null) MaterialTheme.colorScheme.error
-      else MaterialTheme.colorScheme.onSurfaceVariant,
-    trailing = {
-      when {
-        isInstallingWad -> {
-          Text(
-            stringResource(R.string.settings_installing),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-          )
-        }
-        hasWad -> {
-          TextButton(onClick = onRequestDelete) {
-            Text(stringResource(R.string.settings_delete), color = MaterialTheme.colorScheme.error)
+      icon = ImageVector.vectorResource(R.drawable.ic_face_up),
+      title = stringResource(R.string.settings_mii_channel_wad),
+      summary = miiMakerError ?: wadStatus,
+      summaryColor =
+          if (miiMakerError != null) MaterialTheme.colorScheme.error
+          else MaterialTheme.colorScheme.onSurfaceVariant,
+      trailing = {
+        when {
+          isInstallingWad -> {
+            Text(
+                stringResource(R.string.settings_installing),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+          }
+          hasWad -> {
+            TextButton(onClick = onRequestDelete) {
+              Text(
+                  stringResource(R.string.settings_delete),
+                  color = MaterialTheme.colorScheme.error,
+              )
+            }
+          }
+          else -> {
+            Button(
+                onClick = onInstall,
+                shape = buttonShape,
+                contentPadding = ButtonDefaults.TextButtonContentPadding,
+            ) {
+              Text(stringResource(R.string.action_install))
+            }
           }
         }
-        else -> {
-          Button(
-            onClick = onInstall,
-            shape = buttonShape,
-            contentPadding = ButtonDefaults.TextButtonContentPadding,
-          ) {
-            Text(stringResource(R.string.action_install))
-          }
-        }
-      }
-    },
+      },
   )
 }
 
@@ -642,43 +793,44 @@ private fun LoggingSection(onOpenLogViewer: () -> Unit) {
     mutableStateOf(loggingPrefs.getBoolean(PrefsKeys.LOGGING_TO_FILE_KEY, false))
   }
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_save),
-    title = stringResource(R.string.settings_logging_to_file),
-    summary = stringResource(R.string.settings_logging_to_file_sub),
-    trailing = {
-      Switch(
-        checked = loggingToFile,
-        onCheckedChange = { enabled ->
-          loggingToFile = enabled
-          loggingPrefs.edit().putBoolean(PrefsKeys.LOGGING_TO_FILE_KEY, enabled).apply()
-        },
-      )
-    },
+      icon = ImageVector.vectorResource(R.drawable.ic_save),
+      title = stringResource(R.string.settings_logging_to_file),
+      summary = stringResource(R.string.settings_logging_to_file_sub),
+      trailing = {
+        Switch(
+            checked = loggingToFile,
+            onCheckedChange = { enabled ->
+              loggingToFile = enabled
+              loggingPrefs.edit().putBoolean(PrefsKeys.LOGGING_TO_FILE_KEY, enabled).apply()
+            },
+        )
+      },
   )
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_bug_report),
-    title = stringResource(R.string.settings_report_bug),
-    summary = stringResource(R.string.settings_report_bug_sub),
-    trailing = {
-      Button(
-        onClick = onOpenLogViewer,
-        shape = buttonShape,
-        contentPadding = ButtonDefaults.TextButtonContentPadding,
-        colors = ButtonDefaults.filledTonalButtonColors(
-          containerColor = MaterialTheme.colorScheme.secondaryContainer,
-          contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
-      ) {
-        Text(stringResource(R.string.settings_report), fontWeight = FontWeight.Medium)
-      }
-    },
+      icon = ImageVector.vectorResource(R.drawable.ic_bug_report),
+      title = stringResource(R.string.settings_report_bug),
+      summary = stringResource(R.string.settings_report_bug_sub),
+      trailing = {
+        Button(
+            onClick = onOpenLogViewer,
+            shape = buttonShape,
+            contentPadding = ButtonDefaults.TextButtonContentPadding,
+            colors =
+                ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+        ) {
+          Text(stringResource(R.string.settings_report), fontWeight = FontWeight.Medium)
+        }
+      },
   )
 }
 
 /** Advanced section: Mii face cache row + relaunch-onboarding escape hatch. */
 @Composable
 private fun AdvancedSection(
-  onRelaunchOnboarding: () -> Unit,
+    onRelaunchOnboarding: () -> Unit,
 ) {
   SettingsCategoryHeader(stringResource(R.string.settings_advanced))
   MiiCacheRow()
@@ -699,26 +851,26 @@ private fun MiiCacheRow() {
     miiCacheSizeBytes = updated
   }
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_cached),
-    title = stringResource(R.string.settings_mii_face_cache),
-    summary = formatBytes(miiCacheSizeBytes),
-    trailing = {
-      TextButton(
-        onClick = {
-          scope.launch {
-            withContext(Dispatchers.IO) { MiiFaceCache.clear() }
-            miiCacheSizeBytes = 0
-          }
-        },
-        enabled = miiCacheSizeBytes > 0,
-        shape = buttonShape,
-      ) {
-        Text(
-          text = stringResource(R.string.settings_clear),
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-      }
-    },
+      icon = ImageVector.vectorResource(R.drawable.ic_cached),
+      title = stringResource(R.string.settings_mii_face_cache),
+      summary = formatBytes(miiCacheSizeBytes),
+      trailing = {
+        TextButton(
+            onClick = {
+              scope.launch {
+                withContext(Dispatchers.IO) { MiiFaceCache.clear() }
+                miiCacheSizeBytes = 0
+              }
+            },
+            enabled = miiCacheSizeBytes > 0,
+            shape = buttonShape,
+        ) {
+          Text(
+              text = stringResource(R.string.settings_clear),
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        }
+      },
   )
   Spacer(modifier = Modifier.height(4.dp))
 }
@@ -726,14 +878,14 @@ private fun MiiCacheRow() {
 @Composable
 private fun RelaunchOnboardingRow(onRelaunch: () -> Unit) {
   SettingsItem(
-    icon = ImageVector.vectorResource(R.drawable.ic_exit_to_app),
-    title = stringResource(R.string.settings_onboarding),
-    summary = stringResource(R.string.settings_relaunch_onboarding),
-    trailing = {
-      TextButton(onClick = onRelaunch, shape = buttonShape) {
-        Text(stringResource(R.string.settings_relaunch))
-      }
-    },
+      icon = ImageVector.vectorResource(R.drawable.ic_exit_to_app),
+      title = stringResource(R.string.settings_onboarding),
+      summary = stringResource(R.string.settings_relaunch_onboarding),
+      trailing = {
+        TextButton(onClick = onRelaunch, shape = buttonShape) {
+          Text(stringResource(R.string.settings_relaunch))
+        }
+      },
   )
 }
 
@@ -742,24 +894,24 @@ private fun RelaunchOnboardingRow(onRelaunch: () -> Unit) {
 private fun AboutSection() {
   SettingsCategoryHeader(stringResource(R.string.settings_about))
   val version =
-    if (BuildConfig.DEBUG)
-      stringResource(
-        R.string.settings_version_debug,
-        BuildConfig.VERSION_NAME,
-        BuildConfig.GIT_HASH,
-      )
-    else stringResource(R.string.settings_version_release, BuildConfig.VERSION_NAME)
+      if (BuildConfig.DEBUG)
+          stringResource(
+              R.string.settings_version_debug,
+              BuildConfig.VERSION_NAME,
+              BuildConfig.GIT_HASH,
+          )
+      else stringResource(R.string.settings_version_release, BuildConfig.VERSION_NAME)
   Box(modifier = Modifier.focusable()) {
     SettingsItem(
-      icon = ImageVector.vectorResource(R.drawable.ic_info),
-      title = stringResource(R.string.settings_wheel_witch),
-      summary =
-        stringResource(
-          R.string.settings_about_summary,
-          version,
-          stringResource(R.string.settings_app_subtitle),
-        ),
-      trailing = null,
+        icon = ImageVector.vectorResource(R.drawable.ic_info),
+        title = stringResource(R.string.settings_wheel_witch),
+        summary =
+            stringResource(
+                R.string.settings_about_summary,
+                version,
+                stringResource(R.string.settings_app_subtitle),
+            ),
+        trailing = null,
     )
   }
 }

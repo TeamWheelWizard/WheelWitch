@@ -5,7 +5,10 @@ import android.content.SharedPreferences
 
 /** SharedPreferences lookup helpers keyed by [PrefsKeys] names. */
 object Prefs {
-  /** App-wide preferences: storage URI, last server version, theme, onboarding, My Stuff mode, ISO path. */
+  /**
+   * App-wide preferences: storage URI, last server version, theme, onboarding, My Stuff mode, ISO
+   * path.
+   */
   fun main(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -17,11 +20,18 @@ object Prefs {
   fun raceStatsCache(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.RACE_STATS_PREFS, Context.MODE_PRIVATE)
 
-  /** Per-player leaderboard cache: stores the last successful `/api/leaderboard/player/<fc>/` responses. */
+  /**
+   * Per-player leaderboard cache: stores the last successful `/api/leaderboard/player/<fc>/`
+   * responses.
+   */
   fun leaderboardCache(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.LEADERBOARD_CACHE_PREFS, Context.MODE_PRIVATE)
 
   /** Per-profile badge cache: stores the last successful `/badges/<pid>` responses. */
   fun badgeCache(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.BADGE_CACHE_PREFS, Context.MODE_PRIVATE)
+
+  /** Cloud sync state: tokens, revs, hashes, session flag. Encrypted in production. */
+  fun sync(context: Context): SharedPreferences =
+      context.getSharedPreferences(PrefsKeys.SYNC_PREFS, Context.MODE_PRIVATE)
 }
