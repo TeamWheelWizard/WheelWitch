@@ -78,8 +78,6 @@ private fun parseMemoryFromDescription(status: String, description: String?): Me
     }
     return MemoryInfo(
         status = status,
-        usagePercent = null,
-        used = used,
-        total = null
+        used = used
     )
 }

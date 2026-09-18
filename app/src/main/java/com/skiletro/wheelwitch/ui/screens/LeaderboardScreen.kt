@@ -44,9 +44,11 @@ import com.skiletro.wheelwitch.ui.components.FocusableSurface
 import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.MiiFace
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.viewmodel.LeaderboardState
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -68,7 +70,7 @@ fun LeaderboardScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchLeaderboard() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Leaderboard",
+                key = OnlineMenuPage.Leaderboard.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -191,13 +193,13 @@ private fun LeaderboardRow(entry: LeaderboardEntry, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.width(8.dp))
             MiiFace(
                 imageBase64 = entry.miiImageBase64,
-                miiDataBase64 = entry.miiData,
+                miiDataBase64 = entry.player.miiData,
                 modifier = Modifier.size(36.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = entry.name,
+                    text = unknownOrValue(entry.player.name ?: ""),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,
@@ -213,7 +215,7 @@ private fun LeaderboardRow(entry: LeaderboardEntry, modifier: Modifier = Modifie
             Spacer(modifier = Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "${entry.vr}",
+                    text = "${entry.player.vr}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary

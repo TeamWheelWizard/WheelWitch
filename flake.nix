@@ -30,9 +30,10 @@
         name = "wheelwitch";
 
         packages = with pkgs; [
-          jdk21
-          android-tools
           android.androidsdk
+          android-tools
+          jdk21
+          just
         ];
 
         ANDROID_SDK_ROOT = androidHome;

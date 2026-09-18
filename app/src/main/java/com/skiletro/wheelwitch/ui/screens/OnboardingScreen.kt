@@ -59,7 +59,10 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.data.DolphinPaths
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.InvalidTreeReason
+import com.skiletro.wheelwitch.data.InvalidTreeUriException
 import com.skiletro.wheelwitch.data.GameTypeParser
 import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
@@ -72,9 +75,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-
-/** Duration of the onboarding fade-in/out crossfade. */
-private const val ONBOARDING_TRANSITION_MS = 300
 
 /**
  * Onboarding wizard. The flow is:
@@ -201,6 +201,11 @@ fun OnboardingScreen(
   // rejects that and it's also fragile across recomposition.
   val storageReadFailed = stringResource(R.string.onboarding_storage_read_failed)
   val storageWrongFolder = stringResource(R.string.onboarding_storage_wrong_folder)
+  val storageSubfolderExternal = stringResource(
+    R.string.onboarding_storage_subfolder_external_format,
+    DolphinPaths.expectedTreeId(),
+  )
+  val storageSubfolderInternal = stringResource(R.string.onboarding_storage_subfolder_internal)
   val storageRequired = stringResource(R.string.onboarding_storage_required)
   val isoInvalid = stringResource(R.string.onboarding_iso_invalid)
   val isoCopyFailed = stringResource(R.string.onboarding_iso_copy_failed)
@@ -242,7 +247,14 @@ fun OnboardingScreen(
         }
         .onFailure { e ->
           Timber.tag("Onboarding").w(e, "Picked tree failed validation")
-          storageError = e.message ?: storageWrongFolder
+          storageError = when (e) {
+            is InvalidTreeUriException -> when (e.reason) {
+              InvalidTreeReason.SubfolderExternal -> storageSubfolderExternal
+              InvalidTreeReason.SubfolderInternal -> storageSubfolderInternal
+              else -> storageWrongFolder
+            }
+            else -> e.message ?: storageWrongFolder
+          }
         }
     }
 
@@ -443,7 +455,11 @@ private enum class OnboardingStep {
 private fun WelcomeStep(onNext: () -> Unit) {
   StepCard(
     title =
-      "${stringResource(R.string.onboarding_welcome_to)}\n${stringResource(R.string.onboarding_app_name)}",
+      stringResource(
+        R.string.onboarding_welcome_title,
+        stringResource(R.string.onboarding_welcome_to),
+        stringResource(R.string.onboarding_app_name),
+      ),
     titleStyle = MaterialTheme.typography.headlineLarge,
     titleColor = MaterialTheme.colorScheme.primary,
     body = stringResource(R.string.onboarding_welcome_body),

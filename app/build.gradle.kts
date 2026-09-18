@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.spotless)
 }
+
+val localProperties = Properties()
+
+rootProject
+    .file("local.properties")
+    .takeIf { it.isFile }
+    ?.inputStream()
+    ?.use {
+      localProperties.load(it)
+    }
 
 spotless {
   kotlin { ktfmt() }
@@ -60,6 +72,12 @@ android {
     versionName = releaseVersion ?: "0.$commitCount.0+$gitHash"
     buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
     buildConfigField("String", "LOGS_EMAIL", "\"wheelwitch@skilet.ro\"")
+    val dropboxAppKey =
+        providers.gradleProperty("DROPBOX_APP_KEY").orNull
+            ?: localProperties.getProperty("DROPBOX_APP_KEY")
+            ?: ""
+    val escapedDropboxAppKey = dropboxAppKey.replace("\\", "\\\\").replace("\"", "\\\"")
+    buildConfigField("String", "DROPBOX_APP_KEY", "\"$escapedDropboxAppKey\"")
   }
 
   signingConfigs {
@@ -115,10 +133,12 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.documentfile)
+  implementation(libs.androidx.security.crypto)
+  implementation(libs.androidx.browser)
+  implementation(libs.dropbox.core.sdk)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  implementation(libs.material)
   implementation(libs.okhttp)
   implementation(libs.rollingnumbers)
   implementation(libs.timber)

@@ -187,7 +187,8 @@ private fun ClockText() {
 @Composable
 private fun VersionBadge() {
     val version = BuildConfig.VERSION_NAME.substringBefore("+")
-    val label = if (BuildConfig.DEBUG) "${version} CANARY" else version
+    val label: String =
+        if (BuildConfig.DEBUG) stringResource(R.string.topbar_canary_version, version) else version
     Box(
         modifier = Modifier
             .background(

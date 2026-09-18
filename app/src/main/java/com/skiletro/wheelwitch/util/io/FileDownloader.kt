@@ -382,6 +382,7 @@ object FileDownloader {
                             if (!firstDone.isCompleted) {
                                 firstDone.complete(Unit)
                             }
+                            activeChunks.decrementAndGet()
                         }
                     }
                 }

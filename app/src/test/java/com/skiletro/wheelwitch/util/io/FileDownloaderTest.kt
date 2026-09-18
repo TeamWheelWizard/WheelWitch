@@ -408,6 +408,53 @@ class FileDownloaderTest {
     }
 
     @Test
+    fun `downloadInParallel reports decreasing activeChunks as chunks complete`() {
+        val content = ByteArray(512) { (it % 256).toByte() }
+        server.dispatcher =
+            object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    if (request.method == "HEAD") {
+                        return MockResponse.Builder()
+                            .code(200)
+                            .addHeader("Content-Length", content.size.toString())
+                            .addHeader("Accept-Ranges", "bytes")
+                            .build()
+                    }
+                    val range = request.headers.get("Range")
+                        ?: return MockResponse.Builder().code(400).build()
+                    val (start, end) = parseRange(range)
+                    // Stagger the two chunks so a 200ms progress tick
+                    // lands between their completions.
+                    if (start == 0L) Thread.sleep(150) else Thread.sleep(400)
+                    val slice = content.copyOfRange(start.toInt(), (end + 1).toInt())
+                    return MockResponse.Builder()
+                        .code(206)
+                        .addHeader(
+                            "Content-Range",
+                            "bytes $start-$end/${content.size}",
+                        )
+                        .body(Buffer().write(slice))
+                        .build()
+                }
+            }
+
+        val reports = mutableListOf<ParallelDownloadProgress>()
+        FileDownloader.downloadInParallel(
+            url = server.url("/file.bin").toString(),
+            targetFile = targetFile,
+            parallelism = 2,
+            onProgress = { reports.add(it) },
+            client = client,
+            maxRetries = 0,
+        )
+
+        assertThat(reports.last().activeChunks).isEqualTo(0)
+        val midDownload = reports.filter { it.progress < 1f }
+        assertThat(midDownload).isNotEmpty()
+        assertThat(midDownload.map { it.activeChunks }).contains(1)
+    }
+
+    @Test
     fun `downloadInParallel emits progress with monotonically increasing bytesDownloaded`() {
         val content = ByteArray(1024) { (it % 256).toByte() }
         installRangeDispatcher(content)

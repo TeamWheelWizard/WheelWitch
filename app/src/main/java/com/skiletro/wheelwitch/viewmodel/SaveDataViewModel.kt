@@ -9,26 +9,35 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewModelScope
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.data.BadgeCache
 import com.skiletro.wheelwitch.data.DolphinTree
+import com.skiletro.wheelwitch.data.PrefsBadgeCache
+import com.skiletro.wheelwitch.data.PrefsPlayerLeaderboardCache
 import com.skiletro.wheelwitch.data.RRRatingParser
+import com.skiletro.wheelwitch.data.InvalidBackupException
 import com.skiletro.wheelwitch.data.RksysParser
 import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
 import com.skiletro.wheelwitch.data.readDolphinBytes
+import com.skiletro.wheelwitch.domain.LeaderboardMerger
+import com.skiletro.wheelwitch.domain.SaveBackupCoordinator
+import com.skiletro.wheelwitch.domain.SaveOpOutcome
 import com.skiletro.wheelwitch.model.LicenseInfo
+import com.skiletro.wheelwitch.domain.computeScore
 import com.skiletro.wheelwitch.model.LicenseStats
-import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.model.SaveFileInfo
 import com.skiletro.wheelwitch.model.ScoreResult
-import com.skiletro.wheelwitch.model.VanityBadge
-import com.skiletro.wheelwitch.model.computeScore
+import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import java.text.DateFormat
 import java.util.Date
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -68,7 +77,7 @@ import timber.log.Timber
  * selected region, so [mergedLicenses] holds a 4-entry list per
  * region with leaderboard VR and Mii name merged in. The VR fetch
  * is fanned out in parallel for all 4 slots of the selected region
- * (4 in-flight requests max) via [refreshMergedLicensesForRegion].
+ * (4 in-flight requests max) via [LeaderboardMerger].
  *
  * Unified save data: [hasAnySave] is the single source of truth for
  * whether the user has anything worth backing up (any region's
@@ -80,34 +89,34 @@ import timber.log.Timber
  * [PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY] on construction and updated
  * after every successful [backupAll] call.
  *
- * Tests can swap the [treeFactory], the [parser], the
- * [leaderboardFetcher], the [backupAllSaver] (for the timestamp),
- * the [now] lambda (for the same), and the [ioDispatcher] to inject
- * mocks without going through SAF, the network, or real time.
+ * Tests can swap the [treeFactory], the [parser], the [LeaderboardMerger],
+ * the [SaveManager], the [now] lambda (for timestamps), and the
+ * [ioDispatcher] to inject mocks without going through SAF, the network,
+ * or real time.
  */
 class SaveDataViewModel(
   application: Application,
   private val packStatusFlow: StateFlow<UiState>,
   private val treeFactory: (Context) -> DolphinTree? = ::defaultTreeFactory,
   private val parser: (ByteArray) -> SaveFileInfo = RksysParser::parse,
-  private val leaderboardFetcher: suspend (String) -> Result<PlayerLeaderboardData> = { code ->
-    VersionFileParser.fetchPlayerLeaderboard(code)
-  },
-  private val backupAllSaver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> =
-    SaveManager::backupAll,
-  private val backupRRSaver: suspend (DolphinTree, Uri) -> Result<SaveManager.BackupSummary> =
-    SaveManager::backupRR,
-  private val restoreAllSaver:
-    suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = SaveManager::restoreAll,
-  private val restoreRRSaver:
-    suspend (DolphinTree, Uri) -> Result<SaveManager.RestoreSummary> = SaveManager::restoreRR,
-  private val deleteAllSaver: suspend (DolphinTree) -> Result<Unit> = SaveManager::deleteAll,
-  private val deleteRRSaver: suspend (DolphinTree) -> Result<Unit> = SaveManager::deleteRR,
+  private val leaderboardMerger: LeaderboardMerger =
+    LeaderboardMerger(
+      VersionFileParser::fetchPlayerLeaderboard,
+      cache =
+        PrefsPlayerLeaderboardCache(
+          prefs = Prefs.leaderboardCache(application),
+          key = PrefsKeys.LEADERBOARD_CACHE_KEY,
+        ),
+    ),
+  private val badgeCache: BadgeCache =
+    PrefsBadgeCache(prefs = Prefs.badgeCache(application), key = PrefsKeys.BADGE_CACHE_KEY),
+  private val saveManager: SaveManager = SaveManager,
   private val now: () -> Long = System::currentTimeMillis,
   private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AndroidViewModel(application) {
   private val app = application
   private val prefs = Prefs.main(application)
+  private val saveOps = SaveBackupCoordinator(treeFactory)
 
   private val _saveInfos = MutableStateFlow<Map<Region, SaveFileInfo>>(emptyMap())
   internal val saveInfos: StateFlow<Map<Region, SaveFileInfo>> = _saveInfos.asStateFlow()
@@ -143,9 +152,12 @@ class SaveDataViewModel(
 
   private fun buildScoreResult(license: LicenseInfo): ScoreResult? {
     if (!license.exists) return null
-    val vrPoints = license.profileId?.let { pid ->
-      ratingVrMap[pid]?.let { java.lang.Math.round(it * 100.0).toDouble() }
-    } ?: (license.vr ?: 0).toDouble()
+    val vrPoints =
+      license.leaderboardVr?.toDouble()
+        ?: license.profileId?.let { pid ->
+            ratingVrMap[pid]?.let { java.lang.Math.round(it * 100.0).toDouble() }
+          }
+        ?: (license.vr ?: 0).toDouble()
     return computeScore(
       LicenseStats(
         vrPoints = vrPoints,
@@ -158,8 +170,8 @@ class SaveDataViewModel(
     )
   }
 
-  private val _vanityBadges = MutableStateFlow<Map<String, VanityBadge>>(emptyMap())
-  val vanityBadges: StateFlow<Map<String, VanityBadge>> = _vanityBadges.asStateFlow()
+  private val _badges = MutableStateFlow<Map<Long, List<BadgeType>>>(emptyMap())
+  val badges: StateFlow<Map<Long, List<BadgeType>>> = _badges.asStateFlow()
 
   private val _isLoading = MutableStateFlow(false)
   val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -175,9 +187,28 @@ class SaveDataViewModel(
    * [refreshIfStale] to dedup the `init` collect and the
    * `SaveInfoScreen` lifecycle ON_RESUME observer. The latter
    * previously triggered a second full save re-parse + 4 leaderboard
-   * round trips every time the user opened the screen.
+   * round trips every time the user opened the screen. Updated with
+   * an atomic CAS so two concurrent stale-checks cannot both start a
+   * refresh.
    */
-  @Volatile private var lastRefreshAt: Long = 0L
+  private val lastRefreshAt = AtomicLong(0L)
+
+  /**
+   * Handle to the in-flight [refresh] job. A re-entrant [refresh]
+   * cancels the previous run so a stale badge fetch or leaderboard
+   * merge from the old run cannot overwrite fresh state.
+   */
+  private var refreshJob: Job? = null
+
+  /**
+   * Monotonic generation bumped on every [refresh]. Background work
+   * captured under an older generation (e.g. a badge fetch that resumes
+   * after a newer refresh replaced it) drops its result instead of
+   * overwriting the newer refresh's output. Belt-and-braces on top of
+   * [refreshJob] cancellation, which is not observable at a resumed
+   * continuation's every step.
+   */
+  private var refreshGeneration = 0
 
   init {
     // Read persisted state synchronously — SharedPreferences get*()
@@ -221,9 +252,12 @@ class SaveDataViewModel(
    * second SAF `findFile` round trip for every region.
    */
   fun refresh() {
-    viewModelScope.launch {
+    refreshJob?.cancel()
+    refreshGeneration++
+    refreshJob =
+      viewModelScope.launch {
       _isLoading.value = true
-      lastRefreshAt = now()
+      lastRefreshAt.set(now())
       try {
         val tree =
           treeFactory(app)
@@ -235,7 +269,7 @@ class SaveDataViewModel(
               _mergedLicenses.value = emptyMap()
               return@launch
             }
-        val regions = SaveManager.listRegions(tree)
+        val regions = saveManager.listRegions(tree)
         if (regions.isEmpty()) {
           _saveInfos.value = emptyMap()
           _hasSave.value = emptyMap()
@@ -251,7 +285,7 @@ class SaveDataViewModel(
             regions
               .map { region ->
                 async(ioDispatcher) {
-                  val bytes = SaveManager.readSave(tree, region)
+                  val bytes = saveManager.readSave(tree, region)
                   if (bytes != null) {
                     val info = runCatching { parser(bytes) }.getOrNull()
                     if (info != null) {
@@ -277,23 +311,46 @@ class SaveDataViewModel(
         if (target != _selectedRegion.value) {
           _selectedRegion.value = target
         }
-        // Publish local un-merged licenses immediately so the UI shows
-        // local data (Mii name, local VR) without waiting for network.
+        // Publish the last-known-good licenses immediately so the UI has
+        // something to render without waiting for the network round trips.
+        // Cached API data wins; slots without a cache entry keep their
+        // local save data.
         if (target != null && infos[target] != null && mergedLicenses.value[target] == null) {
-          _mergedLicenses.value = mergedLicenses.value + (target to infos[target]!!.licenses)
+          val premerged = leaderboardMerger.enrichOffline(target, infos[target])
+          _mergedLicenses.value = mergedLicenses.value + (target to premerged)
         }
         _isLoading.value = false
 
         // Network enhancements run in background — they never block
         // the license grid from rendering local save data.
-        launch {
-          val badges = withContext(ioDispatcher) { VersionFileParser.fetchBadges() }
-          Timber.tag(TAG).d("Fetched %d vanity badge entries", badges.size)
-          _vanityBadges.value = badges
+        coroutineScope {
+          launch {
+            val generation = refreshGeneration
+            val profileIds = infos.values.flatMap { it.licenses }.mapNotNull { it.profileId }
+            // Cold start: seed from the cache so badge tiers render without
+            // waiting for the network round trip. Only applied when badges
+            // are still blank, so a fresh set cannot be overwritten by
+            // stale cached data.
+            if (_badges.value.isEmpty()) {
+              val cached =
+                profileIds.mapNotNull { pid -> badgeCache.load(pid)?.let { pid to it } }.toMap()
+              if (cached.isNotEmpty()) _badges.value = cached
+            }
+            val fresh = withContext(ioDispatcher) { VersionFileParser.fetchBadges(profileIds) }
+            Timber.tag(TAG).d("Fetched %d badge entries", fresh.size)
+            // Drop the result if a newer refresh superseded this one, so a
+            // stale fetch cannot overwrite fresher badges or the cache.
+            if (generation == refreshGeneration) {
+              _badges.value = fresh
+              fresh.forEach { (pid, badges) -> badgeCache.save(pid, badges) }
+            }
+          }
+          if (target != null) {
+            launch { publishMerged(target, infos[target]) }
+          }
         }
-        if (target != null) {
-          launch { refreshMergedLicensesForRegion(target, infos[target]) }
-        }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         Timber.tag(TAG).e(e, "refresh failed")
         _error.value =
@@ -314,7 +371,10 @@ class SaveDataViewModel(
    * should call [refresh] directly.
    */
   fun refreshIfStale(maxAgeMs: Long = DEFAULT_REFRESH_STALE_MS) {
-    if (now() - lastRefreshAt >= maxAgeMs) refresh()
+    val nowValue = now()
+    val last = lastRefreshAt.get()
+    if (nowValue - last < maxAgeMs) return
+    if (lastRefreshAt.compareAndSet(last, nowValue)) refresh()
   }
 
   /**
@@ -326,7 +386,7 @@ class SaveDataViewModel(
     if (region == _selectedRegion.value) return
     prefs.edit().putString(PrefsKeys.SELECTED_REGION_KEY, region.code).apply()
     _selectedRegion.value = region
-    viewModelScope.launch { refreshMergedLicensesForRegion(region, _saveInfos.value[region]) }
+    viewModelScope.launch { publishMerged(region, _saveInfos.value[region]) }
   }
 
   /**
@@ -338,16 +398,17 @@ class SaveDataViewModel(
    * show "Last backed up: …" on next launch.
    */
   fun backupAll(dest: Uri) {
-    runSaveOp(
+    runSaveCallback(
       logTag = "backup",
       fallback = { app.getString(R.string.vm_save_write_failed) },
-      op = { backupAllSaver(it, dest) },
-    ) {
-      val timestamp = now()
-      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
-      _lastBackupTimestamp.value = timestamp
-      refresh()
-    }
+      onSuccess = {
+        val timestamp = now()
+        prefs.edit().putLong(PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY, timestamp).apply()
+        _lastBackupTimestamp.value = timestamp
+        refresh()
+      },
+      op = { tree -> saveManager.backupAll(tree, dest) },
+    )
   }
 
   /**
@@ -356,11 +417,12 @@ class SaveDataViewModel(
    * state on success.
    */
   fun restoreAll(source: Uri) {
-    runSaveOp(
+    runSaveCallback(
       logTag = "restore",
       fallback = { app.getString(R.string.vm_save_read_failed) },
-      op = { restoreAllSaver(it, source) },
-    ) { refresh() }
+      onSuccess = { refresh() },
+      op = { tree -> saveManager.restoreAll(tree, source) },
+    )
   }
 
   /**
@@ -369,11 +431,12 @@ class SaveDataViewModel(
    * Refreshes the parsed state and [hasAnySave] on success.
    */
   fun deleteAll() {
-    runSaveOp(
+    runSaveCallback(
       logTag = "delete",
       fallback = { app.getString(R.string.vm_failed_format, "delete save") },
-      op = { deleteAllSaver(it) },
-    ) { refresh() }
+      onSuccess = { refresh() },
+      op = { tree -> saveManager.deleteAll(tree) },
+    )
   }
 
   /**
@@ -382,16 +445,17 @@ class SaveDataViewModel(
    * [PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY].
    */
   fun backupRR(dest: Uri) {
-    runSaveOp(
+    runSaveCallback(
       logTag = "backupRR",
       fallback = { app.getString(R.string.vm_save_write_failed) },
-      op = { backupRRSaver(it, dest) },
-    ) {
-      val timestamp = now()
-      prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
-      _lastBackupRRTimestamp.value = timestamp
-      refresh()
-    }
+      onSuccess = {
+        val timestamp = now()
+        prefs.edit().putLong(PrefsKeys.LAST_BACKUP_RR_TIMESTAMP_KEY, timestamp).apply()
+        _lastBackupRRTimestamp.value = timestamp
+        refresh()
+      },
+      op = { tree -> saveManager.backupRR(tree, dest) },
+    )
   }
 
   /**
@@ -399,11 +463,12 @@ class SaveDataViewModel(
    * Refreshes the parsed state on success.
    */
   fun restoreRR(source: Uri) {
-    runSaveOp(
+    runSaveCallback(
       logTag = "restoreRR",
       fallback = { app.getString(R.string.vm_save_read_failed) },
-      op = { restoreRRSaver(it, source) },
-    ) { refresh() }
+      onSuccess = { refresh() },
+      op = { tree -> saveManager.restoreRR(tree, source) },
+    )
   }
 
   /**
@@ -411,11 +476,12 @@ class SaveDataViewModel(
    * parsed state on success.
    */
   fun deleteRR() {
-    runSaveOp(
+    runSaveCallback(
       logTag = "deleteRR",
       fallback = { app.getString(R.string.vm_failed_format, "delete RR save") },
-      op = { deleteRRSaver(it) },
-    ) { refresh() }
+      onSuccess = { refresh() },
+      op = { tree -> saveManager.deleteRR(tree) },
+    )
   }
 
   /**
@@ -445,91 +511,62 @@ class SaveDataViewModel(
   // --- internals --------------------------------------------------------
 
   /**
-   * Runs [block] against the persisted SAF tree, publishing the
-   * "storage not configured" error when no grant exists.
+   * Resolves the persisted tree via [SaveBackupCoordinator] and runs
+   * one unified save operation, publishing the resolved error message
+   * (storage-not-configured, the exception message, or [fallback]) and
+   * calling [onSuccess] on success.
    */
-  private fun runWithTree(block: suspend (DolphinTree) -> Unit) {
-    viewModelScope.launch {
-      val tree = treeFactory(app)
-      if (tree == null) {
-        _error.value = app.getString(R.string.vm_save_not_configured)
-        return@launch
-      }
-      block(tree)
-    }
-  }
-
-  /**
-   * Runs a save operation against the persisted tree, logging and
-   * publishing the [fallback] error on failure and running
-   * [onSuccess] on success.
-   */
-  private fun runSaveOp(
+  private fun runSaveCallback(
     logTag: String,
     fallback: () -> String,
-    op: suspend (DolphinTree) -> Result<*>,
     onSuccess: () -> Unit = {},
+    op: suspend (DolphinTree) -> Result<*>,
   ) {
-    runWithTree { tree ->
-      op(tree)
-        .onSuccess { onSuccess() }
-        .onFailure { e ->
-          Timber.tag(TAG).e(e, "$logTag failed")
-          _error.value = e.message ?: fallback()
-        }
+    viewModelScope.launch {
+      when (
+        val outcome =
+          saveOps.run(
+            app,
+            logTag,
+            notConfiguredError = { app.getString(R.string.vm_save_not_configured) },
+            fallbackError = fallback,
+            onSuccess = onSuccess,
+            op = op,
+          )
+      ) {
+        is SaveOpOutcome.Failure -> _error.value = friendlySaveError(outcome)
+        SaveOpOutcome.Success -> Unit
+      }
     }
   }
 
-  /**
-   * Fans out 4 parallel leaderboard fetches (one per license slot
-   * of [region]) and writes the merged list into [mergedLicenses].
-   * Skips slots without a `friendCode` (empty slots). When [info]
-   * is null (no save file for this region, e.g. after a delete or
-   * a switch to a region that has never been played), publishes 4
-   * empty `LicenseInfo` entries so the Licenses screen renders an
-   * empty 2x2 grid instead of stale data from a previous session.
-   *
-   * The initial (un-merged) list is published first so the UI can
-   * show the local VR while the network round trips are in flight.
-   */
-  private suspend fun refreshMergedLicensesForRegion(
-    region: Region,
-    info: SaveFileInfo?,
-  ) {
-    val baseLicenses =
-      info?.licenses ?: List(LICENSE_SLOTS) { i -> LicenseInfo(slotIndex = i, exists = false) }
-    val enriched =
-      withContext(ioDispatcher) {
-        coroutineScope {
-          baseLicenses
-            .map { license ->
-              async {
-                if (!license.exists || license.friendCode == null) {
-                  license
-                } else {
-                  val result = leaderboardFetcher(license.friendCode)
-                  if (result.isSuccess) {
-                    val data = result.getOrThrow()
-                    license.copy(
-                      leaderboardVr = data.vr,
-                      miiName = data.name ?: license.miiName,
-                      miiDataBase64 = data.miiData ?: license.miiDataBase64,
-                    )
-                  } else {
-                    license
-                  }
-                }
-              }
-            }
-            .awaitAll()
-        }
+  private fun friendlySaveError(outcome: SaveOpOutcome.Failure): String {
+    val error = outcome.throwable
+    if (error is InvalidBackupException) {
+      return when (error.reason) {
+        InvalidBackupException.Reason.MissingManifest,
+        InvalidBackupException.Reason.WrongType -> app.getString(R.string.save_restore_invalid)
+        InvalidBackupException.Reason.TooNew ->
+          app.getString(R.string.save_restore_too_new_format, error.version.toString())
       }
+    }
+    return outcome.message
+  }
+
+  /**
+   * Merges leaderboard data for [region]'s 4 slots and publishes the
+   * result into [mergedLicenses]. The initial (un-merged) local list
+   * is published by [refresh] before this runs, so the UI shows the
+   * local VR while the network round trips are in flight.
+   */
+  private suspend fun publishMerged(region: Region, info: SaveFileInfo?) {
+    val enriched = leaderboardMerger.merge(region, info)
     _mergedLicenses.update { current -> current + (region to enriched) }
   }
 
-  private fun computeHasAnySave(tree: DolphinTree): Boolean = SaveManager.hasAnySave(tree)
+  private fun computeHasAnySave(tree: DolphinTree): Boolean = saveManager.hasAnySave(tree)
 
-  private fun computeHasRRSave(tree: DolphinTree): Boolean = SaveManager.hasRRSave(tree)
+  private fun computeHasRRSave(tree: DolphinTree): Boolean = saveManager.hasRRSave(tree)
 
   /** Per-region read result so [refresh] can reuse the `readSave` output. */
   private data class RegionRead(
@@ -576,16 +613,12 @@ class SaveDataViewModel(
    * `packStatusFlow` parameter requires a custom factory.
    *
    * The other constructor parameters (`treeFactory`, `parser`,
-   * `leaderboardFetcher`, `backupAllSaver`, `restoreAllSaver`,
-   * `deleteAllSaver`, `now`, `ioDispatcher`) use their production
-   * defaults; tests that need to swap them continue to construct
-   * the VM directly with explicit arguments.
+   * `leaderboardMerger`, `saveManager`, `now`, `ioDispatcher`) use
+   * their production defaults; tests that need to swap them continue
+   * to construct the VM directly with explicit arguments.
    */
   companion object {
     const val TAG = "SaveData"
-
-    /** Number of license slots in an `rksys.dat` save file. */
-    private const val LICENSE_SLOTS = 4
 
     /**
      * Default staleness window for [refreshIfStale]. The

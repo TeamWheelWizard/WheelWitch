@@ -2,6 +2,7 @@ package com.skiletro.wheelwitch.network
 
 import com.skiletro.wheelwitch.model.LeaderboardEntry
 import com.skiletro.wheelwitch.model.LeaderboardResponse
+import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.util.json.jsonArrayFromResponse
 import com.skiletro.wheelwitch.util.json.optAnyString
 import com.skiletro.wheelwitch.util.json.optNonEmptyString
@@ -40,10 +41,12 @@ fun parseLeaderboardResponse(jsonString: String): LeaderboardResponse {
         LeaderboardEntry(
             rank = obj.optInt("rank", 0),
             friendCode = obj.optAnyString("friendCode", "friend_code", "fc") ?: "",
-            name = obj.optString("name", "Unknown"),
-            vr = obj.optInt("vr", 0),
+            player = PlayerLeaderboardData(
+                vr = obj.optInt("vr", 0),
+                name = obj.optString("name", "Unknown"),
+                miiData = obj.optNonEmptyString("miiData"),
+            ),
             miiImageBase64 = obj.optNonEmptyString("miiImageBase64"),
-            miiData = obj.optNonEmptyString("miiData"),
         )
     }
     return LeaderboardResponse(entries = entries, page = page, hasMore = hasMore)

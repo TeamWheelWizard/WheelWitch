@@ -50,6 +50,7 @@ class DolphinTreeTest {
 
     mockkStatic(DocumentFile::class)
     every { DocumentFile.fromTreeUri(context, treeUri) } returns root
+    DolphinTree.resetMemo()
   }
 
   @AfterEach
@@ -365,6 +366,20 @@ class DolphinTreeTest {
     assertThat(DolphinTree.fromPersisted(context)).isNull()
     verify { editor.remove(PrefsKeys.WHEELWITCH_TREE_URI_KEY) }
     verify { editor.apply() }
+  }
+
+  @Test
+  fun `fromPersisted reuses the memoised tree for repeated calls with the same URI`() {
+    val prefs = mockk<SharedPreferences>(relaxed = true)
+    every { prefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null) } returns
+      treeUri.toString()
+    mockPrefsMain(prefs)
+
+    val first = DolphinTree.fromPersisted(context)
+    val second = DolphinTree.fromPersisted(context)
+
+    assertThat(second).isEqualTo(first)
+    verify(exactly = 1) { DocumentFile.fromTreeUri(context, treeUri) }
   }
 
   @Test
@@ -1272,7 +1287,7 @@ Enabled = False
 
   @Test
   fun `addIniKeyValueAtTheEnd appends section and key when both absent`() {
-    val result = addIniKeyValueAtTheEnd("", "[Core]", "EnableCheats", "False")
+    val result = DolphinGameIni.addIniKeyValueAtTheEnd("", "[Core]", "EnableCheats", "False")
     assertThat(result).contains("[Core]")
     assertThat(result).contains("EnableCheats = False")
   }
@@ -1282,7 +1297,7 @@ Enabled = False
   @Test
   fun `removeIniKeyInSection removes key from section`() {
     val input = "[Core]\nEnableCheats = True\nSomeOther = Value\n"
-    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    val result = DolphinGameIni.removeIniKeyInSection(input, "[Core]", "EnableCheats")
     assertThat(result).doesNotContain("EnableCheats")
     assertThat(result).contains("SomeOther = Value")
   }
@@ -1290,7 +1305,7 @@ Enabled = False
   @Test
   fun `removeIniKeyInSection preserves other sections and keys`() {
     val input = "[Core]\nEnableCheats = True\nSomeOther = Value\n[Dolphin.Core]\nOtherKey = X\n"
-    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    val result = DolphinGameIni.removeIniKeyInSection(input, "[Core]", "EnableCheats")
     assertThat(result).contains("[Core]\nSomeOther = Value")
     assertThat(result).contains("[Dolphin.Core]")
     assertThat(result).contains("OtherKey = X")
@@ -1299,7 +1314,7 @@ Enabled = False
   @Test
   fun `removeIniKeyInSection returns content unchanged when section absent`() {
     val input = "[Other]\nKey = Value\n"
-    val result = removeIniKeyInSection(input, "[Core]", "EnableCheats")
+    val result = DolphinGameIni.removeIniKeyInSection(input, "[Core]", "EnableCheats")
     assertThat(result).isEqualTo(input)
   }
 

@@ -46,7 +46,7 @@ fun SaveInfoScreen(viewModel: SaveDataViewModel, onClose: () -> Unit) {
   val selectedRegion by viewModel.selectedRegion.collectAsState()
   val mergedLicenses by viewModel.mergedLicenses.collectAsState()
   val scoreResults by viewModel.scoreResults.collectAsState()
-  val badges by viewModel.vanityBadges.collectAsState()
+  val badges by viewModel.badges.collectAsState()
   val isLoading by viewModel.isLoading.collectAsState()
   val error by viewModel.error.collectAsState()
 

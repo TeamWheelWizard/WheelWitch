@@ -163,8 +163,8 @@ class VersionFileParserTest {
         val response = parseLeaderboardResponse(json)
         assertThat(response.entries).hasSize(2)
         assertThat(response.entries[0].rank).isEqualTo(1)
-        assertThat(response.entries[0].name).isEqualTo("A")
-        assertThat(response.entries[1].vr).isEqualTo(4000)
+        assertThat(response.entries[0].player.name).isEqualTo("A")
+        assertThat(response.entries[1].player.vr).isEqualTo(4000)
     }
 
     @Test
