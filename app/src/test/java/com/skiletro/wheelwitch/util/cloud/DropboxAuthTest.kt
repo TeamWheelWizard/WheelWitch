@@ -33,7 +33,7 @@ class DropboxAuthTest {
     assertThat(parsed.queryParameter("response_type")).isEqualTo("code")
     assertThat(parsed.queryParameter("client_id")).isNotNull()
     assertThat(parsed.queryParameter("redirect_uri"))
-        .isEqualTo("com.skiletro.wheelwitch:/dropbox")
+        .isEqualTo("com.skiletro.wheelwitch://dropbox")
     assertThat(parsed.queryParameter("scope"))
         .isEqualTo(
             "account_info.read files.metadata.read files.content.read files.content.write"

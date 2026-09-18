@@ -47,7 +47,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data
-                    android:path="/dropbox"
+                    android:host="dropbox"
                     android:scheme="com.skiletro.wheelwitch" />
             </intent-filter>
         </activity>
