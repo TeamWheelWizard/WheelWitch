@@ -19,12 +19,12 @@ import org.json.JSONObject
 /**
  * PKCE + redirect plumbing for the WheelSync Dropbox OAuth flow.
  *
- * The redirect URI is a custom scheme (`com.skiletro.wheelwitch:/dropbox`) handled by
+ * The redirect URI is a custom scheme (`com.skiletro.wheelwitch://dropbox`) handled by
  * [com.skiletro.wheelwitch.MainActivity]. Incoming redirect intents are fed to [offer] and land in
  * [redirectFlow], which the cloud-sync view-model collects to finish the token exchange.
  */
 object DropboxRedirect {
-  const val REDIRECT_URI = "com.skiletro.wheelwitch:/dropbox"
+  const val REDIRECT_URI = "com.skiletro.wheelwitch://dropbox"
 
   /** Last OAuth redirect Uri received; null until one arrives. */
   val redirectFlow = MutableStateFlow<Uri?>(null)
