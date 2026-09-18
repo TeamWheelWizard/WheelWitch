@@ -148,6 +148,7 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
 | `util/cloud/SaveContentHashTest.kt` | 5 | canonical zip hashing, entry-order independence, manifest exclusion |
 | `util/cloud/DropboxAuthTest.kt` | 4 | PKCE URL, token exchange, refresh, HTTP errors |
+| `util/cloud/OAuthBrowserLauncherTest.kt` | 3 | Custom Tab launch, external-browser fallback, dual failure reporting |
 | `util/cloud/DropboxApiTest.kt` | 17 | metadata, conditional upload/download, account email, state/lock JSON, delete/error handling |
 | `util/cloud/SyncStoreTest.kt` | 11 | device ID, encrypted credential fail-closed behavior, token persistence, sync bookkeeping, defaults |
 | `domain/SaveSyncEngineTest.kt` | 11 | sync decision table, fresh-device branches, lock TTL |

@@ -2,7 +2,6 @@ package com.skiletro.wheelwitch.viewmodel
 
 import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -21,6 +20,7 @@ import com.skiletro.wheelwitch.util.cloud.CloudSaveMeta
 import com.skiletro.wheelwitch.util.cloud.CloudState
 import com.skiletro.wheelwitch.util.cloud.DropboxApi
 import com.skiletro.wheelwitch.util.cloud.DropboxAuth
+import com.skiletro.wheelwitch.util.cloud.OAuthBrowserLauncher
 import com.skiletro.wheelwitch.util.cloud.DropboxRedirect
 import com.skiletro.wheelwitch.util.cloud.SaveContentHash
 import com.skiletro.wheelwitch.util.cloud.SyncStore
@@ -107,7 +107,7 @@ class CloudSyncViewModel(
       Prefs.main(app).getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null) != null
     },
     private val online: () -> Boolean = { app.applicationContext.isNetworkAvailable() },
-    private val openBrowser: (String) -> Unit = { url -> defaultOpenBrowser(app, url) },
+    private val openBrowser: (String) -> Unit = OAuthBrowserLauncher.create(app)::open,
     private val now: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : AndroidViewModel(app) {
@@ -173,7 +173,7 @@ class CloudSyncViewModel(
     }
   }
 
-  /** Starts the Dropbox OAuth flow in the system browser. */
+  /** Starts the Dropbox OAuth flow in a Custom Tab. */
   fun connect() {
     if (appKey.isBlank()) {
       emit()
@@ -553,16 +553,6 @@ class CloudSyncViewModel(
       }
 
   companion object {
-    /** Opens the OAuth authorize URL in the system browser. */
-    private fun defaultOpenBrowser(context: Context, url: String) {
-      runCatching {
-            val intent =
-                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-          }
-          .onFailure { Timber.tag(TAG).w(it, "no browser available for OAuth") }
-    }
-
     private const val TAG = "CloudSync"
     private const val ZIP_STAGING_NAME = "wheelsync-save.zip"
 
