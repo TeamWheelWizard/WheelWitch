@@ -303,6 +303,25 @@
     <string name="save_restore_invalid">Selected file is not a Wheel Witch save backup.</string>
     <string name="save_restore_too_new_format">This backup needs Wheel Witch v%1$s or newer. Update the app to restore it.</string>
 
+    <!-- cloud sync -->
+    <string name="sync_section_title">Cloud Sync</string>
+    <string name="sync_connect">Connect Dropbox</string>
+    <string name="sync_disconnect">Disconnect</string>
+    <string name="sync_now">Sync now</string>
+    <string name="sync_auto_toggle">Automatic sync</string>
+    <string name="sync_status_idle">Synced</string>
+    <string name="sync_status_syncing">Syncing…</string>
+    <string name="sync_status_error">Sync error</string>
+    <string name="sync_status_reconnect">Reconnect Dropbox</string>
+    <string name="sync_not_configured">Cloud sync needs a Dropbox app key to be set up first.</string>
+    <string name="sync_secure_storage_unavailable">Cloud sync is unavailable because secure credential storage could not be opened.</string>
+    <string name="sync_account_email_unavailable">Dropbox account email unavailable</string>
+    <string name="sync_last_sync_format">Last synced: %1$s</string>
+    <string name="sync_disconnect_confirm_title">Disconnect cloud sync?</string>
+    <string name="sync_disconnect_confirm_message">Your saves stay on this device and in Dropbox, but they will no longer sync automatically.</string>
+    <string name="sync_result_success">Save data synced</string>
+    <string name="sync_result_error">Sync failed. Check your connection and try again.</string>
+
     <!-- pack -->
     <string name="settings_pack_section">Pack</string>
     <string name="settings_pack_version_installed">v%s installed</string>
@@ -347,4 +366,14 @@
     <string name="log_viewer_share_file">Share as file</string>
     <string name="log_viewer_copied_to_clipboard">Logs copied to clipboard</string>
     <string name="cd_copy">Copy logs</string>
+    <string name="sync_conflict_title">Save conflict</string>
+    <string name="sync_conflict_body">Your local saves changed in %d region(s), but cloud saves were also updated from another device. Which should we keep?</string>
+    <string name="sync_conflict_keep_local">Keep local</string>
+    <string name="sync_conflict_use_cloud">Use cloud</string>
+    <string name="sync_cloud_found_title">Cloud save found</string>
+    <string name="sync_cloud_found_body">A WheelSync cloud save exists but this device has never synced. Download it and replace local saves?</string>
+    <string name="sync_cloud_found_download">Download</string>
+    <string name="sync_foreign_lock_title">Played elsewhere</string>
+    <string name="sync_foreign_lock_body">Another device has an unsynced session. If you continue, both sessions will need manual resolution later.</string>
+    <string name="sync_foreign_lock_continue">Continue anyway</string>
 </resources>
