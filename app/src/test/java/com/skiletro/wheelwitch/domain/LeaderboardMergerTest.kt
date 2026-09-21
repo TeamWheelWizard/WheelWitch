@@ -6,7 +6,13 @@ import com.skiletro.wheelwitch.data.SaveManager.Region
 import com.skiletro.wheelwitch.model.LicenseInfo
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.model.SaveFileInfo
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
@@ -14,30 +20,68 @@ class LeaderboardMergerTest {
 
   private class FakeCache : PlayerLeaderboardCache {
     private val entries = mutableMapOf<String, PlayerLeaderboardData>()
+
     override fun load(friendCode: String): PlayerLeaderboardData? = entries[friendCode]
+
     override fun save(friendCode: String, data: PlayerLeaderboardData) {
       entries[friendCode] = data
     }
+
     fun saved(): Map<String, PlayerLeaderboardData> = entries
   }
 
+  private class BlockingCache : PlayerLeaderboardCache {
+    private val entries = ConcurrentHashMap<String, PlayerLeaderboardData>()
+    private val events = Collections.synchronizedList(mutableListOf<String>())
+    private val firstSave = AtomicBoolean(false)
+    val bothLoadsStarted = CountDownLatch(2)
+    val releaseLoads = CountDownLatch(1)
+    val firstSaveStarted = CountDownLatch(1)
+    val secondSaveStarted = CountDownLatch(1)
+    val releaseFirstSave = CountDownLatch(1)
+
+    override fun load(friendCode: String): PlayerLeaderboardData? {
+      events += friendCode
+      bothLoadsStarted.countDown()
+      check(releaseLoads.await(5, TimeUnit.SECONDS)) { "loads were not released" }
+      return entries[friendCode]
+    }
+
+    override fun save(friendCode: String, data: PlayerLeaderboardData) {
+      events += "save:$friendCode"
+      if (firstSave.compareAndSet(false, true)) {
+        firstSaveStarted.countDown()
+        check(releaseFirstSave.await(5, TimeUnit.SECONDS)) { "first save was not released" }
+      } else {
+        secondSaveStarted.countDown()
+      }
+      entries[friendCode] = data
+    }
+
+    fun eventSnapshot(): List<String> = synchronized(events) { events.toList() }
+
+    fun saved(): Map<String, PlayerLeaderboardData> = entries.toMap()
+  }
+
   private fun build(
-    cache: FakeCache = FakeCache(),
-    fetch: suspend (String) -> Result<PlayerLeaderboardData>,
+      cache: FakeCache = FakeCache(),
+      fetch: suspend (String) -> Result<PlayerLeaderboardData>,
   ): LeaderboardMerger = LeaderboardMerger(fetch, cache, Dispatchers.Unconfined)
 
   private fun license(slot: Int, friendCode: String? = null, name: String? = "Local"): LicenseInfo =
-    LicenseInfo(
-      slotIndex = slot,
-      exists = friendCode != null,
-      miiName = name,
-      friendCode = friendCode,
-    )
+      LicenseInfo(
+          slotIndex = slot,
+          exists = friendCode != null,
+          miiName = name,
+          friendCode = friendCode,
+      )
 
   private fun info(vararg licenses: LicenseInfo): SaveFileInfo {
-    val all = licenses.toList() + (licenses.size until LeaderboardMerger.LICENSE_SLOTS).map { i ->
-      LicenseInfo(slotIndex = i, exists = false)
-    }
+    val all =
+        licenses.toList() +
+            (licenses.size until LeaderboardMerger.LICENSE_SLOTS).map { i ->
+              LicenseInfo(slotIndex = i, exists = false)
+            }
     return SaveFileInfo(all)
   }
 
@@ -71,10 +115,11 @@ class LeaderboardMergerTest {
     val code = "1234-5678-9012"
     val info = info(license(slot = 0, friendCode = code, name = "Local"))
     val cache = FakeCache()
-    val merger = build(cache = cache) {
-      assertThat(it).isEqualTo(code)
-      Result.success(PlayerLeaderboardData(vr = 4321, name = "Net", miiData = "QUJD"))
-    }
+    val merger =
+        build(cache = cache) {
+          assertThat(it).isEqualTo(code)
+          Result.success(PlayerLeaderboardData(vr = 4321, name = "Net", miiData = "QUJD"))
+        }
 
     val merged = merger.merge(Region.PAL, info)
 
@@ -82,7 +127,7 @@ class LeaderboardMergerTest {
     assertThat(merged[0].miiName).isEqualTo("Net")
     assertThat(merged[0].miiDataBase64).isEqualTo("QUJD")
     assertThat(cache.saved())
-      .containsEntry(code, PlayerLeaderboardData(vr = 4321, name = "Net", miiData = "QUJD"))
+        .containsEntry(code, PlayerLeaderboardData(vr = 4321, name = "Net", miiData = "QUJD"))
   }
 
   @Test
@@ -91,9 +136,10 @@ class LeaderboardMergerTest {
     val info = info(license(slot = 0, friendCode = code, name = "Local"))
     val cache = FakeCache()
     cache.save(code, PlayerLeaderboardData(vr = 111, name = "Cached", miiData = "QUJD"))
-    val merger = build(cache = cache) {
-      Result.success(PlayerLeaderboardData(vr = 999, name = null, miiData = null))
-    }
+    val merger =
+        build(cache = cache) {
+          Result.success(PlayerLeaderboardData(vr = 999, name = null, miiData = null))
+        }
 
     val merged = merger.merge(Region.PAL, info)
 
@@ -108,14 +154,15 @@ class LeaderboardMergerTest {
     val info = info(license(slot = 0, friendCode = code, name = "Local"))
     val cache = FakeCache()
     cache.save(code, PlayerLeaderboardData(vr = 111, name = "Cached", miiData = "QUJD"))
-    val merger = build(cache = cache) {
-      Result.success(PlayerLeaderboardData(vr = 999, name = null, miiData = null))
-    }
+    val merger =
+        build(cache = cache) {
+          Result.success(PlayerLeaderboardData(vr = 999, name = null, miiData = null))
+        }
 
     merger.merge(Region.PAL, info)
 
     assertThat(cache.saved())
-      .containsEntry(code, PlayerLeaderboardData(vr = 999, name = "Cached", miiData = "QUJD"))
+        .containsEntry(code, PlayerLeaderboardData(vr = 999, name = "Cached", miiData = "QUJD"))
   }
 
   @Test
@@ -145,14 +192,49 @@ class LeaderboardMergerTest {
   }
 
   @Test
+  fun `merge serializes cache writes after parallel fetches`() = runTest {
+    val cache = BlockingCache()
+    val firstCode = "1111-1111-1111"
+    val secondCode = "2222-2222-2222"
+    val merger =
+        LeaderboardMerger(
+            fetchLeaderboard = { code ->
+              Result.success(PlayerLeaderboardData(if (code == firstCode) 100 else 200, null, null))
+            },
+            cache = cache,
+            ioDispatcher = Dispatchers.Default,
+        )
+    val mergeJob =
+        launch(Dispatchers.Default) {
+          merger.merge(
+              Region.PAL,
+              info(license(0, firstCode), license(1, secondCode)),
+          )
+        }
+
+    assertThat(cache.bothLoadsStarted.await(5, TimeUnit.SECONDS)).isTrue()
+    cache.releaseLoads.countDown()
+    assertThat(cache.firstSaveStarted.await(5, TimeUnit.SECONDS)).isTrue()
+    assertThat(cache.eventSnapshot().take(2)).containsExactly(firstCode, secondCode)
+    assertThat(cache.secondSaveStarted.await(200, TimeUnit.MILLISECONDS)).isFalse()
+    cache.releaseFirstSave.countDown()
+    mergeJob.join()
+
+    assertThat(cache.eventSnapshot().drop(2))
+        .containsExactly("save:$firstCode", "save:$secondCode")
+        .inOrder()
+    assertThat(cache.saved().keys).containsExactly(firstCode, secondCode)
+  }
+
+  @Test
   fun `merge fetches every populated slot`() = runTest {
     val fetched = mutableListOf<String>()
     val info =
-      info(
-        license(slot = 0, friendCode = "AAAA-AAAA-AAAA"),
-        license(slot = 1, friendCode = "BBBB-BBBB-BBBB"),
-        license(slot = 2, friendCode = "CCCC-CCCC-CCCC"),
-      )
+        info(
+            license(slot = 0, friendCode = "AAAA-AAAA-AAAA"),
+            license(slot = 1, friendCode = "BBBB-BBBB-BBBB"),
+            license(slot = 2, friendCode = "CCCC-CCCC-CCCC"),
+        )
     val merger = build {
       fetched += it
       Result.success(PlayerLeaderboardData(vr = 1, name = null, miiData = null))
