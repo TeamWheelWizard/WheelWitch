@@ -2,7 +2,7 @@ package com.skiletro.wheelwitch.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,11 +43,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -55,15 +58,18 @@ import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.TimeTrialSubmission
 import com.skiletro.wheelwitch.model.TimeTrialTrack
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.components.EmptyState
 import com.skiletro.wheelwitch.ui.components.ErrorRetry
 import com.skiletro.wheelwitch.ui.components.FocusableSurface
 import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.components.VerticalDivider
+import com.skiletro.wheelwitch.ui.components.focusBorder
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.surfaceShape
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.TimeTrialState
 import com.skiletro.wheelwitch.viewmodel.TrackLeaderboardState
@@ -104,7 +110,7 @@ fun TimeTrialScreen(
             onBack = { viewModel.goBack() },
             onRefresh = { viewModel.fetchTracks() },
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_TimeTrial",
+                key = OnlineMenuPage.TimeTrial.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -299,7 +305,7 @@ private fun TrackListItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = track.name,
+                    text = unknownOrValue(track.name),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,
@@ -413,10 +419,16 @@ private fun FilterChip(
     else
         MaterialTheme.colorScheme.onSurfaceVariant
 
+    var isFocused by remember { mutableStateOf(false) }
+
     Surface(
         shape = chipShape,
         color = containerColor,
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .focusable()
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusBorder(isFocused = isFocused || selected, shape = chipShape),
     ) {
         Text(
             text = text,
@@ -498,7 +510,9 @@ private fun SubmissionRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "#${submission.rank ?: "-"}",
+                text = submission.rank
+              ?.let { stringResource(R.string.time_trial_rank_format, it) }
+              ?: stringResource(R.string.time_trial_rank_placeholder),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (submission.rank != null && submission.rank <= 3)
@@ -512,7 +526,7 @@ private fun SubmissionRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = submission.playerName,
+                    text = unknownOrValue(submission.playerName),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     fontFamily = CtmkfFontFamily,

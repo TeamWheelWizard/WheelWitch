@@ -1,10 +1,13 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Parsed `rksys.dat` save file. Always contains exactly 4 license
  * slots; the parser marks each as `exists = true/false` based on the
  * RKPD magic at the slot base.
  */
+@Immutable
 data class SaveFileInfo(val licenses: List<LicenseInfo>) {
   init {
     require(licenses.size == 4) {
@@ -21,6 +24,7 @@ data class SaveFileInfo(val licenses: List<LicenseInfo>) {
  * by [com.skiletro.wheelwitch.viewmodel.SaveDataViewModel] after the
  * local save is parsed.
  */
+@Immutable
 data class LicenseInfo(
   val slotIndex: Int,
   val exists: Boolean,

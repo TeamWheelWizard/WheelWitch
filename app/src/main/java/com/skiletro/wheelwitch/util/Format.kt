@@ -38,3 +38,14 @@ fun formatDownloadProgress(bytesDownloaded: Long, totalBytes: Long): String =
     } else {
         formatBytes(bytesDownloaded)
     }
+
+/**
+ * Formats a rank [score] with two decimal places, e.g. 76.4 -> "76.40".
+ */
+fun formatScore(score: Double): String = "%.2f".format(score)
+
+/**
+ * Formats points still needed for a rank up with a leading plus and two
+ * decimal places, e.g. 10.52 -> "+10.52".
+ */
+fun formatRankPoints(points: Double): String = "+%.2f".format(points)

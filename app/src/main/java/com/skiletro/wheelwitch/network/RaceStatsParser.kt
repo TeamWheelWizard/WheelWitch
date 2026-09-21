@@ -1,11 +1,9 @@
 package com.skiletro.wheelwitch.network
 
 import com.skiletro.wheelwitch.model.ActivePlayer
-import com.skiletro.wheelwitch.model.DayStat
+import com.skiletro.wheelwitch.model.CountStat
 import com.skiletro.wheelwitch.model.HourStat
-import com.skiletro.wheelwitch.model.NamedStat
 import com.skiletro.wheelwitch.model.RaceStats
-import com.skiletro.wheelwitch.model.TrackStat
 import com.skiletro.wheelwitch.model.WinRateStat
 import com.skiletro.wheelwitch.util.json.mapObjects
 import com.skiletro.wheelwitch.util.json.optNonEmptyString
@@ -19,15 +17,15 @@ fun parseRaceStats(jsonString: String): RaceStats {
         totalRaces = root.optInt("totalRacesTracked", 0),
         totalPlayers = root.optInt("uniquePlayersCount", 0),
         trackedSince = root.optNonEmptyString("trackedSince"),
-        allPlayedTracks = root.optJSONArray("allPlayedTracks")?.let { parseTrackStats(it) }
+        allPlayedTracks = root.optJSONArray("allPlayedTracks")?.let { parseCountStats(it, "trackName") }
             ?: emptyList(),
-        topCharacters = root.optJSONArray("topCharacters")?.let { parseNamedStats(it) }
+        topCharacters = root.optJSONArray("topCharacters")?.let { parseCountStats(it, "name") }
             ?: emptyList(),
-        topVehicles = root.optJSONArray("topVehicles")?.let { parseNamedStats(it) } ?: emptyList(),
-        topCombos = root.optJSONArray("topCombos")?.let { parseNamedStats(it) } ?: emptyList(),
+        topVehicles = root.optJSONArray("topVehicles")?.let { parseCountStats(it, "name") } ?: emptyList(),
+        topCombos = root.optJSONArray("topCombos")?.let { parseCountStats(it, "name") } ?: emptyList(),
         mostActivePlayers = root.optJSONArray("mostActivePlayers")?.let { parseActivePlayers(it) }
             ?: emptyList(),
-        racesByDayOfWeek = root.optJSONArray("racesByDayOfWeek")?.let { parseDayStats(it) }
+        racesByDayOfWeek = root.optJSONArray("racesByDayOfWeek")?.let { parseCountStats(it, "dayName") }
             ?: emptyList(),
         racesByHour = root.optJSONArray("racesByHour")?.let { parseHourStats(it) } ?: emptyList(),
         topCharactersByWinRate = root.optJSONArray("topCharactersByWinRate")
@@ -39,18 +37,10 @@ fun parseRaceStats(jsonString: String): RaceStats {
     )
 }
 
-private fun parseTrackStats(arr: JSONArray): List<TrackStat> =
+private fun parseCountStats(arr: JSONArray, nameKey: String): List<CountStat> =
     arr.mapObjects {
-        TrackStat(
-            name = it.optString("trackName", ""),
-            raceCount = it.optInt("raceCount", 0)
-        )
-    }
-
-private fun parseNamedStats(arr: JSONArray): List<NamedStat> =
-    arr.mapObjects {
-        NamedStat(
-            name = it.optString("name", ""),
+        CountStat(
+            name = it.optString(nameKey, ""),
             raceCount = it.optInt("raceCount", 0)
         )
     }
@@ -71,14 +61,6 @@ private fun parseActivePlayers(arr: JSONArray): List<ActivePlayer> =
             name = it.optString("name", ""),
             pid = it.optString("pid", ""),
             fc = it.optString("fc", ""),
-            raceCount = it.optInt("raceCount", 0)
-        )
-    }
-
-private fun parseDayStats(arr: JSONArray): List<DayStat> =
-    arr.mapObjects {
-        DayStat(
-            dayName = it.optString("dayName", ""),
             raceCount = it.optInt("raceCount", 0)
         )
     }

@@ -29,7 +29,7 @@ See [CONTRIBUTING.md#build](CONTRIBUTING.md#build) for build commands and signin
 
 ## Architecture
 
-- **Min SDK**: 31, **Target SDK**: 36, **Java 11**, **Compose + Material3** with dynamic color
+- **Min SDK**: 31, **Target SDK**: 36, **JVM 17**, **Compose + Material3** with dynamic color
 - **No Google Play Services**: sideloaded APK only
 - **Landscape-locked** fullscreen via `WindowCompat.getInsetsController`
 - **Navigation**: flat overlay pattern via `AnimatedVisibility`. No NavHost.
@@ -48,14 +48,15 @@ com.skiletro.wheelwitch
 ├── model/         (data types: SemVersion, PackStatus, UpdateEntry, DeletionEntry, SaveFileInfo, LicenseInfo, ServerInfo, etc.)
 ├── data/          (storage: DolphinPaths, DolphinTree, DolphinConfig, SaveManager, RksysParser, GameTypeParser)
 ├── network/       (HTTP + JSON parsers: VersionFileParser, RoomStatusParser, RaceStatsParser, ServerHealthParser, LeaderboardParser, TimeTrialParser)
-├── domain/        (business logic: RewindPackManager)
-├── util/{io,net,mii,launcher,log,json,prefs}/   (utilities grouped by concern)
+├── domain/        (business logic: RewindPackManager, SaveSyncEngine)
+├── util/{io,net,mii,launcher,log,json,prefs,cloud}/   (utilities grouped by concern)
 ├── ui/{components,screens,theme}/
 └── viewmodel/
     ├── PackUpdateViewModel   : install/update state machine + SAF tree wiring
     ├── SaveDataViewModel     : per-region parse, leaderboard merge, backup/restore/delete, multi-region
     ├── MiiMakerViewModel     : WAD install (Mutex-guarded), launch, delete
     ├── OnlineViewModel       : rooms, leaderboard (Channel-based race-free), health, race stats
+    ├── CloudSyncViewModel    : Dropbox save sync orchestration, auth, conflicts, session locks
     └── UiState               : sealed class for pack update flow
 ```
 
@@ -67,6 +68,7 @@ The sub-packages under `util/` are intentional. Keep new files in the right sub-
 - `log/`: `LogBuffer`, `LogEntry`, `LogExporter`, `MemoryBufferTree`, `AppReleaseLogTree`
 - `json/`: `JsonExtensions`
 - `prefs/`: `Prefs`, `PrefsKeys`
+- `cloud/`: `DropboxAuth`, `DropboxApi`, `SyncStore`, `SaveContentHash`
 
 ## Key Decisions
 
@@ -137,13 +139,20 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `data/DolphinPathsTest.kt` | 14 | `physicalRoot` package-swap (release + debug), path helpers |
 | `data/DolphinTreeTest.kt` | 35 | lazy subdirs, `validate`, `fromPersisted`/`persist`, `copyRomFromSource`, `extractZipToPack`, `writeLaunchJson`/`readLaunchJson`, `readVersion`/`writeVersion`, `readConfigIni`/`writeConfigIni`, persist/release URI permission |
 | `data/DolphinConfigTest.kt` | 25 | `IsoPaths.toIniLines`, `read`/`upsert`/`remove`, idempotency, comment preservation, `dolphinUserTreeUri` |
-| `data/SaveManagerTest.kt` | 9 | region mapping, `listRegions`, `hasSave`/`backup`/`restore`/`delete` |
+| `data/SaveManagerTest.kt` | 36 | region mapping, `listRegions`, `hasSave`, unified scope (`hasAnySave`/`backup`/`restore`/`delete`), RR version stamp + `RRGameSettings.pul` restore gate, old-zip back-compat |
 | `network/VersionFileParserTest.kt` | 17 | update/deletion parsing, leaderboard, health, tracks, race stats |
 | `network/GitHubReleaseParserTest.kt` | 6 | `parseLatestReleaseVersion()`: release title extraction, no-version/null/empty/malformed payloads |
 | `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
 | `viewmodel/AppUpdateViewModelTest.kt` | 7 | init latest-vs-current resolution, fetch failure, disabled skip, unparseable current version, `dismissDialog` |
-| `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
+| `viewmodel/SaveDataViewModelTest.kt` | 27 | refresh, region selection, slot selection, leaderboard merge, unified backup/restore/delete delegation |
+| `util/cloud/SaveContentHashTest.kt` | 5 | canonical zip hashing, entry-order independence, manifest exclusion |
+| `util/cloud/DropboxAuthTest.kt` | 4 | PKCE URL, token exchange, refresh, HTTP errors |
+| `util/cloud/OAuthBrowserLauncherTest.kt` | 3 | Custom Tab launch, external-browser fallback, dual failure reporting |
+| `util/cloud/DropboxApiTest.kt` | 17 | metadata, conditional upload/download, account email, state/lock JSON, delete/error handling |
+| `util/cloud/SyncStoreTest.kt` | 11 | device ID, encrypted credential fail-closed behavior, token persistence, sync bookkeeping, defaults |
+| `domain/SaveSyncEngineTest.kt` | 11 | sync decision table, fresh-device branches, lock TTL |
+| `viewmodel/CloudSyncViewModelTest.kt` | 18 | auth, lifecycle sync, secure storage, conditional conflicts, pull/restore failure, push, token refresh, session locks |
 | `viewmodel/LogViewerViewModelTest.kt` | 4 | init load, loading state, reload, copy bumps trigger |
 
 ### Testability notes

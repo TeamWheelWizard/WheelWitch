@@ -32,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -46,9 +45,11 @@ import com.skiletro.wheelwitch.ui.components.FocusableSurface
 import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.ui.components.VerticalDivider
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.ui.theme.statusColors
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.RoomsState
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -78,7 +79,7 @@ fun RoomsScreen(
             onBack = onClose,
             onRefresh = onRefresh,
             titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Rooms",
+                key = OnlineMenuPage.Rooms.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
             )
@@ -182,7 +183,7 @@ fun RoomListItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = room.players.firstOrNull()?.name
+                    text = room.players.firstOrNull()?.name?.let { unknownOrValue(it) }
                             ?: stringResource(R.string.status_empty),
                         fontWeight = FontWeight.SemiBold,
                         style = MaterialTheme.typography.bodyMedium,
@@ -202,13 +203,13 @@ fun RoomListItem(
                 }
                 if (room.isJoinable) {
                     Surface(
-                        color = statusColors().ok,
+                        color = statusColors().okContainer,
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.rooms_open),
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                            color = Color.White,
+                            color = statusColors().onOkContainer,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }

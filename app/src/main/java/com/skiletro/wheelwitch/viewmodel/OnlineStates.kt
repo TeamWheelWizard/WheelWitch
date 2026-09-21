@@ -20,6 +20,11 @@ enum class OnlineMenuPage {
   Health,
   RaceStats,
   TimeTrial,
+  ;
+
+  /** Shared-transition key for the page's title element. */
+  val titleSharedKey: String
+    get() = "online_title_$name"
 }
 
 /**

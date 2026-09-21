@@ -46,6 +46,7 @@ data class TimeTrialSubmission(
     val rank: Int?,
 )
 
+@Immutable
 data class TimeTrialLeaderboardResponse(
     val track: TimeTrialTrack,
     val cc: Int,
