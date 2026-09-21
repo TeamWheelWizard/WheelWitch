@@ -22,7 +22,9 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +56,19 @@ class SaveDataViewModelTest {
 
     override fun save(friendCode: String, data: PlayerLeaderboardData) {
       entries[friendCode] = data
+    }
+  }
+
+  private class InlineFlaggedDispatcher : CoroutineDispatcher() {
+    @Volatile var active = false
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+      active = true
+      try {
+        block.run()
+      } finally {
+        active = false
+      }
     }
   }
 
@@ -110,6 +125,33 @@ class SaveDataViewModelTest {
       )
 
   // --- per-region Licenses viewer tests (unchanged behaviour) ---------
+
+  @Test
+  fun `refresh performs SAF scans on the injected IO dispatcher`() = runTest {
+    val dispatcher = InlineFlaggedDispatcher()
+    ioDispatcher = dispatcher
+    val bytes = rksysWithLicense(pid = 0x00000010L, name = "Alice", slot = 0)
+    every { SaveManager.listRegions(mockTree) } answers
+        {
+          assertThat(dispatcher.active).isTrue()
+          listOf(Region.PAL)
+        }
+    coEvery { SaveManager.readSave(mockTree, Region.PAL) } answers
+        {
+          assertThat(dispatcher.active).isTrue()
+          bytes
+        }
+    every { SaveManager.hasAnySave(mockTree) } answers
+        {
+          assertThat(dispatcher.active).isTrue()
+          true
+        }
+    vm = buildVm()
+
+    vm.refresh()
+
+    assertThat(vm.hasAnySave.value).isTrue()
+  }
 
   @Test
   fun `init with no tree keeps saveInfos empty and no error`() = runTest {

@@ -244,13 +244,13 @@ class SaveDataViewModel(
                   _mergedLicenses.value = emptyMap()
                   return@launch
                 }
-        val regions = saveManager.listRegions(tree)
+        val regions = withContext(ioDispatcher) { saveManager.listRegions(tree) }
         if (regions.isEmpty()) {
           _saveInfos.value = emptyMap()
           _hasSave.value = emptyMap()
           _selectedRegion.value = null
           _mergedLicenses.value = emptyMap()
-          _hasAnySave.value = computeHasAnySave(tree)
+          _hasAnySave.value = withContext(ioDispatcher) { computeHasAnySave(tree) }
           _isLoading.value = false
           return@launch
         }
@@ -274,11 +274,11 @@ class SaveDataViewModel(
         val validReads = parsed.filterNotNull()
         val rawInfos = validReads.mapNotNull { it.info?.let { info -> it.region to info } }.toMap()
         val hasSaves = validReads.associate { it.region to it.hasSave }
-        ratingVrMap = loadRatingVrMap(tree)
+        ratingVrMap = withContext(ioDispatcher) { loadRatingVrMap(tree) }
         val infos = populateRatingVr(ratingVrMap, rawInfos)
         _saveInfos.value = infos
         _hasSave.value = hasSaves
-        _hasAnySave.value = computeHasAnySave(tree)
+        _hasAnySave.value = withContext(ioDispatcher) { computeHasAnySave(tree) }
         val target = pickSelectedRegion(regions)
         if (target != _selectedRegion.value) {
           _selectedRegion.value = target
