@@ -87,6 +87,45 @@ class CloudSyncViewModelTest {
     return output.toByteArray()
   }
 
+  private fun configureCorruptCloudPull() {
+    val localZip = saveZip(2)
+    val corruptCloudZip = saveZip(1).copyOf(30)
+    every { store.tokens() } returns mockk(relaxed = true)
+    every { store.autoSyncEnabled } returns true
+    every { store.sessionPendingPush } returns false
+    every { store.storedRev } returns "r1"
+    every { store.storedHash } returns SaveContentHash.canonicalHash(localZip)
+    coEvery { api.fetchSaveMeta() } returns CloudSaveMeta("r2", 100L)
+    coEvery { api.downloadSaveZip() } returns Result.success(corruptCloudZip)
+    coEvery { backup.invoke() } returns localZip
+  }
+
+  @Test
+  fun `manual sync surfaces corrupt cloud zip as error without applying it`() = runTest {
+    configureCorruptCloudPull()
+    val model = vm()
+
+    model.syncNow()
+
+    val connected = model.uiState.value as SyncUiState.Connected
+    assertThat(connected.status).isEqualTo(SyncStatus.Error)
+    coVerify(exactly = 0) { restore.invoke(any()) }
+    verify(exactly = 0) { store.storedRev = any() }
+    verify(exactly = 0) { store.storedHash = any() }
+  }
+
+  @Test
+  fun `automatic sync does not crash on corrupt cloud zip`() = runTest {
+    configureCorruptCloudPull()
+    val model = vm()
+
+    model.onAppResume()
+
+    assertThat(model.uiState.value).isInstanceOf(SyncUiState.Connected::class.java)
+    assertThat((model.uiState.value as SyncUiState.Connected).status)
+        .isEqualTo(SyncStatus.Error)
+  }
+
   @Test
   fun `disconnected when no tokens`() = runTest {
     every { store.tokens() } returns null

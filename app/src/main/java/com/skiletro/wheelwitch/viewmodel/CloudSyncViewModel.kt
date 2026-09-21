@@ -30,6 +30,7 @@ import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -291,6 +292,11 @@ class CloudSyncViewModel(
     viewModelScope.launch {
       try {
         withContext(ioDispatcher) { syncLoop(manual, force) }
+      } catch (ce: CancellationException) {
+        throw ce
+      } catch (e: Exception) {
+        Timber.tag(TAG).e(e, "sync loop failed unexpectedly")
+        if (manual) status = SyncStatus.Error
       } finally {
         syncing = false
         if (status == SyncStatus.Syncing) status = SyncStatus.Idle
@@ -386,6 +392,16 @@ class CloudSyncViewModel(
               if (manual && status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
               return
             }
+    val hash =
+        try {
+          SaveContentHash.canonicalHash(bytes)
+        } catch (ce: CancellationException) {
+          throw ce
+        } catch (e: Exception) {
+          Timber.tag(TAG).e(e, "cloud save zip is corrupt")
+          status = SyncStatus.Error
+          return
+        }
     runCatching { applyZipFn(bytes) }
         .onFailure {
           Timber.tag(TAG).e(it, "restore from cloud zip failed")
@@ -393,7 +409,7 @@ class CloudSyncViewModel(
           return
         }
     store.storedRev = cloudMeta.rev
-    store.storedHash = SaveContentHash.canonicalHash(bytes)
+    store.storedHash = hash
     store.lastSyncAtMillis = now()
     lastSyncFromDevice = runCatching { api().readState() }.getOrNull()?.lastUploaderDevice
     if (cloudFoundPrompt) store.cloudPromptShown = true
