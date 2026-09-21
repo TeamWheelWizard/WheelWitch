@@ -72,6 +72,12 @@ class SaveSyncEngineTest {
   }
 
   @Test
+  fun `foreign future-dated lock is treated as fresh`() {
+    val lock = CloudLock("dev-other", 100L, 1_000_001L)
+    assertThat(engine.isLockFresh(lock, "dev-me")).isTrue()
+  }
+
+  @Test
   fun `foreign stale lock ignored`() {
     val lock = CloudLock("dev-other", 100L, 1_000_000L - SaveSyncEngine.LOCK_TTL_MILLIS - 1)
     assertThat(engine.isLockFresh(lock, "dev-me")).isFalse()

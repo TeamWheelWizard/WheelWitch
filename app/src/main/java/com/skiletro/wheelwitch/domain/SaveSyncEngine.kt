@@ -36,11 +36,12 @@ class SaveSyncEngine(private val clock: () -> Long = System::currentTimeMillis) 
   /**
    * True when [lock] belongs to another device and its `serverModified` is within [LOCK_TTL_MILLIS]
    * of now. Staleness uses the Dropbox server timestamp so client clock skew can't fake freshness.
+   * Future server timestamps are conservatively treated as an active lock.
    */
   fun isLockFresh(lock: CloudLock, ourDeviceId: String): Boolean {
     if (lock.deviceId == ourDeviceId) return false
     val age = clock() - lock.serverModifiedMillis
-    return age >= 0 && age < LOCK_TTL_MILLIS
+    return age < LOCK_TTL_MILLIS
   }
 
   companion object {
