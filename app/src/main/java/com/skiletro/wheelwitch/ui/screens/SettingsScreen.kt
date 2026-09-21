@@ -65,12 +65,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Settings overlay. Sections, in order: Appearance, Mii Maker, Save Data, Logging, Advanced, About.
- *
- * The Save Data section was promoted from the Licenses screen so the Licenses UI can be a pure 2x2
- * viewer: region selection, backup, restore and delete live here. The Save Data section is only
- * rendered when the user has at least one save file; it stays available even if the user has no
- * current save so the region selector can be used to retarget the Licenses view.
+ * Settings overlay. Sections, in order: Retro Rewind (pack + Mii Channel WAD), Save Data (saves +
+ * cloud sync), Appearance, Advanced, About.
  */
 @Composable
 fun SettingsScreen(
@@ -128,14 +124,7 @@ fun SettingsScreen(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-      item {
-        AppearanceSection(
-            appTheme = appTheme,
-            onChangeAppTheme = onChangeAppTheme,
-            themeMode = themeMode,
-            onChangeThemeMode = onChangeThemeMode,
-        )
-      }
+      item { PackSection(packUpdate = packUpdate) }
       item {
         MiiMakerSection(
             hasWad = hasWad,
@@ -146,19 +135,25 @@ fun SettingsScreen(
         )
       }
       item {
-        SaveDataSection(saveData = saveData, hasAnySave = hasAnySave)
-      }
-      item {
-        CloudSyncSection(
+        SaveDataSection(
+            saveData = saveData,
+            hasAnySave = hasAnySave,
             cloudSync = cloudSync,
-            state = cloudSyncState,
+            cloudSyncState = cloudSyncState,
             autoSyncEnabled = autoSyncEnabled,
         )
       }
-      item { PackSection(packUpdate = packUpdate) }
-      item { LoggingSection(onOpenLogViewer = onOpenLogViewer) }
+      item {
+        AppearanceSection(
+            appTheme = appTheme,
+            onChangeAppTheme = onChangeAppTheme,
+            themeMode = themeMode,
+            onChangeThemeMode = onChangeThemeMode,
+        )
+      }
       item {
         AdvancedSection(
+            onOpenLogViewer = onOpenLogViewer,
             onRelaunchOnboarding = onRelaunchOnboarding,
         )
       }
@@ -170,10 +165,16 @@ fun SettingsScreen(
 
 /**
  * Save Data section: unified backup / restore / delete over RR saves, the Mii DB, Pulsar pul files,
- * and ghosts. A single "Saves" item.
+ * and ghosts, plus the cloud sync rows that sync those backups.
  */
 @Composable
-private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean) {
+private fun SaveDataSection(
+    saveData: SaveDataViewModel,
+    hasAnySave: Boolean,
+    cloudSync: CloudSyncViewModel,
+    cloudSyncState: SyncUiState,
+    autoSyncEnabled: Boolean,
+) {
   val lastBackup by saveData.lastBackupTimestamp.collectAsState()
   val lastBackupLabel = remember(lastBackup) { saveData.formatLastBackup() }
   var pendingBackup by remember { mutableStateOf(false) }
@@ -308,9 +309,17 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean) {
         }
       },
   )
+
+  CloudSyncSection(
+      cloudSync = cloudSync,
+      state = cloudSyncState,
+      autoSyncEnabled = autoSyncEnabled,
+  )
 }
 
-/** Cloud Sync section: Dropbox connection, automatic sync, and manual sync. */
+/**
+ * Cloud sync rows within the Save Data section: Dropbox connection, automatic sync, manual sync.
+ */
 @Composable
 private fun CloudSyncSection(
     cloudSync: CloudSyncViewModel,
@@ -378,8 +387,6 @@ private fun CloudSyncSection(
     )
   }
 
-  SettingsCategoryHeader(stringResource(R.string.sync_section_title))
-
   SettingsItem(
       icon = ImageVector.vectorResource(R.drawable.ic_cached),
       title = stringResource(R.string.sync_section_title),
@@ -443,7 +450,7 @@ private fun CloudSyncSection(
   }
 }
 
-/** Pack section: current version and full reinstall button. */
+/** Retro Rewind section: pack version + full reinstall, and the Mii Channel WAD install. */
 @Composable
 private fun PackSection(packUpdate: PackUpdateViewModel) {
   val state by packUpdate.state.collectAsState()
@@ -482,7 +489,7 @@ private fun PackSection(packUpdate: PackUpdateViewModel) {
     )
   }
 
-  SettingsCategoryHeader(stringResource(R.string.settings_pack_section))
+  SettingsCategoryHeader(stringResource(R.string.settings_rr_section))
   SettingsItem(
       icon = ImageVector.vectorResource(R.drawable.ic_cached),
       title = stringResource(R.string.topbar_subtitle),
@@ -602,7 +609,7 @@ private fun AppearanceSection(
   )
 }
 
-/** Mii Channel WAD section: install or delete the cached WAD. */
+/** Mii Channel WAD row within the Retro Rewind section: install or delete the cached WAD. */
 @Composable
 private fun MiiMakerSection(
     hasWad: Boolean,
@@ -611,7 +618,6 @@ private fun MiiMakerSection(
     onInstall: () -> Unit,
     onRequestDelete: () -> Unit,
 ) {
-  SettingsCategoryHeader(stringResource(R.string.settings_mii_maker_section))
   val wadStatus =
       if (hasWad) stringResource(R.string.status_installed)
       else stringResource(R.string.status_not_installed)
@@ -653,12 +659,11 @@ private fun MiiMakerSection(
   )
 }
 
-/** Logging section: toggle the on-disk log file and open the Log Viewer. */
+/** Diagnostic rows within the Advanced section: on-disk log toggle and bug report launcher. */
 @Composable
 private fun LoggingSection(onOpenLogViewer: () -> Unit) {
   val context = LocalContext.current
   val loggingPrefs = remember { Prefs.main(context) }
-  SettingsCategoryHeader(stringResource(R.string.settings_logging))
   var loggingToFile by remember {
     mutableStateOf(loggingPrefs.getBoolean(PrefsKeys.LOGGING_TO_FILE_KEY, false))
   }
@@ -697,12 +702,17 @@ private fun LoggingSection(onOpenLogViewer: () -> Unit) {
   )
 }
 
-/** Advanced section: Mii face cache row + relaunch-onboarding escape hatch. */
+/**
+ * Advanced section: diagnostics (log file, bug report), Mii face cache, and the relaunch-onboarding
+ * escape hatch.
+ */
 @Composable
 private fun AdvancedSection(
+    onOpenLogViewer: () -> Unit,
     onRelaunchOnboarding: () -> Unit,
 ) {
   SettingsCategoryHeader(stringResource(R.string.settings_advanced))
+  LoggingSection(onOpenLogViewer)
   MiiCacheRow()
   RelaunchOnboardingRow(onRelaunchOnboarding)
 }
