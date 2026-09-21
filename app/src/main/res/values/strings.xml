@@ -284,22 +284,16 @@
 
     <!-- settings save data -->
     <string name="settings_save_data_section">Save Data</string>
+    <string name="settings_save_data_title">Saves</string>
     <string name="settings_save_data_backup">Back up save data</string>
     <string name="settings_save_data_restore">Restore save data</string>
     <string name="settings_save_data_delete">Delete save data</string>
     <string name="settings_save_data_no_save">No save data</string>
     <string name="settings_save_data_last_backup_format">Last backed up: %1$s</string>
     <string name="settings_save_data_restore_confirm_title">Restore save data?</string>
-    <string name="settings_save_data_restore_confirm_message">This will overwrite your current save data, Miis, and game settings. This cannot be undone.</string>
+    <string name="settings_save_data_restore_confirm_message">This will overwrite your Retro Rewind saves, Miis, game settings, and ghosts. This cannot be undone.</string>
     <string name="settings_save_data_delete_confirm_title">Delete all save data?</string>
-    <string name="settings_save_data_delete_confirm_message">This permanently deletes your save data, Miis, and game settings. This cannot be undone.</string>
-    <string name="settings_save_data_rr_section">RR Save Data</string>
-    <string name="settings_save_data_rr_no_save">No RR save data</string>
-    <string name="settings_save_data_rr_last_backup_format">Last backed up: %1$s</string>
-    <string name="settings_save_data_rr_restore_confirm_title">Restore RR save data?</string>
-    <string name="settings_save_data_rr_restore_confirm_message">This will overwrite your current Retro Rewind saves, rating data, and ghosts. Other data is not affected.</string>
-    <string name="settings_save_data_rr_delete_confirm_title">Delete RR save data?</string>
-    <string name="settings_save_data_rr_delete_confirm_message">This permanently deletes your Retro Rewind saves and rating data. Other data is not affected.</string>
+    <string name="settings_save_data_delete_confirm_message">This permanently deletes your Retro Rewind saves, Miis, game settings, and ghosts. This cannot be undone.</string>
     <string name="save_restore_invalid">Selected file is not a Wheel Witch save backup.</string>
     <string name="save_restore_too_new_format">This backup needs Wheel Witch v%1$s or newer. Update the app to restore it.</string>
 

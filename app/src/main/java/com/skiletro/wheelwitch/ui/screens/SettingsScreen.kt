@@ -90,7 +90,6 @@ fun SettingsScreen(
   val isInstallingWad by miiMaker.isInstallingWad.collectAsState()
   val miiMakerError by miiMaker.miiMakerError.collectAsState()
   val hasAnySave by saveData.hasAnySave.collectAsState()
-  val hasRRSave by saveData.hasRRSave.collectAsState()
   val cloudSyncState by cloudSync.uiState.collectAsState()
   val autoSyncEnabled by cloudSync.autoSyncEnabled.collectAsState()
 
@@ -147,11 +146,7 @@ fun SettingsScreen(
         )
       }
       item {
-        SaveDataSection(
-            saveData = saveData,
-            hasAnySave = hasAnySave,
-            hasRRSave = hasRRSave,
-        )
+        SaveDataSection(saveData = saveData, hasAnySave = hasAnySave)
       }
       item {
         CloudSyncSection(
@@ -173,9 +168,12 @@ fun SettingsScreen(
   }
 }
 
-/** Save Data section: unified backup / restore / delete over every user-data file. */
+/**
+ * Save Data section: unified backup / restore / delete over RR saves, the Mii DB, Pulsar pul files,
+ * and ghosts. A single "Saves" item.
+ */
 @Composable
-private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, hasRRSave: Boolean) {
+private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean) {
   val lastBackup by saveData.lastBackupTimestamp.collectAsState()
   val lastBackupLabel = remember(lastBackup) { saveData.formatLastBackup() }
   var pendingBackup by remember { mutableStateOf(false) }
@@ -184,19 +182,11 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
   var showDeleteConfirm by remember { mutableStateOf(false) }
   var showRestoreConfirm by remember { mutableStateOf(false) }
 
-  val lastBackupRR by saveData.lastBackupRRTimestamp.collectAsState()
-  val lastBackupRRLabel = remember(lastBackupRR) { saveData.formatLastBackupRR() }
-  var pendingBackupRR by remember { mutableStateOf(false) }
-  var pendingRestoreRR by remember { mutableStateOf(false) }
-  var pendingRestoreRRUri by remember { mutableStateOf<Uri?>(null) }
-  var showDeleteRRConfirm by remember { mutableStateOf(false) }
-  var showRestoreRRConfirm by remember { mutableStateOf(false) }
-
   val backupLauncher =
       rememberLauncherForActivityResult(
           contract = ActivityResultContracts.CreateDocument("application/zip")
       ) { uri ->
-        if (uri != null) saveData.backupAll(uri)
+        if (uri != null) saveData.backup(uri)
         pendingBackup = false
       }
   val restoreLauncher =
@@ -207,21 +197,6 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
         }
         pendingRestore = false
       }
-  val backupRRLauncher =
-      rememberLauncherForActivityResult(
-          contract = ActivityResultContracts.CreateDocument("application/zip")
-      ) { uri ->
-        if (uri != null) saveData.backupRR(uri)
-        pendingBackupRR = false
-      }
-  val restoreRRLauncher =
-      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-          pendingRestoreRRUri = uri
-          showRestoreRRConfirm = true
-        }
-        pendingRestoreRR = false
-      }
 
   if (showDeleteConfirm) {
     AlertDialog(
@@ -231,7 +206,7 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
         confirmButton = {
           Button(
               onClick = {
-                saveData.deleteAll()
+                saveData.delete()
                 showDeleteConfirm = false
               },
           ) {
@@ -259,7 +234,7 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
           Button(
               enabled = uri != null,
               onClick = {
-                uri?.let { saveData.restoreAll(it) }
+                uri?.let { saveData.restore(it) }
                 pendingRestoreUri = null
                 showRestoreConfirm = false
               },
@@ -272,63 +247,6 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
               onClick = {
                 pendingRestoreUri = null
                 showRestoreConfirm = false
-              }
-          ) {
-            Text(stringResource(R.string.action_cancel))
-          }
-        },
-    )
-  }
-
-  if (showDeleteRRConfirm) {
-    AlertDialog(
-        onDismissRequest = { showDeleteRRConfirm = false },
-        title = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_title)) },
-        text = { Text(stringResource(R.string.settings_save_data_rr_delete_confirm_message)) },
-        confirmButton = {
-          Button(
-              onClick = {
-                saveData.deleteRR()
-                showDeleteRRConfirm = false
-              },
-          ) {
-            Text(stringResource(R.string.settings_save_data_delete))
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { showDeleteRRConfirm = false }) {
-            Text(stringResource(R.string.action_cancel))
-          }
-        },
-    )
-  }
-
-  if (showRestoreRRConfirm) {
-    val uri = pendingRestoreRRUri
-    AlertDialog(
-        onDismissRequest = {
-          showRestoreRRConfirm = false
-          pendingRestoreRRUri = null
-        },
-        title = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_title)) },
-        text = { Text(stringResource(R.string.settings_save_data_rr_restore_confirm_message)) },
-        confirmButton = {
-          Button(
-              enabled = uri != null,
-              onClick = {
-                uri?.let { saveData.restoreRR(it) }
-                pendingRestoreRRUri = null
-                showRestoreRRConfirm = false
-              },
-          ) {
-            Text(stringResource(R.string.settings_save_data_restore))
-          }
-        },
-        dismissButton = {
-          TextButton(
-              onClick = {
-                pendingRestoreRRUri = null
-                showRestoreRRConfirm = false
               }
           ) {
             Text(stringResource(R.string.action_cancel))
@@ -348,23 +266,12 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
       restoreLauncher.launch(arrayOf("application/zip", "*/*"))
     }
   }
-  LaunchedEffect(pendingBackupRR) {
-    if (pendingBackupRR) {
-      val fileName = "wheelwitch-rr-save-${System.currentTimeMillis()}.zip"
-      backupRRLauncher.launch(fileName)
-    }
-  }
-  LaunchedEffect(pendingRestoreRR) {
-    if (pendingRestoreRR) {
-      restoreRRLauncher.launch(arrayOf("application/zip", "*/*"))
-    }
-  }
 
   SettingsCategoryHeader(stringResource(R.string.settings_save_data_section))
 
   SettingsItem(
       icon = ImageVector.vectorResource(R.drawable.ic_save),
-      title = stringResource(R.string.settings_save_data_section),
+      title = stringResource(R.string.settings_save_data_title),
       summary =
           when {
             !hasAnySave -> stringResource(R.string.settings_save_data_no_save)
@@ -401,46 +308,6 @@ private fun SaveDataSection(saveData: SaveDataViewModel, hasAnySave: Boolean, ha
         }
       },
   )
-
-  SettingsItem(
-      icon = ImageVector.vectorResource(R.drawable.ic_save),
-      title = stringResource(R.string.settings_save_data_rr_section),
-      summary =
-          when {
-            !hasRRSave -> stringResource(R.string.settings_save_data_rr_no_save)
-            lastBackupRRLabel != null ->
-                stringResource(R.string.settings_save_data_rr_last_backup_format, lastBackupRRLabel)
-            else -> null
-          },
-      trailing = {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-          TextButton(
-              onClick = { pendingBackupRR = true },
-              enabled = hasRRSave,
-              shape = buttonShape,
-          ) {
-            Text(stringResource(R.string.settings_save_data_backup))
-          }
-          TextButton(
-              onClick = { pendingRestoreRR = true },
-              enabled = hasRRSave,
-              shape = buttonShape,
-          ) {
-            Text(stringResource(R.string.settings_save_data_restore))
-          }
-          TextButton(
-              onClick = { showDeleteRRConfirm = true },
-              enabled = hasRRSave,
-              shape = buttonShape,
-          ) {
-            Text(
-                text = stringResource(R.string.settings_save_data_delete),
-                color = MaterialTheme.colorScheme.error,
-            )
-          }
-        }
-      },
-  )
 }
 
 /** Cloud Sync section: Dropbox connection, automatic sync, and manual sync. */
@@ -452,24 +319,26 @@ private fun CloudSyncSection(
 ) {
   var showDisconnectConfirm by remember { mutableStateOf(false) }
   val connected = state as? SyncUiState.Connected
-  val statusLabel =
-      connected?.let {
-        stringResource(
-            when (it.status) {
-              SyncStatus.Idle -> R.string.sync_status_idle
-              SyncStatus.Syncing -> R.string.sync_status_syncing
-              SyncStatus.Error -> R.string.sync_status_error
-              SyncStatus.ReconnectNeeded -> R.string.sync_status_reconnect
-            }
-        )
-      }
+  val statusLabel = connected?.let {
+    stringResource(
+        when (it.status) {
+          SyncStatus.Idle -> R.string.sync_status_idle
+          SyncStatus.Syncing -> R.string.sync_status_syncing
+          SyncStatus.Error -> R.string.sync_status_error
+          SyncStatus.ReconnectNeeded -> R.string.sync_status_reconnect
+        }
+    )
+  }
   val lastSyncLabel =
-      connected?.lastSyncAtMillis?.takeIf { it > 0 }?.let {
-        stringResource(
-            R.string.sync_last_sync_format,
-            DateFormat.getDateTimeInstance().format(Date(it)),
-        )
-      }
+      connected
+          ?.lastSyncAtMillis
+          ?.takeIf { it > 0 }
+          ?.let {
+            stringResource(
+                R.string.sync_last_sync_format,
+                DateFormat.getDateTimeInstance().format(Date(it)),
+            )
+          }
   val connectedSummary =
       listOfNotNull(
               connected?.accountEmail ?: stringResource(R.string.sync_account_email_unavailable),
@@ -480,7 +349,8 @@ private fun CloudSyncSection(
   val summary =
       when (state) {
         SyncUiState.NotConfigured -> stringResource(R.string.sync_not_configured)
-        SyncUiState.SecureStorageUnavailable -> stringResource(R.string.sync_secure_storage_unavailable)
+        SyncUiState.SecureStorageUnavailable ->
+            stringResource(R.string.sync_secure_storage_unavailable)
         SyncUiState.Disconnected -> null
         is SyncUiState.Connected -> connectedSummary
       }

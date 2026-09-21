@@ -20,8 +20,8 @@ import com.skiletro.wheelwitch.util.cloud.CloudSaveMeta
 import com.skiletro.wheelwitch.util.cloud.CloudState
 import com.skiletro.wheelwitch.util.cloud.DropboxApi
 import com.skiletro.wheelwitch.util.cloud.DropboxAuth
-import com.skiletro.wheelwitch.util.cloud.OAuthBrowserLauncher
 import com.skiletro.wheelwitch.util.cloud.DropboxRedirect
+import com.skiletro.wheelwitch.util.cloud.OAuthBrowserLauncher
 import com.skiletro.wheelwitch.util.cloud.SaveContentHash
 import com.skiletro.wheelwitch.util.cloud.SyncStore
 import com.skiletro.wheelwitch.util.net.isNetworkAvailable
@@ -229,10 +229,9 @@ class CloudSyncViewModel(
   }
 
   /**
-   * Resolves a conflict dialog: keep local → push, use cloud → pull.
-   * Also serves the cloud-found fresh-device prompt's Download action
-   * (force = Pull) — there the conflict state is null by definition,
-   * so no early return guard.
+   * Resolves a conflict dialog: keep local → push, use cloud → pull. Also serves the cloud-found
+   * fresh-device prompt's Download action (force = Pull) — there the conflict state is null by
+   * definition, so no early return guard.
    */
   fun resolveConflict(keepLocal: Boolean) {
     runSync(manual = true, force = if (keepLocal) SyncAction.Push else SyncAction.Pull)
@@ -245,8 +244,8 @@ class CloudSyncViewModel(
   }
 
   /**
-   * Dismisses a conflict without changing either local or cloud saves.
-   * The next sync trigger can surface the conflict again.
+   * Dismisses a conflict without changing either local or cloud saves. The next sync trigger can
+   * surface the conflict again.
    */
   fun clearConflict() {
     conflict = null
@@ -447,7 +446,9 @@ class CloudSyncViewModel(
   private suspend fun <T> withRetry(block: suspend (DropboxApi) -> Result<T>): Result<T> {
     val first = block(api())
     if (first.isSuccess) return first
-    if (first.exceptionOrNull() is com.skiletro.wheelwitch.util.cloud.DropboxWriteConflictException) {
+    if (
+        first.exceptionOrNull() is com.skiletro.wheelwitch.util.cloud.DropboxWriteConflictException
+    ) {
       return first
     }
     val tokens = store.tokens() ?: return first
@@ -516,7 +517,7 @@ class CloudSyncViewModel(
 
   // --- production defaults ----------------------------------------------
 
-  /** Stages the unified save zip in the app cache via [SaveManager.backupAll]. */
+  /** Stages the unified save zip in the app cache via [SaveManager.backup]. */
   private suspend fun defaultZipBytes(context: Context): ByteArray =
       withContext(Dispatchers.IO) {
         val tree = DolphinTree.fromPersisted(context) ?: return@withContext ByteArray(0)
@@ -524,14 +525,14 @@ class CloudSyncViewModel(
         try {
           file.delete()
           file.createNewFile()
-          SaveManager.backupAll(tree, Uri.fromFile(file)).getOrThrow()
+          SaveManager.backup(tree, Uri.fromFile(file)).getOrThrow()
           file.readBytes()
         } finally {
           file.delete()
         }
       }
 
-  /** Restores cloud zip bytes onto the local tree via [SaveManager.restoreAll]. */
+  /** Restores cloud zip bytes onto the local tree via [SaveManager.restore]. */
   private suspend fun defaultApplyZip(context: Context, bytes: ByteArray) =
       withContext(Dispatchers.IO) {
         val tree =
@@ -540,7 +541,7 @@ class CloudSyncViewModel(
         val file = File(context.cacheDir, ZIP_STAGING_NAME)
         try {
           file.writeBytes(bytes)
-          SaveManager.restoreAll(tree, Uri.fromFile(file)).getOrThrow()
+          SaveManager.restore(tree, Uri.fromFile(file)).getOrThrow()
         } finally {
           file.delete()
         }

@@ -29,7 +29,6 @@ object PrefsKeys {
   const val ONBOARDING_COMPLETED_KEY = "onboarding_completed"
   const val LOGGING_TO_FILE_KEY = "logging_to_file"
   const val LAST_BACKUP_TIMESTAMP_KEY = "last_backup_timestamp"
-  const val LAST_BACKUP_RR_TIMESTAMP_KEY = "last_backup_rr_timestamp"
   const val GAME_INI_NOTICE_SHOWN_KEY = "game_ini_notice_shown"
 
   /** Cloud sync: tokens + sync bookkeeping, stored encrypted. */

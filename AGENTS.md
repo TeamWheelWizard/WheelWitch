@@ -139,13 +139,13 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `data/DolphinPathsTest.kt` | 14 | `physicalRoot` package-swap (release + debug), path helpers |
 | `data/DolphinTreeTest.kt` | 35 | lazy subdirs, `validate`, `fromPersisted`/`persist`, `copyRomFromSource`, `extractZipToPack`, `writeLaunchJson`/`readLaunchJson`, `readVersion`/`writeVersion`, `readConfigIni`/`writeConfigIni`, persist/release URI permission |
 | `data/DolphinConfigTest.kt` | 25 | `IsoPaths.toIniLines`, `read`/`upsert`/`remove`, idempotency, comment preservation, `dolphinUserTreeUri` |
-| `data/SaveManagerTest.kt` | 9 | region mapping, `listRegions`, `hasSave`/`backup`/`restore`/`delete` |
+| `data/SaveManagerTest.kt` | 36 | region mapping, `listRegions`, `hasSave`, unified scope (`hasAnySave`/`backup`/`restore`/`delete`), RR version stamp + `RRGameSettings.pul` restore gate, old-zip back-compat |
 | `network/VersionFileParserTest.kt` | 17 | update/deletion parsing, leaderboard, health, tracks, race stats |
 | `network/GitHubReleaseParserTest.kt` | 6 | `parseLatestReleaseVersion()`: release title extraction, no-version/null/empty/malformed payloads |
 | `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
 | `viewmodel/AppUpdateViewModelTest.kt` | 7 | init latest-vs-current resolution, fetch failure, disabled skip, unparseable current version, `dismissDialog` |
-| `viewmodel/SaveDataViewModelTest.kt` | 12 | refresh, region selection, slot selection, leaderboard merge, backup/restore/delete delegation |
+| `viewmodel/SaveDataViewModelTest.kt` | 27 | refresh, region selection, slot selection, leaderboard merge, unified backup/restore/delete delegation |
 | `util/cloud/SaveContentHashTest.kt` | 5 | canonical zip hashing, entry-order independence, manifest exclusion |
 | `util/cloud/DropboxAuthTest.kt` | 4 | PKCE URL, token exchange, refresh, HTTP errors |
 | `util/cloud/OAuthBrowserLauncherTest.kt` | 3 | Custom Tab launch, external-browser fallback, dual failure reporting |
