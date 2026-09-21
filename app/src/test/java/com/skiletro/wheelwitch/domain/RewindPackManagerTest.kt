@@ -126,7 +126,7 @@ class RewindPackManagerTest {
   fun `installLatest writes the version when the zip's version txt is missing`() = runBlocking {
     val server = serverInfo()
     val progressReports = mutableListOf<RewindPackManager.InstallProgress>()
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -141,8 +141,8 @@ class RewindPackManagerTest {
     val result = manager().installLatest { progress -> progressReports.add(progress) }
 
     assertThat(result.isSuccess).isTrue()
-    verify(exactly = 1) {
-      FileDownloader.downloadToFile(
+    coVerify(exactly = 1) {
+      FileDownloader.downloadInParallel(
           url = "https://example.com/RetroRewind.zip",
           targetFile = any(),
           onProgress = any(),
@@ -160,7 +160,9 @@ class RewindPackManagerTest {
   fun `installLatest skips writeVersion when the zip's version txt already matches the server`() =
       runBlocking {
         val server = serverInfo()
-        every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+        coEvery {
+          FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
+        } answers
             {
               val target = it.invocation.args[1] as File
               target.parentFile?.mkdirs()
@@ -181,7 +183,7 @@ class RewindPackManagerTest {
   @Test
   fun `installLatest reports success even when writeRrMetadata throws`() = runBlocking {
     val server = serverInfo()
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -204,7 +206,7 @@ class RewindPackManagerTest {
 
   @Test
   fun `installLatest emits Downloading then Extracting phases in order`() = runBlocking {
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -283,7 +285,7 @@ class RewindPackManagerTest {
 
   @Test
   fun `installLatest deletes the cached zip after the extract even on failure`() = runBlocking {
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -310,7 +312,9 @@ class RewindPackManagerTest {
             )
             .installLatest { /* no-op */ }
     assertThat(result.isFailure).isTrue()
-    verify(exactly = 0) { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) }
+    coVerify(exactly = 0) {
+      FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
+    }
   }
 
   @Test
@@ -325,12 +329,14 @@ class RewindPackManagerTest {
             .installLatest { /* no-op */ }
 
     assertThat(result.isFailure).isTrue()
-    verify(exactly = 0) { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) }
+    coVerify(exactly = 0) {
+      FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
+    }
   }
 
   @Test
   fun `installLatest does not swallow cancellation into a Result failure`() = runBlocking {
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -356,7 +362,7 @@ class RewindPackManagerTest {
     // and writeVersion is exercised.
     coEvery { tree.readVersion() } returns null andThen null
     val server = serverInfo()
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -374,8 +380,8 @@ class RewindPackManagerTest {
 
     assertThat(result.isSuccess).isTrue()
     // Full zip URL used, not an incremental step URL.
-    verify(exactly = 1) {
-      FileDownloader.downloadToFile(
+    coVerify(exactly = 1) {
+      FileDownloader.downloadInParallel(
           url = "https://example.com/full.zip",
           targetFile = any(),
           onProgress = any(),
@@ -417,7 +423,7 @@ class RewindPackManagerTest {
                 ),
             deletions = emptyList(),
         )
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -435,8 +441,8 @@ class RewindPackManagerTest {
 
     assertThat(result.isSuccess).isTrue()
     // Only 3.3.1 and 3.3.2 are downloaded; 3.3.0 is the current local.
-    verify(exactly = 1) {
-      FileDownloader.downloadToFile(
+    coVerify(exactly = 1) {
+      FileDownloader.downloadInParallel(
           url = "https://example.com/3.3.1.zip",
           targetFile = any(),
           onProgress = any(),
@@ -445,8 +451,8 @@ class RewindPackManagerTest {
           initialBackoffMillis = any(),
       )
     }
-    verify(exactly = 1) {
-      FileDownloader.downloadToFile(
+    coVerify(exactly = 1) {
+      FileDownloader.downloadInParallel(
           url = "https://example.com/3.3.2.zip",
           targetFile = any(),
           onProgress = any(),
@@ -456,8 +462,8 @@ class RewindPackManagerTest {
       )
     }
     // The full zip URL was NOT used.
-    verify(exactly = 0) {
-      FileDownloader.downloadToFile(
+    coVerify(exactly = 0) {
+      FileDownloader.downloadInParallel(
           url = "https://example.com/RetroRewind.zip",
           targetFile = any(),
           onProgress = any(),
@@ -473,29 +479,32 @@ class RewindPackManagerTest {
   @Test
   fun `update applies only deletion entries in the selected version window`() = runBlocking {
     val server =
-        serverInfo().copy(
-            deletions =
-                listOf(
-                    DeletionEntry(SemVersion(3, 2, 4), "old-before.bin"),
-                    DeletionEntry(SemVersion(3, 2, 6), "RetroRewind6/old.bin"),
-                    DeletionEntry(SemVersion(3, 2, 7), "RetroRewind6/future.bin"),
-                )
-        )
-    every {
+        serverInfo()
+            .copy(
+                deletions =
+                    listOf(
+                        DeletionEntry(SemVersion(3, 2, 4), "old-before.bin"),
+                        DeletionEntry(SemVersion(3, 2, 6), "RetroRewind6/old.bin"),
+                        DeletionEntry(SemVersion(3, 2, 7), "RetroRewind6/future.bin"),
+                    )
+            )
+    coEvery {
       FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any(), any())
-    } answers {
-      val target = it.invocation.args[1] as File
-      target.parentFile?.mkdirs()
-      target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
-      target
-    }
+    } answers
+        {
+          val target = it.invocation.args[1] as File
+          target.parentFile?.mkdirs()
+          target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
+          target
+        }
     coEvery { tree.readVersion() } returns SemVersion(3, 2, 5)
     coEvery { tree.extractZipToPack(any(), any()) } returns Unit
     every { tree.deletePackEntry(any()) } returns true
     coEvery { tree.writeVersion(server.latestVersion) } returns Unit
     coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
 
-    val result = manager(server = fakeServer(serverInfoResult = { Result.success(server) })).update {}
+    val result =
+        manager(server = fakeServer(serverInfoResult = { Result.success(server) })).update {}
 
     assertThat(result.isSuccess).isTrue()
     verify(exactly = 1) { tree.deletePackEntry("RetroRewind6/old.bin") }
@@ -508,7 +517,7 @@ class RewindPackManagerTest {
   @Test
   fun `reinstall performs a full install`() = runBlocking {
     val server = serverInfo()
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
@@ -540,12 +549,14 @@ class RewindPackManagerTest {
             .reinstall { /* no-op */ }
 
     assertThat(result.isFailure).isTrue()
-    verify(exactly = 0) { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) }
+    coVerify(exactly = 0) {
+      FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
+    }
   }
 
   @Test
   fun `reinstall does not write version when extract fails`() = runBlocking {
-    every { FileDownloader.downloadToFile(any(), any(), any(), any(), any(), any()) } answers
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
         {
           val target = it.invocation.args[1] as File
           target.parentFile?.mkdirs()
