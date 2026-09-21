@@ -483,7 +483,8 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * as an `ISOPathN` entry.
    */
   fun readConfigIni(fileName: String = CONFIG_INI_NAME): String? {
-    val configDir = findOrCreateDir(root, "Config") ?: return null
+    val configDir = root.findFile("Config") ?: return null
+    if (!configDir.isDirectory) return null
     return readDolphinText(resolver, configDir.findFile(fileName), stripBom = true)
   }
 
