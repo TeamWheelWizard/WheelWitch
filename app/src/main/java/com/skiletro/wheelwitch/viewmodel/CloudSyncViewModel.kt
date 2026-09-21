@@ -20,6 +20,7 @@ import com.skiletro.wheelwitch.util.cloud.CloudSaveMeta
 import com.skiletro.wheelwitch.util.cloud.CloudState
 import com.skiletro.wheelwitch.util.cloud.DropboxApi
 import com.skiletro.wheelwitch.util.cloud.DropboxAuth
+import com.skiletro.wheelwitch.util.cloud.DropboxAuthException
 import com.skiletro.wheelwitch.util.cloud.DropboxRedirect
 import com.skiletro.wheelwitch.util.cloud.OAuthBrowserLauncher
 import com.skiletro.wheelwitch.util.cloud.SaveContentHash
@@ -309,7 +310,8 @@ class CloudSyncViewModel(
     // fetchSaveMeta throws on non-not-found errors, so the fetch is
     // routed through withRetry: an expired access token (the common
     // expiry point — this is the first API call of every sync) gets
-    // refresh → retry → success, or surfaces ReconnectNeeded. It is
+    // refresh → retry → success. A typed token-endpoint rejection
+    // surfaces ReconnectNeeded; network failures stay failures. It is
     // NEVER read as "cloud empty" (null), which could push over a
     // cloud save we cannot see.
     val cloudMeta =
@@ -456,8 +458,8 @@ class CloudSyncViewModel(
   }
 
   /**
-   * Runs [block]; on failure attempts one token refresh and retries once. Still failing after a
-   * refresh attempt means the stored tokens are dead → [SyncStatus.ReconnectNeeded].
+   * Runs [block]; on failure attempts one token refresh and retries once. A typed token-endpoint
+   * rejection marks the stored tokens as dead; network/IO refresh failures retain the first error.
    */
   private suspend fun <T> withRetry(block: suspend (DropboxApi) -> Result<T>): Result<T> {
     val first = block(api())
@@ -469,12 +471,14 @@ class CloudSyncViewModel(
     }
     val tokens = store.tokens() ?: return first
     val refreshToken = tokens.refreshToken ?: return first
-    val refreshed =
-        auth.refresh(refreshToken).getOrNull()
-            ?: run {
-              status = SyncStatus.ReconnectNeeded
-              return first
-            }
+    val refreshResult = auth.refresh(refreshToken)
+    if (refreshResult.isFailure) {
+      if (refreshResult.exceptionOrNull() is DropboxAuthException) {
+        status = SyncStatus.ReconnectNeeded
+      }
+      return first
+    }
+    val refreshed = refreshResult.getOrThrow()
     store.saveTokens(
         tokens.copy(
             accessToken = refreshed.accessToken,
@@ -482,9 +486,7 @@ class CloudSyncViewModel(
             expiresAtMillis = refreshed.expiresAtMillis,
         )
     )
-    val retry = block(api())
-    if (retry.isFailure) status = SyncStatus.ReconnectNeeded
-    return retry
+    return block(api())
   }
 
   /** Best-effort advisory-lock check; TTL judged by server mtime. */

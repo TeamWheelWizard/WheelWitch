@@ -8,9 +8,10 @@ import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.domain.SaveSyncEngine
 import com.skiletro.wheelwitch.util.cloud.CloudSaveMeta
 import com.skiletro.wheelwitch.util.cloud.DropboxApi
-import com.skiletro.wheelwitch.util.cloud.DropboxWriteConflictException
 import com.skiletro.wheelwitch.util.cloud.DropboxAuth
+import com.skiletro.wheelwitch.util.cloud.DropboxAuthException
 import com.skiletro.wheelwitch.util.cloud.DropboxRedirect
+import com.skiletro.wheelwitch.util.cloud.DropboxWriteConflictException
 import com.skiletro.wheelwitch.util.cloud.SaveContentHash
 import com.skiletro.wheelwitch.util.cloud.SyncStore
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
@@ -20,6 +21,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -122,8 +124,7 @@ class CloudSyncViewModelTest {
     model.onAppResume()
 
     assertThat(model.uiState.value).isInstanceOf(SyncUiState.Connected::class.java)
-    assertThat((model.uiState.value as SyncUiState.Connected).status)
-        .isEqualTo(SyncStatus.Error)
+    assertThat((model.uiState.value as SyncUiState.Connected).status).isEqualTo(SyncStatus.Error)
   }
 
   @Test
@@ -423,7 +424,8 @@ class CloudSyncViewModelTest {
     every { store.sessionPendingPush } returns false
     every { store.storedRev } returns "r1"
     every { store.storedHash } returns "h1"
-    coEvery { api.fetchSaveMeta() } throws RuntimeException("401 expired") andThen
+    coEvery { api.fetchSaveMeta() } throws
+        RuntimeException("401 expired") andThen
         CloudSaveMeta("r1", 100L)
     coEvery { api.uploadSaveZip(any(), any()) } returns Result.success(CloudSaveMeta("r2", 200L))
     coEvery { auth.refresh("rt") } returns
@@ -437,14 +439,34 @@ class CloudSyncViewModelTest {
   }
 
   @Test
-  fun `expired token with failed refresh surfaces reconnect`() = runTest {
+  fun `expired token with network refresh failure stays an error`() = runTest {
     every { store.tokens() } returns DropboxAuth.AuthTokens("at1", "rt", 0L, null)
     every { store.autoSyncEnabled } returns true
     every { store.sessionPendingPush } returns false
-    coEvery { api.fetchSaveMeta() } throws RuntimeException("401 expired")
-    coEvery { auth.refresh("rt") } returns Result.failure(RuntimeException("revoked"))
+    coEvery { api.fetchSaveMeta() } throws IOException("network unavailable")
+    coEvery { auth.refresh("rt") } returns Result.failure(IOException("refresh unavailable"))
     val model = vm()
-    model.onAppResume()
+
+    model.syncNow()
+
+    coVerify(exactly = 1) { auth.refresh("rt") }
+    coVerify(exactly = 1) { api.fetchSaveMeta() }
+    val connected = model.uiState.value as SyncUiState.Connected
+    assertThat(connected.status).isEqualTo(SyncStatus.Error)
+  }
+
+  @Test
+  fun `expired token with typed refresh rejection surfaces reconnect`() = runTest {
+    every { store.tokens() } returns DropboxAuth.AuthTokens("at1", "rt", 0L, null)
+    every { store.autoSyncEnabled } returns true
+    every { store.sessionPendingPush } returns false
+    coEvery { api.fetchSaveMeta() } throws IOException("401 expired")
+    coEvery { auth.refresh("rt") } returns
+        Result.failure(DropboxAuthException(401, "invalid_grant"))
+    val model = vm()
+
+    model.syncNow()
+
     coVerify(exactly = 1) { auth.refresh("rt") }
     coVerify(exactly = 1) { api.fetchSaveMeta() }
     val connected = model.uiState.value as SyncUiState.Connected

@@ -3,6 +3,7 @@ package com.skiletro.wheelwitch.util.cloud
 import android.net.Uri
 import com.skiletro.wheelwitch.BuildConfig
 import com.skiletro.wheelwitch.util.net.HttpClientProvider
+import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -40,6 +41,16 @@ object DropboxRedirect {
   /** Clears the current redirect (used when starting a new flow). */
   fun reset() {
     redirectFlow.value = null
+  }
+}
+
+/** Token endpoint rejected the OAuth request with a non-2xx response. */
+class DropboxAuthException(val statusCode: Int, body: String) :
+    IOException(
+        "Dropbox token endpoint $statusCode: ${body.take(MAX_ERROR_BODY_LENGTH)}",
+    ) {
+  private companion object {
+    const val MAX_ERROR_BODY_LENGTH = 512
   }
 }
 
@@ -81,7 +92,8 @@ class DropboxAuth(
     val challenge = base64Url(sha256(verifier.toByteArray()))
     val pending = PendingAuth(verifier, DropboxRedirect.REDIRECT_URI)
     val url =
-        "https://www.dropbox.com/oauth2/authorize".toHttpUrl()
+        "https://www.dropbox.com/oauth2/authorize"
+            .toHttpUrl()
             .newBuilder()
             .addQueryParameter("response_type", "code")
             .addQueryParameter("client_id", appKey)
@@ -140,8 +152,8 @@ class DropboxAuth(
 
   private fun request(body: FormBody, endpoint: HttpUrl): String {
     client.newCall(Request.Builder().url(endpoint).post(body).build()).execute().use { response ->
-      val text = response.body?.string().orEmpty()
-      check(response.isSuccessful) { "Dropbox token endpoint ${response.code}: $text" }
+      val text = response.body.string()
+      if (!response.isSuccessful) throw DropboxAuthException(response.code, text)
       return text
     }
   }
