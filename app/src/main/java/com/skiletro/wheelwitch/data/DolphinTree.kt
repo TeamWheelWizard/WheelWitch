@@ -259,7 +259,14 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         val fileEntries =
             entries
                 .filterNot { it.isDirectory }
-                .filter { ZipSafety.isSafeEntryName(it.name, SaveManager.userDataPathPrefixes) }
+                .mapNotNull { entry ->
+                  if (ZipSafety.isSafeEntryName(entry.name, SaveManager.userDataPathPrefixes)) {
+                    entry
+                  } else {
+                    Timber.tag(TAG).w("Skipping unsafe or user-owned ZIP entry: %s", entry.name)
+                    null
+                  }
+                }
         val filesTotal = fileEntries.size
         val bytesTotal = fileEntries.sumOf { it.size.coerceAtLeast(0L) }
 
