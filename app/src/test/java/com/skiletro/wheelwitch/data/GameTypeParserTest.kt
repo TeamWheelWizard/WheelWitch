@@ -3,6 +3,7 @@ package com.skiletro.wheelwitch.data
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.GameTypeParser.GameFormat
 import org.junit.jupiter.api.Test
+import java.util.Locale
 
 class GameTypeParserTest {
 
@@ -206,6 +207,19 @@ class GameTypeParserTest {
     }
 
     // --- checkValidity ---
+
+    @Test
+    fun `lowercase extension remains valid under Turkish locale`() {
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+
+            assertThat(GameTypeParser.checkValidity("game.iso", createIsoBuffer("RMCP01")))
+                .isTrue()
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
 
     @Test
     fun `checkValidity returns true for valid ISO`() {
