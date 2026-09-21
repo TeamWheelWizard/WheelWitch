@@ -145,6 +145,23 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       ?: error("Cannot create or find pack/ in WheelWitch dir")
   }
 
+  /** Deletes an existing non-user-data file under [packDir] without creating directories. */
+  fun deletePackEntry(relativePath: String): Boolean {
+    val normalized = ZipSafety.normalizeEntryName(relativePath)
+    if (!ZipSafety.isSafeEntryName(normalized, SaveManager.userDataPathPrefixes)) {
+      Timber.tag(TAG).w("Skipping unsafe pack deletion: %s", relativePath)
+      return false
+    }
+    val parts = normalized.split('/')
+    var parent = packDir
+    for (part in parts.dropLast(1)) {
+      parent = parent.findFile(part)?.takeIf { it.isDirectory } ?: return false
+    }
+    val target = parent.findFile(parts.last()) ?: return false
+    if (target.isDirectory) return false
+    return target.delete()
+  }
+
   /**
    * The Retro Rewind subdirectory under [packDir]. The pack zip
    * extracts into this directory (so a zip entry `RetroRewind6/version.txt`

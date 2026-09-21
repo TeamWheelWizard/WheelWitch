@@ -109,6 +109,33 @@ class DolphinTreeTest {
     assertThat(tree.packDir).isEqualTo(packDir)
   }
 
+  @Test
+  fun `deletePackEntry deletes an existing nested file`() {
+    val (_, packDir, _) = setupDirChain()
+    val retroRewindDir = mockDir(DolphinTree.RETRO_REWIND_DIR_NAME)
+    val target = mockk<DocumentFile>(relaxed = true)
+    every { packDir.findFile(DolphinTree.RETRO_REWIND_DIR_NAME) } returns retroRewindDir
+    every { retroRewindDir.findFile("old.bin") } returns target
+    every { target.isDirectory } returns false
+    every { target.delete() } returns true
+
+    val tree = DolphinTree(context, treeUri)
+
+    assertThat(tree.deletePackEntry("RetroRewind6/old.bin")).isTrue()
+    verify(exactly = 1) { target.delete() }
+  }
+
+  @Test
+  fun `deletePackEntry rejects unsafe and user-owned paths`() {
+    val (_, packDir, _) = setupDirChain()
+    val tree = DolphinTree(context, treeUri)
+
+    assertThat(tree.deletePackEntry("../outside.txt")).isFalse()
+    assertThat(tree.deletePackEntry("/absolute.txt")).isFalse()
+    assertThat(tree.deletePackEntry("riivolution/save/RetroWFC/RMCP/rksys.dat")).isFalse()
+    verify(exactly = 0) { packDir.findFile(any()) }
+  }
+
   // --- new lazy user-data subdirs (Wii/shared2/...) -------------------
 
   @Test

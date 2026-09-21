@@ -125,6 +125,15 @@ class RewindPackManager(
           for (step in steps) {
             performInstall(step.url, progress)
           }
+          val deletions =
+            info.deletions
+              .filter { it.version > local && it.version <= info.latestVersion }
+              .sortedBy { it.version }
+          for (deletion in deletions) {
+            if (!tree.deletePackEntry(deletion.path)) {
+              Timber.tag(TAG).d("Pack deletion target absent or rejected: %s", deletion.path)
+            }
+          }
         }
         info.latestVersion
       },
