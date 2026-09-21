@@ -241,6 +241,7 @@ class CloudSyncViewModel(
 
   /** Dismisses the one-time "cloud save found" prompt without pulling. */
   fun dismissCloudFoundPrompt() {
+    store.cloudPromptShown = true
     cloudFoundPrompt = false
     emit()
   }

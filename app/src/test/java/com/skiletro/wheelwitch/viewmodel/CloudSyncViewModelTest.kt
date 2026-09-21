@@ -319,6 +319,27 @@ class CloudSyncViewModelTest {
   }
 
   @Test
+  fun `dismissing cloud found prompt persists dismissal`() = runTest {
+    every { store.tokens() } returns mockk(relaxed = true)
+    every { store.autoSyncEnabled } returns true
+    every { store.sessionPendingPush } returns false
+    every { store.storedRev } returns null
+    every { store.storedHash } returns null
+    every { store.cloudPromptShown } returns false
+    coEvery { backup.invoke() } returns saveZip(2)
+    coEvery { api.fetchSaveMeta() } returns CloudSaveMeta("r1", 100L)
+    val model = vm()
+
+    model.onAppResume()
+    assertThat((model.uiState.value as SyncUiState.Connected).cloudFoundPrompt).isTrue()
+
+    model.dismissCloudFoundPrompt()
+
+    assertThat((model.uiState.value as SyncUiState.Connected).cloudFoundPrompt).isFalse()
+    verify { store.cloudPromptShown = true }
+  }
+
+  @Test
   fun `failed restore does not mark cloud pull synced or dismiss prompt`() = runTest {
     every { store.tokens() } returns mockk(relaxed = true)
     every { store.autoSyncEnabled } returns true
