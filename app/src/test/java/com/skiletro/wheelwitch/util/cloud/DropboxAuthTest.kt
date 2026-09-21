@@ -36,6 +36,9 @@ class DropboxAuthTest {
     assertThat(parsed.queryParameter("scope"))
         .isEqualTo("account_info.read files.metadata.read files.content.read files.content.write")
     assertThat(parsed.queryParameter("code_challenge")).isNotEmpty()
+    assertThat(parsed.queryParameter("state")).isNotEmpty()
+    assertThat(parsed.queryParameter("state")).isNotEqualTo(parsed.queryParameter("code_challenge"))
+    assertThat(pending.state).isEqualTo(parsed.queryParameter("state"))
     assertThat(parsed.queryParameter("code_challenge_method")).isEqualTo("S256")
     assertThat(parsed.queryParameter("token_access_type")).isEqualTo("offline")
     assertThat(pending.verifier).isNotEmpty()
@@ -50,7 +53,7 @@ class DropboxAuthTest {
             )
             .build()
     )
-    val pending = DropboxAuth.PendingAuth(verifier = "v", redirectUri = "r")
+    val pending = DropboxAuth.PendingAuth(verifier = "v", redirectUri = "r", state = "state")
     val result = auth.exchangeCodeAt(server.url("/oauth2/token"), pending, "the-code")
     assertThat(result.getOrNull()!!.accessToken).isEqualTo("at")
     assertThat(result.getOrNull()!!.refreshToken).isEqualTo("rt")
@@ -68,7 +71,7 @@ class DropboxAuthTest {
     server.enqueue(
         MockResponse.Builder().code(400).body("x".repeat(5_000)).build(),
     )
-    val pending = DropboxAuth.PendingAuth(verifier = "v", redirectUri = "r")
+    val pending = DropboxAuth.PendingAuth(verifier = "v", redirectUri = "r", state = "state")
     val result = auth.exchangeCodeAt(server.url("/oauth2/token"), pending, "bad")
 
     val error = result.exceptionOrNull()

@@ -191,30 +191,51 @@ class CloudSyncViewModel(
     }
   }
 
-  /** Handles one OAuth redirect: exchanges the code and stores the tokens. */
+  /** Handles one OAuth redirect: validates state, then exchanges the code and stores the tokens. */
   internal suspend fun onRedirect(uri: Uri?) {
-    val code = uri?.getQueryParameter("code")
     val active = pendingAuth
-    if (code != null && active != null) {
+    val returnedState = uri?.getQueryParameter("state")
+    if (active == null || returnedState != active.state) {
+      Timber.tag(TAG).w("Ignoring OAuth redirect with invalid state")
       DropboxRedirect.reset()
-      val tokens = auth.exchangeCode(active, code).getOrNull()
-      if (tokens == null) {
-        status = SyncStatus.Error
-      } else if (!store.saveTokens(tokens)) {
-        status = SyncStatus.ReconnectNeeded
-        pendingAuth = null
-      } else {
-        val email = withRetry { it.fetchAccountEmail() }.getOrNull()
-        if (email.isNullOrBlank()) {
-          if (status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
-        } else {
-          val current = store.tokens()
-          if (current != null) store.saveTokens(current.copy(accountEmail = email))
-        }
-        pendingAuth = null
-      }
-      emit()
+      return
     }
+
+    val error = uri.getQueryParameter("error")
+    if (!error.isNullOrBlank()) {
+      Timber.tag(TAG).w("Dropbox OAuth redirect returned error: %s", error)
+      pendingAuth = null
+      status = SyncStatus.Error
+      DropboxRedirect.reset()
+      emit()
+      return
+    }
+
+    val code = uri.getQueryParameter("code")
+    if (code == null) {
+      Timber.tag(TAG).w("Ignoring OAuth redirect without code or error")
+      DropboxRedirect.reset()
+      return
+    }
+
+    DropboxRedirect.reset()
+    val tokens = auth.exchangeCode(active, code).getOrNull()
+    if (tokens == null) {
+      status = SyncStatus.Error
+    } else if (!store.saveTokens(tokens)) {
+      status = SyncStatus.ReconnectNeeded
+      pendingAuth = null
+    } else {
+      val email = withRetry { it.fetchAccountEmail() }.getOrNull()
+      if (email.isNullOrBlank()) {
+        if (status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
+      } else {
+        val current = store.tokens()
+        if (current != null) store.saveTokens(current.copy(accountEmail = email))
+      }
+      pendingAuth = null
+    }
+    emit()
   }
 
   /** Disconnects the account and forgets this install's sync bookkeeping. */

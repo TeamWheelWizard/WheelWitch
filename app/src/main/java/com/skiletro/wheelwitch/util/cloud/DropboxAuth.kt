@@ -68,8 +68,8 @@ class DropboxAuth(
     private val client: OkHttpClient = HttpClientProvider.client,
     private val appKey: String = BuildConfig.DROPBOX_APP_KEY,
 ) {
-  /** PKCE state for one authorize round-trip. */
-  data class PendingAuth(val verifier: String, val redirectUri: String)
+  /** PKCE and CSRF state for one authorize round-trip. */
+  data class PendingAuth(val verifier: String, val redirectUri: String, val state: String)
 
   /**
    * Tokens from a token-endpoint response. [accountEmail] is null unless the endpoint response
@@ -85,12 +85,12 @@ class DropboxAuth(
 
   /**
    * Builds the authorize URL to open in a Custom Tab together with the [PendingAuth] whose verifier
-   * must accompany the code exchange.
+   * must accompany the code exchange and whose state binds the redirect to this request.
    */
   fun authorizeUrl(): Pair<String, PendingAuth> {
     val verifier = randomToken()
     val challenge = base64Url(sha256(verifier.toByteArray()))
-    val pending = PendingAuth(verifier, DropboxRedirect.REDIRECT_URI)
+    val pending = PendingAuth(verifier, DropboxRedirect.REDIRECT_URI, randomToken())
     val url =
         "https://www.dropbox.com/oauth2/authorize"
             .toHttpUrl()
@@ -104,6 +104,7 @@ class DropboxAuth(
             )
             .addQueryParameter("code_challenge", challenge)
             .addQueryParameter("code_challenge_method", "S256")
+            .addQueryParameter("state", pending.state)
             .addQueryParameter("token_access_type", "offline")
             .build()
             .toString()

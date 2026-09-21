@@ -411,7 +411,8 @@ class CloudSyncViewModelTest {
           saved = firstArg()
           true
         }
-    val pending = DropboxAuth.PendingAuth("verifier", DropboxRedirect.REDIRECT_URI)
+    val pending =
+        DropboxAuth.PendingAuth("verifier", DropboxRedirect.REDIRECT_URI, "expected-state")
     every { auth.authorizeUrl() } returns
         Pair("https://www.dropbox.com/oauth2/authorize?x=1", pending)
     coEvery { auth.exchangeCode(pending, "abc") } returns
@@ -421,11 +422,53 @@ class CloudSyncViewModelTest {
     model.connect()
     val redirect = mockk<Uri>()
     every { redirect.getQueryParameter("code") } returns "abc"
+    every { redirect.getQueryParameter("state") } returns pending.state
+    every { redirect.getQueryParameter("error") } returns null
     model.onRedirect(redirect)
     verify { store.saveTokens(DropboxAuth.AuthTokens("at", "rt", 500L, null)) }
     val connected = model.uiState.value as SyncUiState.Connected
     assertThat(connected.accountEmail).isEqualTo("racer@example.com")
     assertThat(DropboxRedirect.redirectFlow.value).isNull()
+  }
+
+  @Test
+  fun `redirect with wrong state is ignored without token exchange`() = runTest {
+    val pending =
+        DropboxAuth.PendingAuth("verifier", DropboxRedirect.REDIRECT_URI, "expected-state")
+    every { auth.authorizeUrl() } returns
+        Pair("https://www.dropbox.com/oauth2/authorize?x=1", pending)
+    val model = vm()
+    model.connect()
+    val redirect = mockk<Uri>()
+    every { redirect.getQueryParameter("code") } returns "abc"
+    every { redirect.getQueryParameter("state") } returns "wrong-state"
+
+    model.onRedirect(redirect)
+
+    coVerify(exactly = 0) { auth.exchangeCode(any(), any()) }
+    assertThat(DropboxRedirect.redirectFlow.value).isNull()
+  }
+
+  @Test
+  fun `provider error with matching state surfaces error and clears pending auth`() = runTest {
+    val pending =
+        DropboxAuth.PendingAuth("verifier", DropboxRedirect.REDIRECT_URI, "expected-state")
+    every { auth.authorizeUrl() } returns
+        Pair("https://www.dropbox.com/oauth2/authorize?x=1", pending)
+    val model = vm()
+    model.connect()
+    val redirect = mockk<Uri>()
+    every { redirect.getQueryParameter("state") } returns pending.state
+    every { redirect.getQueryParameter("error") } returns "access_denied"
+
+    model.onRedirect(redirect)
+
+    coVerify(exactly = 0) { auth.exchangeCode(any(), any()) }
+    assertThat((model.uiState.value as SyncUiState.Connected).status).isEqualTo(SyncStatus.Error)
+    assertThat(DropboxRedirect.redirectFlow.value).isNull()
+    every { redirect.getQueryParameter("code") } returns "abc"
+    model.onRedirect(redirect)
+    coVerify(exactly = 0) { auth.exchangeCode(any(), any()) }
   }
 
   @Test
