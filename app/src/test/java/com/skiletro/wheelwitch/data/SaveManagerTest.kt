@@ -18,6 +18,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.jupiter.api.Test
@@ -208,6 +209,26 @@ class SaveManagerTest {
       assertThat(result.isFailure).isTrue()
       assertThat(result.exceptionOrNull()).hasMessageThat().isEqualTo("backup read failed")
       io.mockk.verify(exactly = 1) { DocumentsContract.deleteDocument(env.resolver, dest) }
+    } finally {
+      unmockkStatic(DocumentsContract::class)
+    }
+  }
+
+  @Test
+  fun `backup deletes destination before rethrowing cancellation`() = runTest {
+    val env = setupBackupEnv(palExists = true)
+    val dest = mockk<Uri>(relaxed = true)
+    every { env.resolver.openOutputStream(dest) } returns ByteArrayOutputStream()
+    every { env.resolver.openInputStream(env.regionFile("RMCP").uri) } returns
+        CancellingAfterFirstReadInputStream()
+    mockkStatic(DocumentsContract::class)
+    every { DocumentsContract.deleteDocument(env.resolver, dest) } returns true
+
+    try {
+      val exception = runCatching { SaveManager.backup(env.tree, dest) }.exceptionOrNull()
+
+      assertThat(exception).isInstanceOf(CancellationException::class.java)
+      verify(exactly = 1) { DocumentsContract.deleteDocument(env.resolver, dest) }
     } finally {
       unmockkStatic(DocumentsContract::class)
     }
@@ -715,6 +736,27 @@ class SaveManagerTest {
         return 1
       }
       throw IOException("backup read failed")
+    }
+  }
+
+  private class CancellingAfterFirstReadInputStream : InputStream() {
+    private var firstRead = true
+
+    override fun read(): Int {
+      if (firstRead) {
+        firstRead = false
+        return 'x'.code
+      }
+      throw CancellationException("backup cancelled")
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+      if (firstRead) {
+        firstRead = false
+        buffer[offset] = 'x'.code.toByte()
+        return 1
+      }
+      throw CancellationException("backup cancelled")
     }
   }
 

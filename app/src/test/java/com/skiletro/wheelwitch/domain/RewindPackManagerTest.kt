@@ -477,6 +477,69 @@ class RewindPackManagerTest {
   }
 
   @Test
+  fun `update applies archives and deletions in version order`() = runBlocking {
+    val server =
+        ServerInfo(
+            latestVersion = SemVersion(3, 2, 7),
+            allUpdates =
+                listOf(
+                    UpdateEntry(
+                        SemVersion(3, 2, 6),
+                        "https://example.com/3.2.6.zip",
+                        "/x",
+                        "3.2.6",
+                    ),
+                    UpdateEntry(
+                        SemVersion(3, 2, 7),
+                        "https://example.com/3.2.7.zip",
+                        "/x",
+                        "3.2.7",
+                    ),
+                ),
+            deletions = listOf(DeletionEntry(SemVersion(3, 2, 6), "RetroRewind6/recreated.bin")),
+        )
+    val events = mutableListOf<String>()
+    coEvery {
+      FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any(), any())
+    } answers
+        {
+          val url = it.invocation.args[0] as String
+          val target = it.invocation.args[1] as File
+          events += "download:$url"
+          target.parentFile?.mkdirs()
+          target.writeText(url)
+          target
+        }
+    coEvery { tree.extractZipToPack(any(), any()) } answers
+        {
+          val zip = it.invocation.args[0] as File
+          events += "extract:${zip.readText()}"
+        }
+    every { tree.deletePackEntry(any()) } answers
+        {
+          events += "delete:${it.invocation.args[0] as String}"
+          true
+        }
+    coEvery { tree.readVersion() } returns SemVersion(3, 2, 5) andThen null
+    coEvery { tree.writeVersion(server.latestVersion) } returns Unit
+    coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
+
+    val result =
+        manager(server = fakeServer(serverInfoResult = { Result.success(server) })).update {}
+
+    assertThat(result.isSuccess).isTrue()
+    assertThat(events)
+        .containsExactly(
+            "download:https://example.com/3.2.6.zip",
+            "extract:https://example.com/3.2.6.zip",
+            "delete:RetroRewind6/recreated.bin",
+            "download:https://example.com/3.2.7.zip",
+            "extract:https://example.com/3.2.7.zip",
+        )
+        .inOrder()
+  }
+
+  @Test
   fun `update applies only deletion entries in the selected version window`() = runBlocking {
     val server =
         serverInfo()

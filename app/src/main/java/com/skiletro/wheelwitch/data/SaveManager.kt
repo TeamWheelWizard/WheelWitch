@@ -11,6 +11,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import timber.log.Timber
@@ -300,15 +301,17 @@ object SaveManager {
         }
         if (result.isFailure) {
           val failure = result.exceptionOrNull()!!
-          if (failure is CancellationException) throw failure
-          try {
-            if (!DocumentsContract.deleteDocument(tree.resolver, dest)) {
-              Timber.tag(TAG).w("Provider refused to delete partial backup destination %s", dest)
+          withContext(NonCancellable) {
+            try {
+              if (!DocumentsContract.deleteDocument(tree.resolver, dest)) {
+                Timber.tag(TAG).w("Provider refused to delete partial backup destination %s", dest)
+              }
+            } catch (cleanupFailure: Exception) {
+              Timber.tag(TAG)
+                  .w(cleanupFailure, "Failed to delete partial backup destination %s", dest)
             }
-          } catch (cleanupFailure: Exception) {
-            Timber.tag(TAG)
-                .w(cleanupFailure, "Failed to delete partial backup destination %s", dest)
           }
+          if (failure is CancellationException) throw failure
         }
         result
       }
