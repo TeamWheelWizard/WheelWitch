@@ -2,15 +2,20 @@ package com.skiletro.wheelwitch.data
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.SaveManager.Region
 import com.skiletro.wheelwitch.model.SemVersion
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import kotlinx.coroutines.test.runTest
@@ -185,6 +190,27 @@ class SaveManagerTest {
     assertThat(retroWfc).containsExactly("RMCP", "RMCJ")
     assertThat(contents.getJSONArray("vanillaSaves").length()).isEqualTo(0)
     assertThat(contents.getBoolean("patchedIso")).isFalse()
+  }
+
+  @Test
+  fun `backup deletes destination when writing fails`() = runTest {
+    val env = setupBackupEnv(palExists = true)
+    val dest = mockk<Uri>(relaxed = true)
+    every { env.resolver.openOutputStream(dest) } returns ByteArrayOutputStream()
+    every { env.resolver.openInputStream(env.regionFile("RMCP").uri) } returns
+        FailingAfterFirstReadInputStream()
+    mockkStatic(DocumentsContract::class)
+    every { DocumentsContract.deleteDocument(env.resolver, dest) } returns true
+
+    try {
+      val result = SaveManager.backup(env.tree, dest)
+
+      assertThat(result.isFailure).isTrue()
+      assertThat(result.exceptionOrNull()).hasMessageThat().isEqualTo("backup read failed")
+      io.mockk.verify(exactly = 1) { DocumentsContract.deleteDocument(env.resolver, dest) }
+    } finally {
+      unmockkStatic(DocumentsContract::class)
+    }
   }
 
   @Test
@@ -669,6 +695,27 @@ class SaveManagerTest {
     every { resolver.openOutputStream(saveFileUri) } returns ByteArrayOutputStream()
 
     return MockSaveChain(tree, resolver, packDir, dir4, saveFile)
+  }
+
+  private class FailingAfterFirstReadInputStream : InputStream() {
+    private var firstRead = true
+
+    override fun read(): Int {
+      if (firstRead) {
+        firstRead = false
+        return 'x'.code
+      }
+      throw IOException("backup read failed")
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+      if (firstRead) {
+        firstRead = false
+        buffer[offset] = 'x'.code.toByte()
+        return 1
+      }
+      throw IOException("backup read failed")
+    }
   }
 
   /** A DocumentFile mock with `isDirectory = true` so `navigateOrCreate` keeps the chain. */

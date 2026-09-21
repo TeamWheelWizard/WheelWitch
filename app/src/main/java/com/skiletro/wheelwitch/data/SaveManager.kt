@@ -1,6 +1,7 @@
 package com.skiletro.wheelwitch.data
 
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.skiletro.wheelwitch.model.SemVersion
 import com.skiletro.wheelwitch.util.io.ZipSafety
@@ -8,6 +9,7 @@ import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -215,7 +217,7 @@ object SaveManager {
    */
   suspend fun backup(tree: DolphinTree, dest: Uri): Result<BackupSummary> =
       withContext(Dispatchers.IO) {
-        runCatching {
+        val result = runCatching {
           val output =
               tree.resolver.openOutputStream(dest)
                   ?: throw IOException("Cannot open output stream for $dest")
@@ -296,6 +298,19 @@ object SaveManager {
             }
           }
         }
+        if (result.isFailure) {
+          val failure = result.exceptionOrNull()!!
+          if (failure is CancellationException) throw failure
+          try {
+            if (!DocumentsContract.deleteDocument(tree.resolver, dest)) {
+              Timber.tag(TAG).w("Provider refused to delete partial backup destination %s", dest)
+            }
+          } catch (cleanupFailure: Exception) {
+            Timber.tag(TAG)
+                .w(cleanupFailure, "Failed to delete partial backup destination %s", dest)
+          }
+        }
+        result
       }
 
   /**
