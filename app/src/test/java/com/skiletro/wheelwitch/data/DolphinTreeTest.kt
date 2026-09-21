@@ -18,6 +18,9 @@ import io.mockk.verify
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.nio.channels.FileChannel
+import java.nio.channels.ReadableByteChannel
 import java.nio.file.Path
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -134,6 +137,27 @@ class DolphinTreeTest {
     assertThat(tree.deletePackEntry("/absolute.txt")).isFalse()
     assertThat(tree.deletePackEntry("riivolution/save/RetroWFC/RMCP/rksys.dat")).isFalse()
     verify(exactly = 0) { packDir.findFile(any()) }
+  }
+
+  @Test
+  fun `transferFromFully loops over short transfers`() {
+    val target = mockk<FileChannel>()
+    val source = mockk<ReadableByteChannel>()
+    every { target.transferFrom(source, 0L, 5L) } returns 2L
+    every { target.transferFrom(source, 2L, 3L) } returns 3L
+
+    assertThat(transferFromFully(target, source, 5L)).isEqualTo(5L)
+  }
+
+  @Test
+  fun `transferFromFully rejects a zero transfer before completion`() {
+    val target = mockk<FileChannel>()
+    val source = mockk<ReadableByteChannel>()
+    every { target.transferFrom(source, 0L, 5L) } returns 0L
+
+    val error = assertThrows<IOException> { transferFromFully(target, source, 5L) }
+
+    assertThat(error).hasMessageThat().contains("short transfer")
   }
 
   // --- new lazy user-data subdirs (Wii/shared2/...) -------------------
