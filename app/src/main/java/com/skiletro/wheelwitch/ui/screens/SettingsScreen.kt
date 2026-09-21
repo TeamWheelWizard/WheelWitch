@@ -82,9 +82,6 @@ fun SettingsScreen(
     onChangeThemeMode: (ThemeMode) -> Unit,
     onRelaunchOnboarding: () -> Unit,
 ) {
-  val hasWad by miiMaker.hasWad.collectAsState()
-  val isInstallingWad by miiMaker.isInstallingWad.collectAsState()
-  val miiMakerError by miiMaker.miiMakerError.collectAsState()
   val hasAnySave by saveData.hasAnySave.collectAsState()
   val cloudSyncState by cloudSync.uiState.collectAsState()
   val autoSyncEnabled by cloudSync.autoSyncEnabled.collectAsState()
@@ -126,15 +123,6 @@ fun SettingsScreen(
     ) {
       item { PackSection(packUpdate = packUpdate) }
       item {
-        MiiMakerSection(
-            hasWad = hasWad,
-            isInstallingWad = isInstallingWad,
-            miiMakerError = miiMakerError,
-            onInstall = miiMaker::installMiiMakerWad,
-            onRequestDelete = { showWadDeleteConfirm = true },
-        )
-      }
-      item {
         SaveDataSection(
             saveData = saveData,
             hasAnySave = hasAnySave,
@@ -153,8 +141,10 @@ fun SettingsScreen(
       }
       item {
         AdvancedSection(
+            miiMaker = miiMaker,
             onOpenLogViewer = onOpenLogViewer,
             onRelaunchOnboarding = onRelaunchOnboarding,
+            onRequestWadDelete = { showWadDeleteConfirm = true },
         )
       }
       item { AboutSection() }
@@ -622,7 +612,7 @@ private fun MiiMakerSection(
       if (hasWad) stringResource(R.string.status_installed)
       else stringResource(R.string.status_not_installed)
   SettingsItem(
-      icon = ImageVector.vectorResource(R.drawable.ic_face_up),
+      icon = ImageVector.vectorResource(R.drawable.ic_mii),
       title = stringResource(R.string.settings_mii_channel_wad),
       summary = miiMakerError ?: wadStatus,
       summaryColor =
@@ -703,16 +693,28 @@ private fun LoggingSection(onOpenLogViewer: () -> Unit) {
 }
 
 /**
- * Advanced section: diagnostics (log file, bug report), Mii face cache, and the relaunch-onboarding
- * escape hatch.
+ * Advanced section: diagnostics (log file, bug report), the Mii Channel WAD install, Mii face
+ * cache, and the relaunch-onboarding escape hatch.
  */
 @Composable
 private fun AdvancedSection(
+    miiMaker: MiiMakerViewModel,
     onOpenLogViewer: () -> Unit,
     onRelaunchOnboarding: () -> Unit,
+    onRequestWadDelete: () -> Unit,
 ) {
+  val hasWad by miiMaker.hasWad.collectAsState()
+  val isInstallingWad by miiMaker.isInstallingWad.collectAsState()
+  val miiMakerError by miiMaker.miiMakerError.collectAsState()
   SettingsCategoryHeader(stringResource(R.string.settings_advanced))
   LoggingSection(onOpenLogViewer)
+  MiiMakerSection(
+      hasWad = hasWad,
+      isInstallingWad = isInstallingWad,
+      miiMakerError = miiMakerError,
+      onInstall = miiMaker::installMiiMakerWad,
+      onRequestDelete = onRequestWadDelete,
+  )
   MiiCacheRow()
   RelaunchOnboardingRow(onRelaunchOnboarding)
 }

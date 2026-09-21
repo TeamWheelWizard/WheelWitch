@@ -140,6 +140,8 @@
     <string name="settings_version_release">v%s</string>
     <string name="settings_delete_wad_dialog_title">Delete Mii Channel WAD</string>
     <string name="settings_delete_wad_dialog_body">Delete the cached Mii Channel WAD file? It will be re-downloaded the next time you use Mii Maker.</string>
+    <string name="mii_install_dialog_title">Install Mii Channel?</string>
+    <string name="mii_install_dialog_body">Mii Maker needs the Mii Channel WAD, which will be downloaded and installed first. Install it now?</string>
     <string name="settings_about_summary">%1$s: %2$s</string>
 
     <!-- online menu -->
