@@ -1,6 +1,8 @@
 package com.skiletro.wheelwitch.util.io
 
 import com.google.common.truth.Truth.assertThat
+import io.mockk.every
+import io.mockk.mockk
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -12,8 +14,14 @@ import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
+import okhttp3.Call
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
 import okio.Buffer
+import okio.BufferedSource
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -200,6 +208,47 @@ class FileDownloaderTest {
     assertThat(server.requestCount).isEqualTo(1)
   }
 
+  @Test
+  fun `downloadToFile rejects short body against declared length`() {
+    val fakeClient = mockk<OkHttpClient>()
+    val call = mockk<Call>()
+    val request = Request.Builder().url("http://localhost/file.bin").build()
+    val body =
+        object : ResponseBody() {
+          private val content = Buffer().write("abc".encodeToByteArray())
+
+          override fun contentLength(): Long = 5L
+
+          override fun contentType() = null
+
+          override fun source(): BufferedSource = content
+        }
+    val response =
+        Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .body(body)
+            .build()
+    every { fakeClient.newCall(any()) } returns call
+    every { call.execute() } returns response
+
+    val error =
+        runCatching {
+              FileDownloader.downloadToFile(
+                  url = request.url.toString(),
+                  targetFile = targetFile,
+                  client = fakeClient,
+                  maxRetries = 0,
+              )
+            }
+            .exceptionOrNull()
+
+    assertThat(error).isNotNull()
+    assertThat(error!!.cause).hasMessageThat().contains("expected 5")
+  }
+
   // --- Tier 1: Accept-Encoding identity on the single-stream path ---
 
   @Test
@@ -258,6 +307,81 @@ class FileDownloaderTest {
     // "bytes=start-end"
     val parts = header.removePrefix("bytes=").split("-")
     return parts[0].toLong() to parts[1].toLong()
+  }
+
+  @Test
+  fun `downloadInParallel clamps workers when content is smaller than parallelism`() = runBlocking {
+    val content = byteArrayOf(1, 2)
+    installRangeDispatcher(content)
+
+    val result =
+        FileDownloader.downloadInParallel(
+            url = server.url("/tiny.bin").toString(),
+            targetFile = targetFile,
+            parallelism = 4,
+            client = client,
+            maxRetries = 0,
+        )
+
+    assertThat(result).isEqualTo(targetFile)
+    assertThat(targetFile.readBytes()).isEqualTo(content)
+    assertThat(server.requestCount).isEqualTo(3)
+  }
+
+  @Test
+  fun `downloadInParallel rolls back bytes from a failed chunk attempt`() = runBlocking {
+    val content = ByteArray(1024) { (it % 256).toByte() }
+    val firstChunkAttempts = AtomicInteger(0)
+    server.dispatcher =
+        object : Dispatcher() {
+          override fun dispatch(request: RecordedRequest): MockResponse {
+            if (request.method == "HEAD") {
+              return MockResponse.Builder()
+                  .code(200)
+                  .addHeader("Content-Length", content.size.toString())
+                  .addHeader("Accept-Ranges", "bytes")
+                  .build()
+            }
+            val range =
+                request.headers.get("Range") ?: return MockResponse.Builder().code(400).build()
+            val (start, end) = parseRange(range)
+            if (start == 0L && firstChunkAttempts.incrementAndGet() == 1) {
+              val partial = content.copyOfRange(0, 128)
+              return MockResponse.Builder()
+                  .code(206)
+                  .addHeader("Content-Range", "bytes 0-255/${content.size}")
+                  .body(Buffer().write(partial))
+                  .throttleBody(64, 250, TimeUnit.MILLISECONDS)
+                  .build()
+            }
+            val slice = content.copyOfRange(start.toInt(), (end + 1).toInt())
+            return MockResponse.Builder()
+                .code(206)
+                .addHeader("Content-Range", "bytes $start-$end/${content.size}")
+                .body(Buffer().write(slice))
+                .build()
+          }
+        }
+    val reports = mutableListOf<ParallelDownloadProgress>()
+
+    FileDownloader.downloadInParallel(
+        url = server.url("/retry.bin").toString(),
+        targetFile = targetFile,
+        parallelism = 4,
+        onProgress = { reports.add(it) },
+        client = client,
+        maxRetries = 1,
+        initialBackoffMillis = 1L,
+    )
+
+    assertThat(firstChunkAttempts.get()).isAtLeast(2)
+    assertThat(reports).isNotEmpty()
+    for (i in 1 until reports.size) {
+      assertThat(reports[i].bytesDownloaded).isAtLeast(reports[i - 1].bytesDownloaded)
+    }
+    for (report in reports) {
+      assertThat(report.bytesDownloaded).isAtMost(content.size.toLong())
+    }
   }
 
   @Test
@@ -403,6 +527,7 @@ class FileDownloaderTest {
           }
         }
 
+    val reports = mutableListOf<ParallelDownloadProgress>()
     val ex =
         runCatching {
               FileDownloader.downloadInParallel(
@@ -412,11 +537,13 @@ class FileDownloaderTest {
                   client = client,
                   maxRetries = 1,
                   initialBackoffMillis = 1L,
+                  onProgress = { reports.add(it) },
               )
             }
             .exceptionOrNull()
 
     assertThat(ex).isNotNull()
+    assertThat(reports.none { it.progress == 1f }).isTrue()
     // The pre-allocated file must be cleaned up on failure.
     assertThat(targetFile.exists()).isFalse()
   }

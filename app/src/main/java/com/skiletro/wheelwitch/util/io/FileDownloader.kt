@@ -4,6 +4,7 @@ import com.skiletro.wheelwitch.util.net.HttpClientProvider
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -11,9 +12,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -231,18 +234,20 @@ object FileDownloader {
 
         // Build a per-call dispatcher clone so concurrent downloads
         // don't fight over the same client.
+        val effectiveParallelism =
+            if (totalBytes < parallelism.toLong()) totalBytes.toInt() else parallelism
         val parallelClient =
             client
                 .newBuilder()
                 .dispatcher(
                     Dispatcher().apply {
-                      maxRequests = parallelism + 4
-                      maxRequestsPerHost = parallelism
+                      maxRequests = effectiveParallelism + 4
+                      maxRequestsPerHost = effectiveParallelism
                     }
                 )
                 .build()
 
-        val ranges = computeRanges(totalBytes, parallelism)
+        val ranges = computeRanges(totalBytes, effectiveParallelism)
         val activeChunks = AtomicLong(ranges.size.toLong())
         val bytesDone = AtomicLong(0L)
 
@@ -340,13 +345,15 @@ object FileDownloader {
       initialBackoffMillis: Long,
   ) {
     coroutineScope {
+      val completedSuccessfully = AtomicBoolean(false)
       val progressJob =
-          async(Dispatchers.Default) {
+          launch(Dispatchers.Default) {
             emitProgressLoop(
                 totalBytes = totalBytes,
                 bytesDone = bytesDone,
                 activeChunks = activeChunks,
                 onProgress = onProgress,
+                completedSuccessfully = completedSuccessfully,
             )
           }
       /**
@@ -384,8 +391,9 @@ object FileDownloader {
       }
       try {
         workers.awaitAll()
+        completedSuccessfully.set(true)
       } finally {
-        progressJob.cancel()
+        progressJob.cancelAndJoin()
       }
     }
   }
@@ -395,6 +403,7 @@ object FileDownloader {
       bytesDone: AtomicLong,
       activeChunks: AtomicLong,
       onProgress: ((ParallelDownloadProgress) -> Unit)?,
+      completedSuccessfully: AtomicBoolean,
   ) {
     if (onProgress == null) return
     var lastReported = -1f
@@ -405,7 +414,7 @@ object FileDownloader {
       while (currentCoroutineContext()[Job]?.isActive != false) {
         val nowBytes = bytesDone.get()
         val p = if (totalBytes > 0L) nowBytes.toFloat() / totalBytes else 0f
-        if (p - lastReported >= 0.01f || nowBytes >= totalBytes) {
+        if (nowBytes < totalBytes && p - lastReported >= 0.01f) {
           val nowNanos = System.nanoTime()
           val instant =
               instantBytesPerSecond(
@@ -425,33 +434,25 @@ object FileDownloader {
                   activeChunks = activeChunks.get().toInt(),
               )
           )
-          if (totalBytes > 0L && nowBytes >= totalBytes) break
         }
         delay(PROGRESS_TICK_MILLIS)
       }
     } finally {
-      // Terminal emit; runs on normal exit, on chunk-worker
-      // completion (when the scope cancels us to release the
-      // coroutineScope), and on cancellation. Guarantees the
-      // UI sees a 100% report.
-      onProgress(
-          ParallelDownloadProgress(
-              progress = 1f,
-              bytesPerSecond = 0L,
-              bytesDownloaded = totalBytes,
-              totalBytes = totalBytes,
-              activeChunks = 0,
-          )
-      )
+      if (completedSuccessfully.get()) {
+        onProgress(
+            ParallelDownloadProgress(
+                progress = 1f,
+                bytesPerSecond = 0L,
+                bytesDownloaded = totalBytes,
+                totalBytes = totalBytes,
+                activeChunks = 0,
+            )
+        )
+      }
     }
   }
 
-  /**
-   * Downloads one byte range with retry. The shared `bytesDone` counter is updated as bytes are
-   * written; on retry we re-seek the file to the start of the range and rewrite the same bytes. The
-   * counter is not decremented on retry (we're a strict superset of the bytes we'd already
-   * written), so the aggregate progress monotonically increases across the whole pool.
-   */
+  /** Downloads one byte range with retry and exact shared-byte accounting. */
   private fun downloadChunk(
       url: String,
       targetFile: File,
@@ -508,60 +509,65 @@ object FileDownloader {
       firstDone: CompletableDeferred<Unit>,
       client: OkHttpClient,
   ) {
-    val request =
-        Request.Builder()
-            .url(url)
-            .header("Range", "bytes=${range.start}-${range.endInclusive}")
-            .header("Accept-Encoding", "identity")
-            .build()
-    val response = client.newCall(request).execute()
-    response.use {
-      val isFirstChunk = range.start == 0L
-      if (isFirstChunk) {
-        firstDone.complete(Unit)
-      }
-      if (it.code == 416) {
-        throw Http4xxException("Range not satisfiable for ${range.start}-${range.endInclusive}")
-      }
-      if (it.code in 400..499) {
-        throw Http4xxException("Chunk ${range.start}-${range.endInclusive} HTTP ${it.code}")
-      }
-      if (it.code in 500..599) {
-        throw IOException("Chunk HTTP ${it.code}")
-      }
-      if (it.code == 200 && !isFirstChunk) {
-        // Because we won't read the stream until we're in the correct range, we throw here.
-        throw IOException("Chunk byte range $range was ignored")
-      }
-      check(it.code == 200 || it.code == 206) {
-        "Chunk expected 200/206, got ${it.code}"
-      }
-      val body = it.body
-      val input = body.byteStream()
-      val expectedSize = range.size
-      val raf = RandomAccessFile(targetFile, "rw")
-      raf.use { file ->
-        file.seek(range.start)
-        val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
-        var written = 0L
-        while (true) {
-          val toRead =
-              if (expectedSize - written < buffer.size) (expectedSize - written).toInt()
-              else buffer.size
-          if (toRead <= 0) break
-          val read = input.read(buffer, 0, toRead)
-          if (read == -1) break
-          file.write(buffer, 0, read)
-          written += read
-          bytesDone.addAndGet(read.toLong())
+    var written = 0L
+    try {
+      val request =
+          Request.Builder()
+              .url(url)
+              .header("Range", "bytes=${range.start}-${range.endInclusive}")
+              .header("Accept-Encoding", "identity")
+              .build()
+      val response = client.newCall(request).execute()
+      response.use {
+        val isFirstChunk = range.start == 0L
+        if (isFirstChunk) {
+          firstDone.complete(Unit)
         }
-        if (written != expectedSize) {
-          throw IOException(
-              "Chunk ${range.start}-${range.endInclusive} short: " +
-                  "wrote $written of $expectedSize",
-          )
+        if (it.code == 416) {
+          throw Http4xxException("Range not satisfiable for ${range.start}-${range.endInclusive}")
+        }
+        if (it.code in 400..499) {
+          throw Http4xxException("Chunk ${range.start}-${range.endInclusive} HTTP ${it.code}")
+        }
+        if (it.code in 500..599) {
+          throw IOException("Chunk HTTP ${it.code}")
+        }
+        if (it.code == 200 && !isFirstChunk) {
+          // Because we won't read the stream until we're in the correct range, we throw here.
+          throw IOException("Chunk byte range $range was ignored")
+        }
+        check(it.code == 200 || it.code == 206) {
+          "Chunk expected 200/206, got ${it.code}"
+        }
+        val body = it.body
+        val input = body.byteStream()
+        val expectedSize = range.size
+        val raf = RandomAccessFile(targetFile, "rw")
+        raf.use { file ->
+          file.seek(range.start)
+          val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
+          while (true) {
+            val toRead =
+                if (expectedSize - written < buffer.size) (expectedSize - written).toInt()
+                else buffer.size
+            if (toRead <= 0) break
+            val read = input.read(buffer, 0, toRead)
+            if (read == -1) break
+            file.write(buffer, 0, read)
+            written += read
+            bytesDone.addAndGet(read.toLong())
+          }
+          if (written != expectedSize) {
+            throw IOException(
+                "Chunk ${range.start}-${range.endInclusive} short: " +
+                    "wrote $written of $expectedSize",
+            )
+          }
         }
       }
+    } catch (e: IOException) {
+      if (written > 0L) bytesDone.addAndGet(-written)
+      throw e
     }
   }
 
@@ -599,8 +605,8 @@ object FileDownloader {
           var smoothedBytesPerSecond = 0.0
           while (input.read(buffer).also { bytesRead = it } != -1) {
             output.write(buffer, 0, bytesRead)
+            totalRead += bytesRead
             if (onProgress != null && totalBytes > 0) {
-              totalRead += bytesRead
               val p = totalRead.toFloat() / totalBytes
               if (p - lastReported >= 0.01f) {
                 val nowNanos = System.nanoTime()
@@ -623,6 +629,9 @@ object FileDownloader {
                 )
               }
             }
+          }
+          if (totalBytes >= 0L && totalRead != totalBytes) {
+            throw IOException("Downloaded $totalRead bytes, expected $totalBytes")
           }
           onProgress?.invoke(
               DownloadProgress(
