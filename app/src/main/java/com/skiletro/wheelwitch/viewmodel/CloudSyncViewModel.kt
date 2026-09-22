@@ -249,6 +249,7 @@ class CloudSyncViewModel(
     store.clearTokens()
     store.storedRev = null
     store.storedHash = null
+    store.cloudPromptShown = false
     lastSyncFromDevice = null
     conflict = null
     cloudFoundPrompt = false
@@ -266,7 +267,7 @@ class CloudSyncViewModel(
     runSync(manual = true, force = if (keepLocal) SyncAction.Push else SyncAction.Pull)
   }
 
-  /** Dismisses the one-time "cloud save found" prompt without pulling. */
+  /** Dismisses an automatic "cloud save found" prompt without pulling; manual sync reoffers it. */
   fun dismissCloudFoundPrompt() {
     store.cloudPromptShown = true
     cloudFoundPrompt = false
@@ -407,7 +408,7 @@ class CloudSyncViewModel(
             )
       }
       SyncAction.CloudFoundFreshDevice -> {
-        if (!store.cloudPromptShown) {
+        if (manual || !store.cloudPromptShown) {
           cloudFoundPrompt = true
         }
       }
