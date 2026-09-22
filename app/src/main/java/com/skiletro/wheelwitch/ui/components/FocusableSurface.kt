@@ -27,8 +27,8 @@ import com.skiletro.wheelwitch.ui.theme.buttonShape
  * Replaces the repeated `.clickable {} + .focusable() + .onFocusChanged {} +
  * .focusBorder()` + `Surface` pattern that was copy-pasted across screens.
  *
- * - When [onClick] is non-null and [enabled] is true, the surface is
- *   clickable; otherwise it is focusable only.
+ * - Clickable cards use clickable as their sole focus target; passive cards use one explicit
+ *   focusable target.
  * - When [selected] is true, the focus border is shown regardless of focus
  *   state (used for things like a currently-selected license slot).
  * - Focus state is hoisted to a `remember` scope (NOT inside the clickable
@@ -48,19 +48,19 @@ fun FocusableSurface(
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
-    val clickModifier = if (onClick != null && enabled) {
-        Modifier.clickable(onClick = onClick)
-    } else {
-        Modifier
-    }
+    val focusTargetModifier =
+        if (onClick != null) {
+            Modifier.clickable(enabled = enabled, onClick = onClick)
+        } else {
+            Modifier.focusable(enabled = enabled)
+        }
 
     Surface(
         shape = shape,
         color = color,
         modifier = modifier
-            .then(clickModifier)
-            .focusable(enabled = enabled)
             .onFocusChanged { isFocused = it.isFocused }
+            .then(focusTargetModifier)
             .focusBorder(
                 isFocused = isFocused || selected,
                 shape = shape
