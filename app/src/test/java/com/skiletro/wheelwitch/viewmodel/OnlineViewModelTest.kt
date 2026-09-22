@@ -9,6 +9,9 @@ import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.model.LeaderboardEntry
 import com.skiletro.wheelwitch.model.LeaderboardResponse
 import com.skiletro.wheelwitch.model.PlayerLeaderboardData
+import com.skiletro.wheelwitch.model.TimeTrialLeaderboardResponse
+import com.skiletro.wheelwitch.model.TimeTrialSubmission
+import com.skiletro.wheelwitch.model.TimeTrialTrack
 import com.skiletro.wheelwitch.network.VersionFileParser
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
@@ -17,12 +20,16 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.json.JSONObject
@@ -88,6 +95,130 @@ class OnlineViewModelTest {
     assertThat(refreshed.page).isEqualTo(1)
     assertThat(refreshed.entries.map { it.friendCode }).containsExactly("fc-1")
     store.clear()
+  }
+
+  @Test
+  fun `newer track selection keeps stale response from publishing`() = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    val firstStarted = CompletableDeferred<Unit>()
+    val firstResponse = CompletableDeferred<Result<TimeTrialLeaderboardResponse>>()
+    val store = ViewModelStore()
+    val vm =
+        OnlineViewModel(
+            application,
+            ioDispatcher = dispatcher,
+            trackLeaderboardFetcher = { trackId, _, _, _, _ ->
+              if (trackId == 1) {
+                firstStarted.complete(Unit)
+                withContext(NonCancellable) { firstResponse.await() }
+              } else {
+                Result.success(trackResponse(trackId = 2, page = 1, totalPages = 1))
+              }
+            },
+        )
+    store.put("vm", vm)
+
+    vm.selectTrack(1)
+    runCurrent()
+    assertThat(firstStarted.isCompleted).isTrue()
+
+    vm.selectTrack(2)
+    advanceUntilIdle()
+    assertTrackState(trackId = 2, page = 1, totalPages = 1, vm = vm)
+
+    firstResponse.complete(Result.success(trackResponse(trackId = 1, page = 1, totalPages = 1)))
+    advanceUntilIdle()
+
+    assertTrackState(trackId = 2, page = 1, totalPages = 1, vm = vm)
+    store.clear()
+  }
+
+  @Test
+  fun `new filter keeps stale pagination from appending`() = runTest {
+    val dispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(dispatcher)
+    val pageTwoStarted = CompletableDeferred<Unit>()
+    val pageTwoResponse = CompletableDeferred<Result<TimeTrialLeaderboardResponse>>()
+    val store = ViewModelStore()
+    val vm =
+        OnlineViewModel(
+            application,
+            ioDispatcher = dispatcher,
+            trackLeaderboardFetcher = { trackId, cc, _, page, _ ->
+              if (page == 2) {
+                pageTwoStarted.complete(Unit)
+                withContext(NonCancellable) { pageTwoResponse.await() }
+              } else {
+                Result.success(
+                    trackResponse(
+                        trackId = trackId,
+                        page = 1,
+                        totalPages = if (cc == 150) 2 else 1,
+                    )
+                )
+              }
+            },
+        )
+    store.put("vm", vm)
+
+    vm.selectTrack(1)
+    advanceUntilIdle()
+    vm.fetchMoreSubmissions()
+    runCurrent()
+    assertThat(pageTwoStarted.isCompleted).isTrue()
+
+    vm.setCc(200)
+    advanceUntilIdle()
+    assertTrackState(trackId = 1, page = 1, totalPages = 1, vm = vm)
+
+    pageTwoResponse.complete(Result.success(trackResponse(trackId = 1, page = 2, totalPages = 2)))
+    advanceUntilIdle()
+
+    assertTrackState(trackId = 1, page = 1, totalPages = 1, vm = vm)
+    store.clear()
+  }
+
+  private fun assertTrackState(trackId: Int, page: Int, totalPages: Int, vm: OnlineViewModel) {
+    val state = vm.trackLeaderboardState.value as TrackLeaderboardState.Success
+    assertThat(state.submissions).hasSize(1)
+    assertThat(state.submissions.single().trackId).isEqualTo(trackId)
+    assertThat(state.currentPage).isEqualTo(page)
+    assertThat(state.totalPages).isEqualTo(totalPages)
+  }
+
+  private fun trackResponse(
+      trackId: Int,
+      page: Int,
+      totalPages: Int,
+  ): TimeTrialLeaderboardResponse {
+    val submission = mockk<TimeTrialSubmission>(relaxed = true)
+    every { submission.trackId } returns trackId
+    return TimeTrialLeaderboardResponse(
+        track =
+            TimeTrialTrack(
+                id = trackId,
+                name = "Track $trackId",
+                courseId = trackId,
+                category = "test",
+                laps = 3,
+                supportsGlitch = true,
+                sortOrder = trackId,
+                isHidden = false,
+            ),
+        cc = 150,
+        glitchAllowed = true,
+        shroomless = null,
+        vehicleFilter = null,
+        isFlap = false,
+        submissions = listOf(submission),
+        totalSubmissions = 1,
+        currentPage = page,
+        pageSize = 50,
+        totalPages = totalPages,
+        fastestLapMs = null,
+        fastestLapDisplay = null,
+    )
   }
 
   private fun entry(rank: Int, friendCode: String) =
