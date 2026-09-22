@@ -1,6 +1,7 @@
 package com.skiletro.wheelwitch.ui.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -84,10 +85,20 @@ fun SettingsScreen(
 ) {
   val hasAnySave by saveData.hasAnySave.collectAsState()
   val storageConfigured by saveData.storageConfigured.collectAsState()
+  val saveError by saveData.error.collectAsState()
   val cloudSyncState by cloudSync.uiState.collectAsState()
   val autoSyncEnabled by cloudSync.autoSyncEnabled.collectAsState()
 
+  val context = LocalContext.current
   var showWadDeleteConfirm by remember { mutableStateOf(false) }
+
+  LaunchedEffect(saveError) {
+    val message = saveError
+    if (message != null) {
+      Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+      saveData.clearError()
+    }
+  }
 
   if (showWadDeleteConfirm) {
     AlertDialog(
