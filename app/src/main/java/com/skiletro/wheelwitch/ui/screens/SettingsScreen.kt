@@ -83,6 +83,7 @@ fun SettingsScreen(
     onRelaunchOnboarding: () -> Unit,
 ) {
   val hasAnySave by saveData.hasAnySave.collectAsState()
+  val storageConfigured by saveData.storageConfigured.collectAsState()
   val cloudSyncState by cloudSync.uiState.collectAsState()
   val autoSyncEnabled by cloudSync.autoSyncEnabled.collectAsState()
 
@@ -126,6 +127,7 @@ fun SettingsScreen(
         SaveDataSection(
             saveData = saveData,
             hasAnySave = hasAnySave,
+            storageConfigured = storageConfigured,
             cloudSync = cloudSync,
             cloudSyncState = cloudSyncState,
             autoSyncEnabled = autoSyncEnabled,
@@ -161,6 +163,7 @@ fun SettingsScreen(
 private fun SaveDataSection(
     saveData: SaveDataViewModel,
     hasAnySave: Boolean,
+    storageConfigured: Boolean,
     cloudSync: CloudSyncViewModel,
     cloudSyncState: SyncUiState,
     autoSyncEnabled: Boolean,
@@ -281,7 +284,7 @@ private fun SaveDataSection(
           }
           TextButton(
               onClick = { pendingRestore = true },
-              enabled = hasAnySave,
+              enabled = storageConfigured,
               shape = buttonShape,
           ) {
             Text(stringResource(R.string.settings_save_data_restore))

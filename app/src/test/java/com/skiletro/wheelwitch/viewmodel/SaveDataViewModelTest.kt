@@ -162,6 +162,19 @@ class SaveDataViewModelTest {
     assertThat(vm.mergedLicenses.value).isEmpty()
     assertThat(vm.error.value).isNull()
     assertThat(vm.hasAnySave.value).isFalse()
+    assertThat(vm.storageConfigured.value).isFalse()
+  }
+
+  @Test
+  fun `configured storage remains restoreable when no saves exist`() = runTest {
+    every { SaveManager.listRegions(mockTree) } returns emptyList()
+    every { SaveManager.hasAnySave(mockTree) } returns false
+    vm = buildVm()
+
+    vm.refresh()
+
+    assertThat(vm.storageConfigured.value).isTrue()
+    assertThat(vm.hasAnySave.value).isFalse()
   }
 
   // --- refreshIfStale -------------------------------------------------

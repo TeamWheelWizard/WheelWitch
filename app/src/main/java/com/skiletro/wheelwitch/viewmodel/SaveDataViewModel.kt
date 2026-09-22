@@ -77,8 +77,8 @@ import timber.log.Timber
  *
  * Unified save data: [hasAnySave] is the single source of truth for whether the user has anything
  * worth backing up (any region's `rksys.dat`, the Mii DB, any Pulsar pul file, or any ghost). The
- * Save Data section in Settings uses it to drive the enabled/disabled state of the three buttons,
- * and to switch between the "no save data" status line and the "Last backed up" line.
+ * Save Data section in Settings uses [hasAnySave] to drive Backup/Delete and status text, while
+ * [storageConfigured] enables Restore even before a save exists.
  * [lastBackupTimestamp] is read from [PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY] on construction and
  * updated after every successful [backup] call.
  *
@@ -118,6 +118,9 @@ class SaveDataViewModel(
 
   private val _hasAnySave = MutableStateFlow(false)
   val hasAnySave: StateFlow<Boolean> = _hasAnySave.asStateFlow()
+
+  private val _storageConfigured = MutableStateFlow(false)
+  val storageConfigured: StateFlow<Boolean> = _storageConfigured.asStateFlow()
 
   private val _lastBackupTimestamp = MutableStateFlow(0L)
   val lastBackupTimestamp: StateFlow<Long> = _lastBackupTimestamp.asStateFlow()
@@ -199,6 +202,7 @@ class SaveDataViewModel(
     // their default values and immediately receive the real values
     // without flicker.
     loadPersistedState()
+    _storageConfigured.value = treeFactory(app) != null
     viewModelScope.launch {
       packStatusFlow
           .map { (it as? UiState.Ready)?.status }
@@ -235,15 +239,15 @@ class SaveDataViewModel(
       _isLoading.value = true
       lastRefreshAt.set(now())
       try {
-        val tree =
-            treeFactory(app)
-                ?: run {
-                  _saveInfos.value = emptyMap()
-                  _hasSave.value = emptyMap()
-                  _hasAnySave.value = false
-                  _mergedLicenses.value = emptyMap()
-                  return@launch
-                }
+        val tree = treeFactory(app)
+        _storageConfigured.value = tree != null
+        if (tree == null) {
+          _saveInfos.value = emptyMap()
+          _hasSave.value = emptyMap()
+          _hasAnySave.value = false
+          _mergedLicenses.value = emptyMap()
+          return@launch
+        }
         val regions = withContext(ioDispatcher) { saveManager.listRegions(tree) }
         if (regions.isEmpty()) {
           _saveInfos.value = emptyMap()
