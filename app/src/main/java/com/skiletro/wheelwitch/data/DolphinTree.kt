@@ -238,7 +238,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * Zip entries under any of [com.skiletro.wheelwitch.data.SaveManager.userDataPathPrefixes] — the
    * per-region `rksys.dat` tree, the Mii DB at `Wii/shared2/menu/FaceLib/`, and the Pulsar config
    * and `Ghosts/` at `Wii/shared2/Pulsar/RetroRewind6/` — are left untouched so the user's save
-   * data, Miis, settings, and ghost data survive an update.
+   * data, Miis, settings, and ghost data survive an update. The archive's
+   * `RetroRewind6/version.txt` marker is also skipped: [writeVersion] commits target version only
+   * after the full install/update transaction succeeds.
    *
    * The flow is:
    * 1. Enumerate the central directory once to get [ZipEntry] objects with up-front size metadata.
@@ -260,11 +262,17 @@ class DolphinTree(context: Context, val treeUri: Uri) {
             entries
                 .filterNot { it.isDirectory }
                 .mapNotNull { entry ->
-                  if (ZipSafety.isSafeEntryName(entry.name, SaveManager.userDataPathPrefixes)) {
-                    entry
-                  } else {
-                    Timber.tag(TAG).w("Skipping unsafe or user-owned ZIP entry: %s", entry.name)
-                    null
+                  val normalized = ZipSafety.normalizeEntryName(entry.name)
+                  when {
+                    normalized == "$RETRO_REWIND_DIR_NAME/$VERSION_FILE_NAME" -> {
+                      Timber.tag(TAG).d("Skipping archive version marker: %s", entry.name)
+                      null
+                    }
+                    ZipSafety.isSafeEntryName(normalized, SaveManager.userDataPathPrefixes) -> entry
+                    else -> {
+                      Timber.tag(TAG).w("Skipping unsafe or user-owned ZIP entry: %s", entry.name)
+                      null
+                    }
                   }
                 }
         val filesTotal = fileEntries.size
@@ -468,9 +476,8 @@ class DolphinTree(context: Context, val treeUri: Uri) {
 
   /**
    * Writes [version] to `pack/RetroRewind6/version.txt`, replacing any existing file. Called by
-   * [com.skiletro.wheelwitch.domain.RewindPackManager] only when the pack zip's own `version.txt`
-   * is missing or stale (typical for hotfix zips that don't ship a new `version.txt`), so a failed
-   * extract leaves the previous version on disk.
+   * [com.skiletro.wheelwitch.domain.RewindPackManager] only after every archive extraction and
+   * manifest deletion completes, so a failed install leaves the previous version on disk.
    */
   suspend fun writeVersion(version: SemVersion): Unit =
       withContext(Dispatchers.IO) {

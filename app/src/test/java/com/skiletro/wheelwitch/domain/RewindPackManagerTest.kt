@@ -157,28 +157,26 @@ class RewindPackManagerTest {
   }
 
   @Test
-  fun `installLatest skips writeVersion when the zip's version txt already matches the server`() =
-      runBlocking {
-        val server = serverInfo()
-        coEvery {
-          FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
-        } answers
-            {
-              val target = it.invocation.args[1] as File
-              target.parentFile?.mkdirs()
-              target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
-              target
-            }
-        coEvery { tree.extractZipToPack(any(), any()) } returns Unit
-        coEvery { tree.readVersion() } returns server.latestVersion
-        coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
+  fun `installLatest writes target version even when prior marker matches server`() = runBlocking {
+    val server = serverInfo()
+    coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
+        {
+          val target = it.invocation.args[1] as File
+          target.parentFile?.mkdirs()
+          target.writeBytes(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
+          target
+        }
+    coEvery { tree.extractZipToPack(any(), any()) } returns Unit
+    coEvery { tree.readVersion() } returns server.latestVersion
+    coEvery { tree.writeVersion(server.latestVersion) } returns Unit
+    coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
 
-        val result = manager().installLatest { /* no-op */ }
+    val result = manager().installLatest { /* no-op */ }
 
-        assertThat(result.isSuccess).isTrue()
-        coVerify(exactly = 0) { tree.writeVersion(any()) }
-        coVerify(exactly = 1) { tree.writeRrMetadata(server.latestVersion) }
-      }
+    assertThat(result.isSuccess).isTrue()
+    coVerify(exactly = 1) { tree.writeVersion(server.latestVersion) }
+    coVerify(exactly = 1) { tree.writeRrMetadata(server.latestVersion) }
+  }
 
   @Test
   fun `installLatest reports success even when writeRrMetadata throws`() = runBlocking {
@@ -521,7 +519,9 @@ class RewindPackManagerTest {
           true
         }
     coEvery { tree.readVersion() } returns SemVersion(3, 2, 5) andThen null
-    coEvery { tree.writeVersion(server.latestVersion) } returns Unit
+    coEvery { tree.writeVersion(server.latestVersion) } answers {
+      events += "version:${server.latestVersion}"
+    }
     coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
 
     val result =
@@ -535,6 +535,7 @@ class RewindPackManagerTest {
             "delete:RetroRewind6/recreated.bin",
             "download:https://example.com/3.2.7.zip",
             "extract:https://example.com/3.2.7.zip",
+            "version:3.2.7",
         )
         .inOrder()
   }

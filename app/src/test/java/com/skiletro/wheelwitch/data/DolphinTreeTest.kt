@@ -531,6 +531,33 @@ class DolphinTreeTest {
   }
 
   @Test
+  fun `extractZipToPack skips archive version marker`(@TempDir tempDir: Path) = runBlocking {
+    val (_, packDir, _) = setupDirChain()
+    val zip = File(tempDir.toFile(), "pack.zip")
+    ZipOutputStream(zip.outputStream()).use { zos ->
+      zos.putNextEntry(ZipEntry("payload.bin"))
+      zos.write(byteArrayOf(0x01))
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("RetroRewind6/version.txt"))
+      zos.write("9.9.9".encodeToByteArray())
+      zos.closeEntry()
+    }
+    val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+    setupPackEntryWrite(packDir, "payload.bin", outputs)
+    val retroRewindDir = mockk<DocumentFile>(relaxed = true)
+    every { packDir.findFile(DolphinTree.RETRO_REWIND_DIR_NAME) } returns retroRewindDir
+    every { retroRewindDir.isDirectory } returns true
+    setupPackEntryWrite(retroRewindDir, DolphinTree.VERSION_FILE_NAME, outputs)
+
+    val progress = mutableListOf<ExtractProgress>()
+    DolphinTree(context, treeUri).extractZipToPack(zip) { progress.add(it) }
+
+    assertThat(outputs["payload.bin"]?.toByteArray()).isEqualTo(byteArrayOf(0x01))
+    assertThat(outputs[DolphinTree.VERSION_FILE_NAME]?.size()).isEqualTo(0)
+    assertThat(progress.map { it.filesTotal }).containsExactly(1, 1, 1).inOrder()
+  }
+
+  @Test
   fun `extractZipToPack creates nested subdirectories for entries with a path`(
       @TempDir tempDir: Path
   ) = runBlocking {

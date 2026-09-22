@@ -22,11 +22,11 @@ import timber.log.Timber
  * Reads the local pack version from [DolphinTree.readVersion] (the `pack/RetroRewind6/version.txt`
  * inside the SAF tree) and compares it against the server manifest; performs full or incremental
  * installs by downloading the pack zip to [cacheDir] (where `java.io.File` works) and then
- * streaming it into the SAF tree via [DolphinTree.extractZipToPack]. After a successful extract,
- * the version file is only written if the pack zip's own `version.txt` is missing or stale (typical
- * for hotfix zips that don't ship a new `version.txt`), and the `rr_autostartfile.xml` metadata in
- * `rom/` is always re-templated with the installed version so Dolphin's launch-descriptor UI shows
- * the right value.
+ * streaming it into the SAF tree via [DolphinTree.extractZipToPack]. After every archive extract
+ * and manifest deletion succeeds, it writes the target version file itself; archive `version.txt`
+ * entries are intentionally not authoritative. The `rr_autostartfile.xml` metadata in `rom/` is
+ * always re-templated with the installed version so Dolphin's launch-descriptor UI shows the right
+ * value.
  *
  * The downloader is [FileDownloader], the hand-rolled OkHttp wrapper. The pack zip is multi-MB so
  * we use the [HttpClientProvider.largeDownloadClient] (60s read timeout).
@@ -152,9 +152,9 @@ class RewindPackManager(
 
   /**
    * Shared skeleton for every install path: runs the URL-resolving step on [Dispatchers.IO] (so the
-   * step's network calls stay off the main thread), synchronises the local `version.txt` with the
-   * installed version, refreshes the `rr_autostartfile.xml` metadata, and folds any failure into a
-   * [Result] — always rethrowing [CancellationException] so coroutine cancellation stays intact.
+   * step's network calls stay off the main thread), writes local `version.txt` only after that work
+   * completes, refreshes `rr_autostartfile.xml` metadata, and folds any failure into a [Result] —
+   * always rethrowing [CancellationException] so coroutine cancellation stays intact.
    */
   private suspend fun runInstall(
       fetchUrl: suspend (onProgress: (InstallProgress) -> Unit) -> SemVersion,
@@ -163,9 +163,7 @@ class RewindPackManager(
       withContext(Dispatchers.IO) {
         try {
           val version = fetchUrl(onProgress)
-          if (tree.readVersion() != version) {
-            tree.writeVersion(version)
-          }
+          tree.writeVersion(version)
           writeRrMetadataSafe(version)
           Result.success(Unit)
         } catch (ce: CancellationException) {
