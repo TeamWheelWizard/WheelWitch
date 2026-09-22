@@ -70,6 +70,7 @@ import com.skiletro.wheelwitch.util.io.readUpTo
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import java.io.File
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -98,6 +99,27 @@ import timber.log.Timber
 // WBFS disc headers can sit well beyond the container header. Read enough to validate their
 // first allocated disc sector; unavailable IDs are rejected instead of being named as PAL.
 private const val ROM_HEADER_BYTES = 4 * 1024 * 1024
+
+private sealed interface RomValidation {
+  data object StorageNotConfigured : RomValidation
+
+  data object Invalid : RomValidation
+
+  data class Valid(
+      val tree: DolphinTree,
+      val gameId: String,
+      val extension: String,
+  ) : RomValidation
+}
+
+internal suspend fun <T> runRomValidation(block: suspend () -> T): Result<T> =
+    try {
+      Result.success(block())
+    } catch (ce: CancellationException) {
+      throw ce
+    } catch (e: Exception) {
+      Result.failure(e)
+    }
 
 @Composable
 fun OnboardingScreen(
@@ -183,6 +205,8 @@ fun OnboardingScreen(
         } else {
           existingRomDetected = false
         }
+      } catch (ce: CancellationException) {
+        throw ce
       } catch (e: Exception) {
         Timber.tag("Onboarding").w(e, "ROM scan failed")
         existingRomDetected = false
@@ -273,31 +297,48 @@ fun OnboardingScreen(
           isRomLoading = true
           try {
             romStage = romVerifying
-            val tree = DolphinTree.fromPersisted(context)
-            if (tree == null) {
-              romError = storageRequired
-              return@launch
-            }
             romError = null
-            val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "rom.iso"
-            val bytes =
-                withContext(Dispatchers.IO) {
-                  context.contentResolver.openInputStream(uri)?.use { stream ->
-                    // Read enough bytes for the GameTypeParser checks.
-                    stream.readUpTo(ROM_HEADER_BYTES)
-                  } ?: throw IOException("Cannot open $uri")
+            val validationResult =
+                runRomValidation {
+                  val tree =
+                      DolphinTree.fromPersisted(context)
+                          ?: return@runRomValidation RomValidation.StorageNotConfigured
+                  val displayName =
+                      queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "rom.iso"
+                  val bytes =
+                      withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                          stream.readUpTo(ROM_HEADER_BYTES)
+                        } ?: throw IOException("Cannot open $uri")
+                      }
+                  if (!GameTypeParser.checkValidity(displayName, bytes)) {
+                    return@runRomValidation RomValidation.Invalid
+                  }
+                  val gameId =
+                      GameTypeParser.parseGameInfo(displayName, bytes).gameId
+                          ?: return@runRomValidation RomValidation.Invalid
+                  val extension = File(displayName).extension.ifEmpty { "iso" }.lowercase()
+                  RomValidation.Valid(tree, gameId, extension)
                 }
-            if (!GameTypeParser.checkValidity(displayName, bytes)) {
-              romError = isoInvalid
+            val validation = validationResult.getOrNull()
+            if (validation == null) {
+              val error = validationResult.exceptionOrNull()
+              Timber.tag("Onboarding").e(error, "ROM validation failed")
+              romError = error?.message ?: isoInvalid
               return@launch
             }
-            val gameId =
-                GameTypeParser.parseGameInfo(displayName, bytes).gameId
-                    ?: run {
-                      romError = isoInvalid
-                      return@launch
-                    }
-            val ext = File(displayName).extension.ifEmpty { "iso" }.lowercase()
+            val rom =
+                when (validation) {
+                  RomValidation.StorageNotConfigured -> {
+                    romError = storageRequired
+                    return@launch
+                  }
+                  RomValidation.Invalid -> {
+                    romError = isoInvalid
+                    return@launch
+                  }
+                  is RomValidation.Valid -> validation
+                }
 
             romStage = romCopying
             // Track whether the ROM copy or the metadata write was the
@@ -306,10 +347,14 @@ fun OnboardingScreen(
             // the catch can read it on any failure path.
             var metadataFailed = false
             try {
-              withContext(Dispatchers.IO) { tree.copyRomFromSource(uri, gameId, ext) }
+              withContext(Dispatchers.IO) {
+                rom.tree.copyRomFromSource(uri, rom.gameId, rom.extension)
+              }
               metadataFailed = true
-              withContext(Dispatchers.IO) { tree.writeRrCover() }
+              withContext(Dispatchers.IO) { rom.tree.writeRrCover() }
               step = OnboardingStep.Complete
+            } catch (ce: CancellationException) {
+              throw ce
             } catch (e: Exception) {
               Timber.tag("Onboarding")
                   .e(e, if (metadataFailed) "Metadata write failed" else "ROM copy failed")
