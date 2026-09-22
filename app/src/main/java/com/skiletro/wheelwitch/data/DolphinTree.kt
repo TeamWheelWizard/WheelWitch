@@ -88,9 +88,9 @@ data class ExtractProgress(
  *         └── Pulsar/RetroRewind6/    : Retro Rewind's Pulsar config + Ghosts/
  * ```
  *
- * Construction is cheap: lazy subdirectory properties defer their first `findFile` /
- * `createDirectory` until the UI actually asks for them. This keeps the constructor side-effect
- * free and lets tests stub individual directories.
+ * Construction is cheap: creating subdirectory properties are lazy, while optional user-data
+ * directories query on demand. This keeps the constructor side-effect free, discovers folders
+ * Dolphin creates later, and lets tests stub individual directories.
  *
  * The tree URI must be the user-picked SAF grant that matches [DolphinPaths.expectedTreeId].
  * [Companion.validate] is the gate: the stock SAF picker cannot be restricted to a single folder,
@@ -182,28 +182,33 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * `Wii/shared2/...` (Mii DB, Pulsar settings, ghost data). May be null when the user has never
    * run Retro Rewind; the unified backup tolerates that and just skips the corresponding entries.
    */
-  val wiiDir: DocumentFile? by lazy { findDir(root, "Wii") }
+  val wiiDir: DocumentFile?
+    get() = findDir(root, "Wii")
 
   /**
    * `Wii/shared2/` under [wiiDir]. Null if [wiiDir] is null or the `shared2/` subdir hasn't been
    * created by Dolphin yet.
    */
-  val shared2Dir: DocumentFile? by lazy { findDir(wiiDir, "shared2") }
+  val shared2Dir: DocumentFile?
+    get() = findDir(wiiDir, "shared2")
 
   /**
    * `Wii/shared2/menu/FaceLib/` under [shared2Dir] — home of the system-wide Mii database
    * (`RFL_DB.dat`).
    */
-  val faceLibDir: DocumentFile? by lazy { findDir(findDir(shared2Dir, "menu"), "FaceLib") }
+  val faceLibDir: DocumentFile?
+    get() = findDir(findDir(shared2Dir, "menu"), "FaceLib")
 
   /** `Wii/shared2/Pulsar/` under [shared2Dir] — Pulsar mod settings. */
-  val pulsarDir: DocumentFile? by lazy { findDir(shared2Dir, "Pulsar") }
+  val pulsarDir: DocumentFile?
+    get() = findDir(shared2Dir, "Pulsar")
 
   /**
    * `Wii/shared2/Pulsar/RetroRewind6/` under [pulsarDir] — the Retro Rewind specific Pulsar subdir.
    * Holds the rating pul files and the Ghosts/ directory backed up by the unified save.
    */
-  val pulsarRrDir: DocumentFile? by lazy { findDir(pulsarDir, RETRO_REWIND_DIR_NAME) }
+  val pulsarRrDir: DocumentFile?
+    get() = findDir(pulsarDir, RETRO_REWIND_DIR_NAME)
 
   /**
    * Copies the bytes at [source] into [romDir] as `<gameId>.<ext>`. Replaces an existing file of

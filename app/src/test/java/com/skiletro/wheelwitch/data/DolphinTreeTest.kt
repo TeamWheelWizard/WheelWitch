@@ -159,7 +159,7 @@ class DolphinTreeTest {
     assertThat(error).hasMessageThat().contains("short transfer")
   }
 
-  // --- new lazy user-data subdirs (Wii/shared2/...) -------------------
+  // --- optional user-data subdirs (Wii/shared2/...) -------------------
 
   @Test
   fun `wiiDir is null when Wii is absent from the tree root`() {
@@ -207,6 +207,27 @@ class DolphinTreeTest {
 
     val tree = DolphinTree(context, treeUri)
     assertThat(tree.pulsarRrDir).isEqualTo(rr)
+  }
+
+  @Test
+  fun `pulsarRrDir rechecks paths created after first lookup`() {
+    val wii = mockk<DocumentFile>(relaxed = true)
+    val shared2 = mockk<DocumentFile>(relaxed = true)
+    val pulsar = mockk<DocumentFile>(relaxed = true)
+    val retroRewind = mockk<DocumentFile>(relaxed = true)
+    every { root.findFile("Wii") } returns null andThen wii
+    every { wii.isDirectory } returns true
+    every { wii.findFile("shared2") } returns shared2
+    every { shared2.isDirectory } returns true
+    every { shared2.findFile("Pulsar") } returns pulsar
+    every { pulsar.isDirectory } returns true
+    every { pulsar.findFile(DolphinTree.RETRO_REWIND_DIR_NAME) } returns retroRewind
+    every { retroRewind.isDirectory } returns true
+
+    val tree = DolphinTree(context, treeUri)
+
+    assertThat(tree.pulsarRrDir).isNull()
+    assertThat(tree.pulsarRrDir).isEqualTo(retroRewind)
   }
 
   // --- top-level helpers (used by SaveManager) ------------------------
