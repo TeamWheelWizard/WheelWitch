@@ -95,7 +95,9 @@ import timber.log.Timber
  * [com.skiletro.wheelwitch.util.prefs.PrefsKeys.ONBOARDING_COMPLETED_KEY] gate is only set in the
  * `Complete` step.
  */
-private const val ROM_HEADER_BYTES = 4096
+// WBFS disc headers can sit well beyond the container header. Read enough to validate their
+// first allocated disc sector; unavailable IDs are rejected instead of being named as PAL.
+private const val ROM_HEADER_BYTES = 4 * 1024 * 1024
 
 @Composable
 fun OnboardingScreen(
@@ -289,8 +291,12 @@ fun OnboardingScreen(
               romError = isoInvalid
               return@launch
             }
-            val info = GameTypeParser.parseGameInfo(displayName, bytes)
-            val gameId = info.gameId ?: "RMCP01"
+            val gameId =
+                GameTypeParser.parseGameInfo(displayName, bytes).gameId
+                    ?: run {
+                      romError = isoInvalid
+                      return@launch
+                    }
             val ext = File(displayName).extension.ifEmpty { "iso" }.lowercase()
 
             romStage = romCopying

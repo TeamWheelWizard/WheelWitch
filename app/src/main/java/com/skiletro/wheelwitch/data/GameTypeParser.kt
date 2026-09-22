@@ -60,16 +60,21 @@ object GameTypeParser {
     if (!ByteReader.checkMagic(bytes, 0, byteArrayOf(0x57, 0x42, 0x46, 0x53))) {
       return GameInfo(GameFormat.Invalid, null)
     }
-    val hdSectorShift = if (bytes.size > 8) bytes[8].toInt() and 0xFF else 0
-    if (hdSectorShift < 9) return GameInfo(GameFormat.Invalid, null)
-    val hdSectorSize = 1 shl hdSectorShift
-    val wlbaOffset = hdSectorSize + 256
+    val hdSectorShift =
+        bytes.getOrNull(8)?.toInt()?.and(0xFF) ?: return GameInfo(GameFormat.Invalid, null)
+    val wbfsSectorShift =
+        bytes.getOrNull(9)?.toInt()?.and(0xFF) ?: return GameInfo(GameFormat.Invalid, null)
+    if (hdSectorShift !in 9..30 || wbfsSectorShift !in 0..30) {
+      return GameInfo(GameFormat.Invalid, null)
+    }
+    val wlbaOffset = (1L shl hdSectorShift) + WBFS_WLBA_TABLE_OFFSET
     if (wlbaOffset + 2 > bytes.size) return GameInfo(GameFormat.Invalid, null)
-    // TODO: properly validate the game ID by seeking to firstWlbaEntry * wbfsSectorSize
-    // and reading the 6-byte disc ID. Skipped because callers cap the read buffer at
-    // 4 KiB while the WBFS disc header can live hundreds of KiB into the file.
-    // Currently accepts any structurally valid WBFS header.
-    return GameInfo(GameFormat.Wbfs, null)
+    val firstWlbaEntry = ByteReader.readUInt16BE(bytes, wlbaOffset.toInt())
+    val gameIdOffset = firstWlbaEntry.toLong() * (1L shl wbfsSectorShift)
+    if (gameIdOffset + GAME_ID_LENGTH > bytes.size) return GameInfo(GameFormat.Invalid, null)
+    val gameId = ByteReader.readASCII(bytes, gameIdOffset.toInt(), GAME_ID_LENGTH)
+    val format = if (gameId in knownMarioKartWiiIds) GameFormat.Wbfs else GameFormat.Invalid
+    return GameInfo(format, gameId)
   }
 
   private fun checkIsValidWad(bytes: ByteArray): GameInfo {
@@ -79,4 +84,7 @@ object GameTypeParser {
     }
     return GameInfo(GameFormat.Wad, null)
   }
+
+  private const val WBFS_WLBA_TABLE_OFFSET = 256L
+  private const val GAME_ID_LENGTH = 6
 }

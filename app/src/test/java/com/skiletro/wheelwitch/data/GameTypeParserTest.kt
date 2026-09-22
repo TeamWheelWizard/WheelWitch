@@ -118,10 +118,10 @@ class GameTypeParserTest {
     // --- WBFS ---
 
     @Test
-    fun `parse WBFS with valid header returns Wbfs without game ID`() {
-        val info = GameTypeParser.parseGameInfo("game.wbfs", createWbfsBuffer("RMCP01"))
+    fun `parse WBFS reads actual USA game ID`() {
+        val info = GameTypeParser.parseGameInfo("game.wbfs", createWbfsBuffer("RMCE01"))
         assertThat(info.format).isEqualTo(GameFormat.Wbfs)
-        assertThat(info.gameId).isNull()
+        assertThat(info.gameId).isEqualTo("RMCE01")
     }
 
     @Test
@@ -135,10 +135,10 @@ class GameTypeParserTest {
     }
 
     @Test
-    fun `parse WBFS accepts any structurally valid header regardless of game ID`() {
+    fun `parse WBFS with unknown game ID returns Invalid`() {
         val info = GameTypeParser.parseGameInfo("game.wbfs", createWbfsBuffer("ABCDEF"))
-        assertThat(info.format).isEqualTo(GameFormat.Wbfs)
-        assertThat(info.gameId).isNull()
+        assertThat(info.format).isEqualTo(GameFormat.Invalid)
+        assertThat(info.gameId).isEqualTo("ABCDEF")
     }
 
     @Test
@@ -161,23 +161,23 @@ class GameTypeParserTest {
     }
 
     @Test
-    fun `parse WBFS when data offset out of bounds still returns Wbfs`() {
+    fun `parse WBFS when data offset out of bounds returns Invalid`() {
         val buf = ByteArray(770)
         buf[0] = 0x57.toByte(); buf[1] = 0x42.toByte(); buf[2] = 0x46.toByte(); buf[3] =
             0x53.toByte()
         buf[8] = 9; buf[9] = 2
         buf[768] = (1000 shr 8).toByte(); buf[769] = 1000.toByte()
         val info = GameTypeParser.parseGameInfo("game.wbfs", buf)
-        assertThat(info.format).isEqualTo(GameFormat.Wbfs)
+        assertThat(info.format).isEqualTo(GameFormat.Invalid)
         assertThat(info.gameId).isNull()
     }
 
     @Test
-    fun `parse WBFS with realistic layout (data offset beyond 4 KiB) returns Wbfs`() {
-        val buf = createWbfsBuffer("RMCP01", hdSectorShift = 9, wbfsSectorShift = 15, wlbaEntry = 18)
+    fun `parse WBFS with realistic layout reads game ID beyond 4 KiB`() {
+        val buf = createWbfsBuffer("RMCJ01", hdSectorShift = 9, wbfsSectorShift = 15, wlbaEntry = 18)
         val info = GameTypeParser.parseGameInfo("game.wbfs", buf)
         assertThat(info.format).isEqualTo(GameFormat.Wbfs)
-        assertThat(info.gameId).isNull()
+        assertThat(info.gameId).isEqualTo("RMCJ01")
     }
 
     // --- WAD ---
