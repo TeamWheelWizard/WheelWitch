@@ -29,16 +29,12 @@ object DolphinConfig {
   }
 
   /**
-   * Reads the values from the canonical `ISOPathN` block in `[General]`.
+   * Reads every indexed `ISOPathN` value within `[General]`.
    *
-   * The canonical block is the contiguous run of `ISOPaths = N` and `ISOPathN = ...` lines starting
-   * at the `ISOPaths` count line (or at the first `ISOPathN` line if no count line is present) and
-   * ending at the first non-`ISOPathN` line. Lines that match the `ISOPathN` pattern but sit
-   * outside this run (a stray) are ignored; they would otherwise produce a broken file when
-   * [upsert] renumbers the block.
-   *
-   * The returned list preserves file order. Writing it back via [IsoPaths.toIniLines] renumbers
-   * indices to a clean `0..N-1` sequence.
+   * Dolphin accepts comments, blank lines, and unrelated keys between library paths. Scan the full
+   * section rather than a contiguous block so [upsert] cannot drop paths from hand-edited or
+   * Dolphin-written files. The returned list preserves file order; writing it back via
+   * [IsoPaths.toIniLines] renumbers indices to a clean `0..N-1` sequence.
    */
   fun read(content: String): IsoPaths {
     if (content.isBlank()) return IsoPaths(emptyList())
@@ -46,9 +42,7 @@ object DolphinConfig {
     val generalIdx = lines.indexOfFirst { it.trim() == "[General]" }
     if (generalIdx < 0) return IsoPaths(emptyList())
     val sectionEnd = findSectionEnd(lines, generalIdx)
-    val blockRange =
-        findIsopathsBlockRange(lines, generalIdx, sectionEnd) ?: return IsoPaths(emptyList())
-    val values = blockRange.map { lines[it] }.mapNotNull(::parseIsopathLine)
+    val values = (generalIdx + 1 until sectionEnd).mapNotNull { parseIsopathLine(lines[it]) }
     return IsoPaths(values)
   }
 
@@ -137,26 +131,21 @@ object DolphinConfig {
       } ?: lines.size
 
   /**
-   * Returns the inclusive-exclusive line range of the existing `ISOPaths` / `ISOPathN` block within
-   * `[General]`, or `null` if no block is present. The range starts at the `ISOPaths = N` line (or
-   * the first `ISOPathN` line, if the count line is missing) and ends just after the last
-   * consecutive `ISOPathN` line.
+   * Returns an inclusive-exclusive range anchored at the first ISO-related line in `[General]`, or
+   * `null` when no ISO count/path exists. Replacement writes a canonical block at this anchor and
+   * strips every other ISO count/path key through the section, while preserving comments and
+   * unrelated keys that split the old entries.
    */
   private fun findIsopathsBlockRange(
       lines: List<String>,
       sectionStart: Int,
       sectionEnd: Int,
   ): IntRange? {
-    val countIdx =
-        (sectionStart + 1 until sectionEnd).firstOrNull { i ->
-          ISOPATHS_COUNT.matches(lines[i].trim())
-        }
     val blockStart =
-        countIdx
-            ?: (sectionStart + 1 until sectionEnd).firstOrNull { i ->
-              ISOPATH_LINE.matches(lines[i].trim())
-            }
-            ?: return null
+        (sectionStart + 1 until sectionEnd).firstOrNull { i ->
+          val line = lines[i].trim()
+          ISOPATHS_COUNT.matches(line) || ISOPATH_LINE.matches(line)
+        } ?: return null
     val blockEnd =
         (blockStart + 1 until sectionEnd).firstOrNull { i ->
           !ISOPATH_LINE.matches(lines[i].trim())
@@ -166,10 +155,9 @@ object DolphinConfig {
 
   /**
    * Replaces the canonical `ISOPaths` block in place AND removes any stray `ISOPathN` / `ISOPaths`
-   * lines elsewhere in `[General]`. Strays can appear when a hand-edited file or a prior bug left
-   * orphaned entries between unrelated keys; reading them and writing them back unchanged would
-   * leave the file in a broken state where the new block says `ISOPaths = 2` but the file contains
-   * three `ISOPathN` lines.
+   * lines elsewhere in `[General]`. Hand-edited files can split valid entries between comments or
+   * unrelated keys; [read] retains every path, then this method writes them into one canonical
+   * block so its count and indices match exactly.
    */
   private fun replaceBlockAndStripStrays(
       lines: List<String>,

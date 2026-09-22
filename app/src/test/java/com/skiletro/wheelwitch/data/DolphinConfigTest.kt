@@ -105,19 +105,15 @@ class DolphinConfigTest {
   }
 
   @Test
-  fun `read ignores malformed ISOPath lines and the strays they break the block on`() {
-    // A malformed `ISOPathBad` (no digit) breaks the contiguous block;
-    // it's not in the ISOPathN regex family. The trailing ISOPath2
-    // then sits outside the block and is also ignored, matching the
-    // behavior we use in upsert/remove to keep the file canonical.
+  fun `read retains indexed paths split by malformed lines`() {
     val content =
         "[General]\n" +
             "ISOPath0 = \n" + // empty value; still parsed as ""
             "ISOPath1 = good\n" +
-            "ISOPathBad\n" + // breaks the contiguous run
+            "ISOPathBad\n" + // not an indexed path
             "ISOPath2 = trailing\n"
     val paths = DolphinConfig.read(content).paths
-    assertThat(paths).containsExactly("", "good").inOrder()
+    assertThat(paths).containsExactly("", "good", "trailing").inOrder()
   }
 
   // --- upsert ----------------------------------------------------------
@@ -175,22 +171,27 @@ class DolphinConfigTest {
   }
 
   @Test
-  fun `upsert replaces the existing block in place`() {
+  fun `upsert retains paths split by comments blanks and normal keys`() {
     val out =
         DolphinConfig.upsert(
             "[General]\n" +
-                "ISOPaths = 1\n" +
+                "ISOPaths = 2\n" +
                 "ISOPath0 = /A\n" +
+                "; keep this comment\n" +
+                "\n" +
                 "SomeKey = value\n" +
-                "ISOPath1 = /B\n", // stray line; should not survive block replacement
+                "ISOPath1 = /B\n",
             "/C",
         )
     assertThat(out)
         .isEqualTo(
             "[General]\n" +
-                "ISOPaths = 2\n" +
+                "ISOPaths = 3\n" +
                 "ISOPath0 = /A\n" +
-                "ISOPath1 = /C\n" +
+                "ISOPath1 = /B\n" +
+                "ISOPath2 = /C\n" +
+                "; keep this comment\n" +
+                "\n" +
                 "SomeKey = value\n"
         )
   }
