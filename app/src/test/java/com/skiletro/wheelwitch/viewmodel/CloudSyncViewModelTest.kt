@@ -24,10 +24,16 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
@@ -63,7 +69,10 @@ class CloudSyncViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private fun vm() =
+  private fun vm(
+      ioDispatcher: CoroutineDispatcher = dispatcher,
+      hasLocalSaves: suspend () -> Boolean = { true },
+  ) =
       CloudSyncViewModel(
           app,
           store = store,
@@ -72,11 +81,11 @@ class CloudSyncViewModelTest {
           auth = auth,
           zipBytesParam = backup,
           applyZipParam = restore,
-          hasLocalSavesParam = { true },
+          hasLocalSavesParam = hasLocalSaves,
           appKey = "test-key",
           hasTree = { true },
           online = { true },
-          ioDispatcher = dispatcher,
+          ioDispatcher = ioDispatcher,
       )
 
   private fun saveZip(value: Byte): ByteArray {
@@ -162,6 +171,34 @@ class CloudSyncViewModelTest {
     every { store.tokens() } returns null
     val model = vm()
     assertThat(model.uiState.value).isEqualTo(SyncUiState.SecureStorageUnavailable)
+  }
+
+  @Test
+  fun `awaitActiveSync waits for pending sync`() = runTest {
+    val standardDispatcher = StandardTestDispatcher(testScheduler)
+    Dispatchers.setMain(standardDispatcher)
+    val fetchStarted = CompletableDeferred<Unit>()
+    val releaseFetch = CompletableDeferred<CloudSaveMeta?>()
+    every { store.tokens() } returns mockk(relaxed = true)
+    every { store.autoSyncEnabled } returns true
+    coEvery { api.fetchSaveMeta() } coAnswers
+        {
+          fetchStarted.complete(Unit)
+          releaseFetch.await()
+        }
+    val model = vm(ioDispatcher = standardDispatcher, hasLocalSaves = { false })
+
+    model.onAppResume()
+    runCurrent()
+    assertThat(fetchStarted.isCompleted).isTrue()
+
+    val waiter = async { model.awaitActiveSync() }
+    runCurrent()
+    assertThat(waiter.isCompleted).isFalse()
+
+    releaseFetch.complete(null)
+    advanceUntilIdle()
+    assertThat(waiter.isCompleted).isTrue()
   }
 
   @Test

@@ -217,7 +217,9 @@ fun HomeScreen(
   val launchStorageNotConfigured = stringResource(R.string.error_storage_not_configured)
 
   val performLaunch: suspend () -> Unit = {
-    // Best-effort advisory lock + pending-push flag; never delays the launch.
+    // A pending cloud pull can replace saves; finish it before Dolphin reads them.
+    cloudSync.awaitActiveSync()
+    // Advisory lock + pending-push flag remain fire-and-forget after active sync finishes.
     cloudSync.beginSession()
     val result = withContext(Dispatchers.IO) { DolphinLauncher.launchRetroRewind(context) }
     val message =

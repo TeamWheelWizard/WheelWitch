@@ -129,6 +129,7 @@ class CloudSyncViewModel(
   private var foreignLock: CloudLock? = null
   private var lastSyncFromDevice: String? = null
   private var syncing: Boolean = false
+  private var syncJob: Job? = null
   private var pendingAuth: DropboxAuth.PendingAuth? = null
   private var redirectJob: Job? = null
 
@@ -160,6 +161,11 @@ class CloudSyncViewModel(
   /** Manual "Sync now": same flow, but failures surface as [SyncStatus.Error]. */
   fun syncNow() {
     runSync(manual = true)
+  }
+
+  /** Waits for a current sync so Dolphin never starts while a cloud pull can replace saves. */
+  suspend fun awaitActiveSync() {
+    syncJob?.join()
   }
 
   /**
@@ -312,7 +318,7 @@ class CloudSyncViewModel(
     syncing = true
     status = SyncStatus.Syncing
     emit()
-    viewModelScope.launch {
+    syncJob = viewModelScope.launch {
       try {
         withContext(ioDispatcher) { syncLoop(manual, force) }
       } catch (ce: CancellationException) {
