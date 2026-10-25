@@ -23,6 +23,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -583,6 +584,33 @@ class SaveDataViewModelTest {
     vm.backup(uri)
 
     assertThat(vm.error.value).isEqualTo("disk full")
+    assertThat(vm.lastBackupTimestamp.value).isEqualTo(0L)
+  }
+
+  @Test
+  fun `backup uses the localized fallback when a failure has no message`() = runTest {
+    val uri = mockk<Uri>(relaxed = true)
+    coEvery { SaveManager.backup(mockTree, uri) } returns Result.failure(RuntimeException())
+    every {
+      app.getString(com.skiletro.wheelwitch.R.string.vm_save_write_failed)
+    } returns "could not write backup"
+    vm = buildVm()
+
+    vm.backup(uri)
+
+    assertThat(vm.error.value).isEqualTo("could not write backup")
+    assertThat(vm.lastBackupTimestamp.value).isEqualTo(0L)
+  }
+
+  @Test
+  fun `cancelled backup does not publish an error or a successful timestamp`() = runTest {
+    val uri = mockk<Uri>(relaxed = true)
+    coEvery { SaveManager.backup(mockTree, uri) } returns Result.failure(CancellationException())
+    vm = buildVm()
+
+    vm.backup(uri)
+
+    assertThat(vm.error.value).isNull()
     assertThat(vm.lastBackupTimestamp.value).isEqualTo(0L)
   }
 

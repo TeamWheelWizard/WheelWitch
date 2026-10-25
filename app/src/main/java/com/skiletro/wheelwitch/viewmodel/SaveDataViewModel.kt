@@ -20,8 +20,6 @@ import com.skiletro.wheelwitch.data.SaveManager
 import com.skiletro.wheelwitch.data.SaveManager.Region
 import com.skiletro.wheelwitch.data.readDolphinBytes
 import com.skiletro.wheelwitch.domain.LeaderboardMerger
-import com.skiletro.wheelwitch.domain.SaveBackupCoordinator
-import com.skiletro.wheelwitch.domain.SaveOpOutcome
 import com.skiletro.wheelwitch.domain.computeScore
 import com.skiletro.wheelwitch.model.BadgeType
 import com.skiletro.wheelwitch.model.LicenseInfo
@@ -108,7 +106,6 @@ class SaveDataViewModel(
 ) : AndroidViewModel(application) {
   private val app = application
   private val prefs = Prefs.main(application)
-  private val saveOps = SaveBackupCoordinator(treeFactory)
 
   private val _saveInfos = MutableStateFlow<Map<Region, SaveFileInfo>>(emptyMap())
   internal val saveInfos: StateFlow<Map<Region, SaveFileInfo>> = _saveInfos.asStateFlow()
@@ -423,9 +420,8 @@ class SaveDataViewModel(
   // --- internals --------------------------------------------------------
 
   /**
-   * Resolves the persisted tree via [SaveBackupCoordinator] and runs one unified save operation,
-   * publishing the resolved error message (storage-not-configured, the exception message, or
-   * [fallback]) and calling [onSuccess] on success.
+   * Resolves the tree and runs a save operation, publishing a user-facing failure or applying the
+   * success update. Cancellation never becomes a displayed save error.
    */
   private fun runSaveCallback(
       logTag: String,
@@ -434,25 +430,23 @@ class SaveDataViewModel(
       op: suspend (DolphinTree) -> Result<*>,
   ) {
     viewModelScope.launch {
-      when (
-          val outcome =
-              saveOps.run(
-                  app,
-                  logTag,
-                  notConfiguredError = { app.getString(R.string.vm_save_not_configured) },
-                  fallbackError = fallback,
-                  onSuccess = onSuccess,
-                  op = op,
-              )
-      ) {
-        is SaveOpOutcome.Failure -> _error.value = friendlySaveError(outcome)
-        SaveOpOutcome.Success -> Unit
+      val tree = treeFactory(app)
+      if (tree == null) {
+        _error.value = app.getString(R.string.vm_save_not_configured)
+        return@launch
+      }
+      val failure = op(tree).exceptionOrNull()
+      if (failure == null) {
+        onSuccess()
+      } else {
+        if (failure is CancellationException) throw failure
+        Timber.tag(TAG).e(failure, "%s failed", logTag)
+        _error.value = friendlySaveError(failure, fallback)
       }
     }
   }
 
-  private fun friendlySaveError(outcome: SaveOpOutcome.Failure): String {
-    val error = outcome.throwable
+  private fun friendlySaveError(error: Throwable, fallback: () -> String): String {
     if (error is InvalidBackupException) {
       return when (error.reason) {
         InvalidBackupException.Reason.MissingManifest,
@@ -461,7 +455,7 @@ class SaveDataViewModel(
             app.getString(R.string.save_restore_too_new_format, error.version.toString())
       }
     }
-    return outcome.message
+    return error.message ?: fallback()
   }
 
   /**

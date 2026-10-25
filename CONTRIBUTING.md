@@ -122,3 +122,4 @@ Strings go in `res/values/strings.xml`; Compose screens use `stringResource()`.
 - `CloudSyncViewModel` owns account-scoped jobs. Connecting or disconnecting invalidates pending work; `MainScreen` observes app resume independently of the visible screen.
 - `OnlineViewModel` owns time-trial requests by track/filter generation. Selection changes cancel old work; pagination is single-flight and cannot publish into a newer selection.
 - Save discovery, reads, backup inspection, and deletion use existing-only paths. Restore creates directories explicitly; optional Dolphin directories are resolved afresh so a reused `DolphinTree` observes external changes.
+- `SaveManager` performs backup/restore/delete; `SaveDataViewModel` resolves storage, handles localized failures, and updates UI state directly, without a separate callback coordinator.
