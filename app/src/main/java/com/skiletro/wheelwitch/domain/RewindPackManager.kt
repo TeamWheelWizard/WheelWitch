@@ -17,19 +17,11 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * Owns the install/update flow for the Retro Rewind Pack.
+ * Installs full or incremental packs through a cached ZIP into Dolphin's SAF tree.
  *
- * Reads the local pack version from [DolphinTree.readVersion] (the `pack/RetroRewind6/version.txt`
- * inside the SAF tree) and compares it against the server manifest; performs full or incremental
- * installs by downloading the pack zip to [cacheDir] (where `java.io.File` works) and then
- * streaming it into the SAF tree via [DolphinTree.extractZipToPack]. After a successful extract,
- * the version file is only written if the pack zip's own `version.txt` is missing or stale (typical
- * for hotfix zips that don't ship a new `version.txt`), and the `rr_autostartfile.xml` metadata in
- * `rom/` is always re-templated with the installed version so Dolphin's launch-descriptor UI shows
- * the right value.
- *
- * The downloader is [FileDownloader], the hand-rolled OkHttp wrapper. The pack zip is multi-MB so
- * we use the [HttpClientProvider.largeDownloadClient] (60s read timeout).
+ * After all extraction/deletion steps succeed, synchronizes `pack/RetroRewind6/version.txt` with
+ * the target version if needed and attempts a non-fatal metadata refresh. Extraction may itself
+ * replace `version.txt`; failures do not roll back files or versions already written.
  */
 class RewindPackManager(
     private val tree: DolphinTree,
@@ -72,8 +64,8 @@ class RewindPackManager(
       }
 
   /**
-   * Downloads the full pack zip and extracts it into the SAF tree. Always overwrites the local
-   * install. Use this for a fresh install or to recover from a corrupted state.
+   * Downloads and overlays the full pack, preserving protected user data. Existing files absent
+   * from the archive are not removed.
    */
   suspend fun installLatest(onProgress: (InstallProgress) -> Unit): Result<Unit> =
       runInstall(
@@ -87,9 +79,9 @@ class RewindPackManager(
       )
 
   /**
-   * Performs the smallest set of incremental updates that takes the local pack from its current
-   * version to the server's latest version. Falls back to a full reinstall if the local version is
-   * missing (e.g. first install or corrupted state).
+   * Applies manifest updates newer than the local version through the latest version, in version
+   * order. Each version's extractions precede its deletions. Falls back to a full overlay when the
+   * local version is missing.
    */
   suspend fun update(onProgress: (InstallProgress) -> Unit): Result<Unit> =
       runInstall(
@@ -136,8 +128,8 @@ class RewindPackManager(
       )
 
   /**
-   * Performs a fresh full install from the server's full zip URL. Use this to recover from a
-   * corrupted or inconsistent state that incremental updates cannot fix.
+   * Overlays the server's full ZIP to replace damaged pack files. Does not remove files absent
+   * from the archive.
    */
   suspend fun reinstall(onProgress: (InstallProgress) -> Unit): Result<Unit> =
       runInstall(
@@ -151,10 +143,9 @@ class RewindPackManager(
       )
 
   /**
-   * Shared skeleton for every install path: runs the URL-resolving step on [Dispatchers.IO] (so the
-   * step's network calls stay off the main thread), synchronises the local `version.txt` with the
-   * installed version, refreshes the `rr_autostartfile.xml` metadata, and folds any failure into a
-   * [Result] — always rethrowing [CancellationException] so coroutine cancellation stays intact.
+   * Runs installation steps on [Dispatchers.IO], then synchronizes the version and refreshes
+   * metadata. Installation failures become [Result.failure]; cancellation from installation steps
+   * is rethrown. The metadata refresh handles its own exceptions.
    */
   private suspend fun runInstall(
       fetchUrl: suspend (onProgress: (InstallProgress) -> Unit) -> SemVersion,
@@ -175,11 +166,7 @@ class RewindPackManager(
         }
       }
 
-  /**
-   * Phased progress emitted by [performInstall]. Lets the caller distinguish between the
-   * network-bound download phase (which carries a [DownloadProgress] with byte counts) and the
-   * disk-bound extraction phase (which carries a file count).
-   */
+  /** Download byte progress or extraction snapshots forwarded from [DolphinTree]. */
   sealed class InstallProgress {
     /** Zip is being fetched from the update server. */
     data class Downloading(val progress: DownloadProgress) : InstallProgress()
@@ -187,13 +174,10 @@ class RewindPackManager(
     /**
      * Zip is being unpacked into the SAF tree.
      *
-     * - [phase] tells the caller whether the directory pre-pass (the slow part) is running or the
-     *   per-file writes have started.
-     * - [filesDone] / [filesTotal] are the file count basis for the determinate bar.
-     * - [currentFile] is the entry currently being written, or null between files and during the
-     *   pre-pass.
-     * - [bytesDone] / [bytesTotal] are the uncompressed byte counts carried for future display /
-     *   ETA use.
+     * - [phase] distinguishes folder preparation from per-file writes.
+     * - [filesDone] / [filesTotal] count completed and accepted files.
+     * - [currentFile] identifies the file before and after its write; null during preparation.
+     * - [bytesDone] / [bytesTotal] use uncompressed ZIP sizes, with unknown sizes treated as zero.
      */
     data class Extracting(
         val phase: ExtractingPhase,
@@ -206,15 +190,8 @@ class RewindPackManager(
   }
 
   /**
-   * Downloads a pack zip to [Context.getCacheDir], extracts it into the SAF tree's pack directory,
-   * and deletes the temp file. The [onProgress] callback fires for both phases. First the per-byte
-   * download progress, then the per-file extraction progress.
-   *
-   * Uses [FileDownloader.downloadInParallel] which issues a HEAD probe and falls back to
-   * single-stream if the server doesn't support byte ranges. The downloader accepts
-   * [com.skiletro.wheelwitch.util.io.ParallelDownloadProgress] (structurally identical to
-   * [DownloadProgress] with one extra `activeChunks` field) which we project to the UI's
-   * [DownloadProgress] shape so the consumer doesn't change.
+   * Downloads to [cacheDir], then extracts into the SAF pack directory. Progress callbacks run on
+   * the I/O context. The cached ZIP is deleted after extraction succeeds or fails.
    */
   private suspend fun performInstall(
       url: String,
@@ -245,13 +222,7 @@ class RewindPackManager(
     }
   }
 
-  /**
-   * Writes the templated `rr_autostartfile.xml` metadata with [version], swallowing and logging any
-   * throwable so a metadata write failure never rolls back a successful install. The version.txt
-   * under `pack/RetroRewind6/` is the load-bearing state for the launcher; this is cosmetic for
-   * Dolphin's launch-descriptor UI, so we'd rather report "installed" and log the metadata miss
-   * than surface a red screen for a one-line XML refresh.
-   */
+  /** Logs metadata refresh exceptions without failing installation, including cancellation here. */
   private suspend fun writeRrMetadataSafe(version: SemVersion) {
     try {
       tree.writeRrMetadata(version)
@@ -269,7 +240,6 @@ class RewindPackManager(
       )
 
   private companion object {
-    /** Cached pack zip filename inside the injected [cacheDir]. */
     const val PACK_ZIP_NAME = "RetroRewind.zip"
 
     const val TAG = "RewindPack"

@@ -31,13 +31,9 @@ class LeaderboardMerger(
       info?.licenses ?: List(LICENSE_SLOTS) { i -> LicenseInfo(slotIndex = i, exists = false) }
 
   /**
-   * Enriches [info]'s four slots with leaderboard VR and Mii data in parallel. Each successful
-   * fetch contributes a last-known-good cache write, applied after all fetches complete in slot
-   * order (conserving previously cached name/Mii when the API omits them); a failed fetch falls
-   * back to the cached values, and only to local save data when the cache has no entry yet. When
-   * [info] is null (no save file for [region] yet, e.g. after a delete or a switch to an unplayed
-   * region), returns [LICENSE_SLOTS] empty slots so the UI renders an empty grid instead of stale
-   * data from a previous session.
+   * Fetches eligible slots in parallel, then applies successful cache writes in slot order.
+   * Missing API name/Mii fields fall back to cache, then local data; failed fetches also use cached
+   * VR when available. Null [info] produces [LICENSE_SLOTS] empty slots.
    */
   suspend fun merge(region: Region, info: SaveFileInfo?): List<LicenseInfo> =
       withContext(ioDispatcher) {
@@ -90,9 +86,8 @@ class LeaderboardMerger(
       }
 
   /**
-   * Enriches [info]'s slots from [cache] only — no network — so a cold start can render the
-   * last-known-good API data immediately instead of stale local save data. Slots without a cache
-   * entry keep their local data.
+   * Enriches eligible slots from [cache] without network calls. Missing cached name/Mii fields
+   * retain local values; null [info] produces empty slots.
    */
   suspend fun enrichOffline(region: Region, info: SaveFileInfo?): List<LicenseInfo> =
       withContext(ioDispatcher) {

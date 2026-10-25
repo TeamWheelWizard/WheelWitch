@@ -6,10 +6,8 @@ import android.net.Uri
  * Pure reader/writer for the `ISOPaths` / `ISOPathN` block in Dolphin's `Config/Dolphin.ini`
  * `[General]` section.
  *
- * The Dolphin emulator reads the `[General] ISOPathN` keys when building its game library.
- * WheelWitch edits this file so the `WheelWitch/rom/` folder shows up as a library entry, this is
- * the bridge that makes "RR shows up in Dolphin's library" work even though `rr_autostartfile.json`
- * itself uses physical paths (Riivolution is native code and cannot resolve `content://` URIs).
+ * Registers `WheelWitch/rom/` in Dolphin's library. Launch descriptors use physical paths;
+ * library entries can use Dolphin's own provider URI.
  *
  * Operations are idempotent: writing the same path twice is a no-op. [upsert] preserves comments,
  * unknown keys, and section ordering.
@@ -81,8 +79,8 @@ object DolphinConfig {
    * Computes the `content://` URI that Dolphin's own `.user` provider expects for a given relative
    * path under its `files/` tree.
    *
-   * WheelWitch never reads from this URI (it has no grant for it); it only writes the string into
-   * `Dolphin.ini`'s `ISOPathN` and lets Dolphin resolve it through its own provider.
+   * The URI string is written into `Dolphin.ini` for Dolphin to resolve through its own provider;
+   * constructing it does not acquire a SAF grant.
    *
    * Each `/`-separated segment is percent-encoded individually; segments are then joined with
    * literal `%2F` so the resulting path is the one the provider expects. For example:
@@ -96,15 +94,8 @@ object DolphinConfig {
     return "content://org.dolphinemu.dolphinemu.user/tree/root%2F$encoded"
   }
 
-  // --- internal helpers ---------------------------------------------------
 
-  /**
-   * Replaces (or creates) the `ISOPaths` block in [content] with [newBlock]. Always returns a
-   * well-formed INI: a fresh upsert into blank input produces a `[General]` section header so the
-   * result is structurally identical to a non-blank upsert. The earlier behavior of returning just
-   * the bare block on blank input was inconsistent with the non-blank path and produced a broken
-   * file when the result was fed back into [upsert].
-   */
+  /** Replaces or creates the path block, adding a `[General]` section when absent. */
   private fun applyBlock(content: String, newPaths: IsoPaths): String {
     val newBlock = newPaths.toIniLines()
     if (content.isBlank()) {
@@ -137,7 +128,7 @@ object DolphinConfig {
       } ?: lines.size
 
   /**
-   * Returns the inclusive-exclusive line range of the existing `ISOPaths` / `ISOPathN` block within
+   * Returns the line range of the existing `ISOPaths` / `ISOPathN` block within
    * `[General]`, or `null` if no block is present. The range starts at the `ISOPaths = N` line (or
    * the first `ISOPathN` line, if the count line is missing) and ends just after the last
    * consecutive `ISOPathN` line.
@@ -165,11 +156,8 @@ object DolphinConfig {
   }
 
   /**
-   * Replaces the canonical `ISOPaths` block in place AND removes any stray `ISOPathN` / `ISOPaths`
-   * lines elsewhere in `[General]`. Strays can appear when a hand-edited file or a prior bug left
-   * orphaned entries between unrelated keys; reading them and writing them back unchanged would
-   * leave the file in a broken state where the new block says `ISOPaths = 2` but the file contains
-   * three `ISOPathN` lines.
+   * Replaces the canonical block and removes later stray path/count lines in `[General]` so they
+   * cannot conflict with the new indices and count.
    */
   private fun replaceBlockAndStripStrays(
       lines: List<String>,
@@ -199,8 +187,6 @@ object DolphinConfig {
   ): String {
     val out = mutableListOf<String>()
     out.addAll(lines.subList(0, sectionEnd))
-    // Trim trailing blanks from the [General] section so the new block
-    // is separated from prior content by exactly one blank line.
     while (out.isNotEmpty() && out.last().isBlank()) out.removeAt(out.lastIndex)
     if (out.size > sectionStart + 1) out.add("")
     out.addAll(newBlock)

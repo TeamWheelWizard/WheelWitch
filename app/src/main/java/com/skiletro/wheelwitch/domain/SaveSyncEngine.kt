@@ -4,10 +4,7 @@ import com.skiletro.wheelwitch.model.SyncAction
 import com.skiletro.wheelwitch.util.cloud.CloudLock
 import com.skiletro.wheelwitch.util.cloud.CloudSaveMeta
 
-/**
- * Pure WheelSync decision logic — the decision table from the spec. No Android dependencies; clock
- * injected for lock-TTL tests.
- */
+/** Pure WheelSync decisions with an injectable clock for lock expiry. */
 class SaveSyncEngine(private val clock: () -> Long = System::currentTimeMillis) {
 
   fun decide(
@@ -34,9 +31,9 @@ class SaveSyncEngine(private val clock: () -> Long = System::currentTimeMillis) 
   }
 
   /**
-   * True when [lock] belongs to another device and its `serverModified` is within [LOCK_TTL_MILLIS]
-   * of now. Staleness uses the Dropbox server timestamp so client clock skew can't fake freshness.
-   * Future server timestamps are conservatively treated as an active lock.
+   * True when [lock] belongs to another device and its server timestamp is less than
+   * [LOCK_TTL_MILLIS] old relative to the local clock. Future timestamps are treated as active;
+   * local clock skew can affect expiry.
    */
   fun isLockFresh(lock: CloudLock, ourDeviceId: String): Boolean {
     if (lock.deviceId == ourDeviceId) return false

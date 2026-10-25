@@ -35,7 +35,7 @@ private const val MIN_VS_MATCHES = 100
 private const val MAX_VR_FANCY = 1_000_000.0
 private const val MAX_VR_FLOAT = 10_000.0
 
-/** Each rank's minimum score, indexed by rank-1. The final entry caps the "Crown" rank. */
+/** Minimum score for each rank, indexed by rank minus one; Crown requires 100. */
 val RANK_THRESH: List<Double> = listOf(0.0, 24.0, 36.0, 48.0, 60.0, 72.0, 84.0, 94.0, 100.0)
 
 /** Display names for ranks 1..9, aligned with [RANK_THRESH]. */
@@ -71,7 +71,7 @@ fun computeScore(stats: LicenseStats): ScoreResult {
 /** Maps a raw score to its rank band (1..9), derived from [RANK_THRESH]. */
 fun rankFromScore(score: Double): Int = RANK_THRESH.count { score >= it }
 
-/** The score needed to reach [rank], or null for the max rank. */
+/** Threshold for the rank after [rank], or null when no higher rank exists. */
 fun nextThreshold(rank: Int): Double? = RANK_THRESH.getOrNull(rank)
 
 /** Recomputes the blended score from a [ScoreResult]'s already-normalised stats. */

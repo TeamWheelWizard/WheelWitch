@@ -68,7 +68,7 @@ object GameTypeParser {
     // TODO: properly validate the game ID by seeking to firstWlbaEntry * wbfsSectorSize
     // and reading the 6-byte disc ID. Skipped because callers cap the read buffer at
     // 4 KiB while the WBFS disc header can live hundreds of KiB into the file.
-    // Currently accepts any structurally valid WBFS header.
+    // Only checks the WBFS magic and whether the supplied buffer reaches the first WLBA entry.
     return GameInfo(GameFormat.Wbfs, null)
   }
 

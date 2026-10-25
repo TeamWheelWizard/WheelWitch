@@ -25,17 +25,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/**
- * Coarse phase of the pack extraction. Emitted via [ExtractProgress] so the UI can show a
- * "Preparing folders…" line during the directory pre-pass (when the typical RPC cost of
- * `findFile`/`createDirectory` is paid all at once) and a "Extracting files…" line with a live
- * current-file name during the per-file write pass.
- */
+/** Extraction phase; folder preparation has no per-directory progress updates. */
 enum class ExtractingPhase {
-  /** Directory pre-pass is running. */
   PreparingFolders,
 
-  /** Files are being written. */
   WritingFiles,
 }
 
@@ -52,8 +45,8 @@ class InvalidTreeUriException(
 ) : IllegalArgumentException(message)
 
 /**
- * Per-file progress snapshot emitted by [DolphinTree.extractZipToPack]. Replaces the previous bare
- * `Int` (file index) callback so the UI can render a meaningful bar and a live file-name readout.
+ * Extraction snapshot. Counts include only accepted file entries; byte totals use uncompressed ZIP
+ * sizes, treating unknown sizes as zero. [currentFile] is null only during folder preparation.
  */
 data class ExtractProgress(
     val phase: ExtractingPhase,
@@ -74,7 +67,7 @@ data class ExtractProgress(
  * ├── WheelWitch/
  * │   ├── pack/
  * │   │   └── RetroRewind6/           : extracted Retro Rewind contents
- * │   │       └── version.txt         : local pack version (mirror of zip's own version.txt)
+ * │   │       └── version.txt         : installed pack version
  * │   └── rom/
  * │       ├── <GAMEID>.<ext>          : user-picked Mario Kart Wii ISO/RVZ/WBFS
  * │       ├── rr_autostartfile.json   : launch descriptor (dolphin-game-mod-descriptor)
@@ -92,27 +85,17 @@ data class ExtractProgress(
  * user-data directories are looked up afresh on every access so Dolphin writes and restores are
  * visible even when this wrapper is reused. Lookups never create optional directories.
  *
- * The tree URI must be the user-picked SAF grant that matches [DolphinPaths.expectedTreeId].
- * [Companion.validate] is the gate: the stock SAF picker cannot be restricted to a single folder,
- * so the picker result is checked against the expected tree id before we accept it.
+ * [Companion.validate] accepts the primary-storage tree ID from [DolphinPaths.expectedTreeId] or
+ * Dolphin's own provider root. The picker cannot be restricted to these roots.
  */
 class DolphinTree(context: Context, val treeUri: Uri) {
   val resolver: ContentResolver = context.contentResolver
 
-  /**
-   * Context kept for resource lookups (raw resources, package name). The class only needs this to
-   * read app-shipped assets, not to do SAF I/O; [resolver] is the SAF counterpart.
-   */
   private val appContext: Context = context
 
   val root: DocumentFile =
       DocumentFile.fromTreeUri(context, treeUri)
           ?: run {
-            // Diagnostic: log the URI scheme/authority (no auth tokens) so
-            // a bug report can show whether the picker returned an
-            // unexpected form. fromTreeUri returns null when the URI is
-            // malformed, the tree has been revoked, or the provider is
-            // unreachable; all "re-onboard" cases.
             val docId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull()
             Timber.tag(TAG)
                 .e(
@@ -164,14 +147,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     return target.delete()
   }
 
-  /**
-   * The Retro Rewind subdirectory under [packDir]. The pack zip extracts into this directory (so a
-   * zip entry `RetroRewind6/version.txt` lands at `pack/RetroRewind6/version.txt`), and it's also
-   * where the launcher's `riivolution/RetroRewind6.xml` lives. Read/write the `version.txt` here,
-   * not at the root of [packDir] — WheelWitch used to write to `pack/version.txt`, which is a path
-   * the pack zip never touches, so the local version file drifted from the actual pack version on
-   * every incremental update.
-   */
+  /** Pack subtree containing `version.txt` and the launcher's `riivolution/RetroRewind6.xml`. */
   val retroRewindDir: DocumentFile by lazy {
     findOrCreateDir(packDir, RETRO_REWIND_DIR_NAME)
         ?: error("Cannot create or find $RETRO_REWIND_DIR_NAME/ in pack/")
@@ -187,36 +163,21 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         ?: error("Cannot create or find GameSettings/ in Dolphin tree")
   }
 
-  /**
-   * The Dolphin's `Wii/` directory under the tree root. Used by the unified save backup to reach
-   * `Wii/shared2/...` (Mii DB, Pulsar settings, ghost data). May be null when the user has never
-   * run Retro Rewind; the unified backup tolerates that and just skips the corresponding entries.
-   */
+  /** Existing virtual NAND root; optional user-data lookups never create directories. */
   val wiiDir: DocumentFile?
     get() = findDir(root, "Wii")
 
-  /**
-   * `Wii/shared2/` under [wiiDir]. Null if [wiiDir] is null or the `shared2/` subdir hasn't been
-   * created by Dolphin yet.
-   */
   val shared2Dir: DocumentFile?
     get() = findDir(wiiDir, "shared2")
 
-  /**
-   * `Wii/shared2/menu/FaceLib/` under [shared2Dir] — home of the system-wide Mii database
-   * (`RFL_DB.dat`).
-   */
+  /** Home of the system-wide Mii database (`RFL_DB.dat`). */
   val faceLibDir: DocumentFile?
     get() = findDir(findDir(shared2Dir, "menu"), "FaceLib")
 
-  /** `Wii/shared2/Pulsar/` under [shared2Dir] — Pulsar mod settings. */
   val pulsarDir: DocumentFile?
     get() = findDir(shared2Dir, "Pulsar")
 
-  /**
-   * `Wii/shared2/Pulsar/RetroRewind6/` under [pulsarDir] — the Retro Rewind specific Pulsar subdir.
-   * Holds the rating pul files and the Ghosts/ directory backed up by the unified save.
-   */
+  /** Retro Rewind's Pulsar settings and Ghosts directory, included in save backups. */
   val pulsarRrDir: DocumentFile?
     get() = findDir(pulsarDir, RETRO_REWIND_DIR_NAME)
 
@@ -245,27 +206,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       }
 
   /**
-   * Extracts a Retro Rewind pack zip into [packDir]. Uses [java.util.zip.ZipFile]
-   * (central-directory-based iteration, one seek at the end of the file) instead of a streaming
-   * `ZipInputStream` (which re-parses each Local File Header sequentially).
+   * Extracts accepted ZIP files into [packDir], replacing existing files entry by entry. Unsafe
+   * paths and [SaveManager.userDataPathPrefixes] are skipped to preserve user data.
    *
-   * Existing files of the same name are replaced (the prior install is overwritten entry by entry).
-   * Zip entries under any of [com.skiletro.wheelwitch.data.SaveManager.userDataPathPrefixes] — the
-   * per-region `rksys.dat` tree, the Mii DB at `Wii/shared2/menu/FaceLib/`, and the Pulsar config
-   * and `Ghosts/` at `Wii/shared2/Pulsar/RetroRewind6/` — are left untouched so the user's save
-   * data, Miis, settings, and ghost data survive an update.
-   *
-   * The flow is:
-   * 1. Enumerate the central directory once to get [ZipEntry] objects with up-front size metadata.
-   * 2. Pre-create every unique parent directory with a single `createDirectory` per dir, cache
-   *    results in a `Map<List<String>, DocumentFile>` so the per-file write loop doesn't pay N
-   *    `findFile` round-trips per path component.
-   * 3. Write each file via [FileChannel.transferFrom] when the provider returns a
-   *    [FileOutputStream] (most providers do), otherwise via a buffered copy with a 256 KB buffer.
-   *
-   * The [onProgress] callback fires with an [ExtractProgress] snapshot at three points: once at the
-   * start of [ExtractingPhase.PreparingFolders], once per created directory (with `filesDone` /
-   * `filesTotal` still 0), and once per written file (with the new `currentFile` set).
+   * Parent directories are resolved once before writing. [onProgress] runs on [Dispatchers.IO]:
+   * once before folder preparation, then immediately before and after each file write. File and
+   * byte counts represent completed files, not partial writes; there are no per-directory updates.
+   * Extraction is not transactional: failures can leave partially replaced pack contents.
    */
   suspend fun extractZipToPack(zipFile: File, onProgress: (ExtractProgress) -> Unit) {
     withContext(Dispatchers.IO) {
@@ -343,12 +290,8 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   }
 
   /**
-   * Walks the file entries, collects the unique set of parent directory paths, creates them in
-   * depth order (parents first so each `createDirectory` only needs one IPC call), and returns a
-   * map from path parts to the resulting [DocumentFile]. The empty list is included as the key for
-   * `packDir` itself.
-   *
-   * The caller is responsible for only providing Zip entries with safe entry names.
+   * Resolves parent paths in depth order and includes [packDir] under the empty-list key.
+   * The caller must provide only ZIP entries with safe names.
    */
   private fun precreateDirectories(
       fileEntries: List<ZipEntry>,
@@ -356,12 +299,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       filesTotal: Int,
       bytesTotal: Long,
   ): Map<List<String>, DocumentFile> {
-    // For every file, add every ancestor directory to the set, not just
-    // the direct parent. A file at a/b/c.bin contributes ["a"] and
-    // ["a", "b"]; the file itself is never a directory. Without this,
-    // a zip with files in sibling subtrees (e.g. apps/x/foo.bin and
-    // apps/y/bar.bin, no file directly under apps/) would crash the
-    // pre-pass with "Key [apps] is missing in the map".
+    // Include every ancestor so a parent is cached even when it contains no files directly.
     val uniqueParents =
         fileEntries
             .flatMap { file ->
@@ -424,13 +362,8 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   fun readLaunchJson(): String? = readDolphinText(resolver, romDir.findFile(LAUNCH_JSON_NAME))
 
   /**
-   * Copies the app-shipped cover banner into [romDir] as `rr_autostartfile.cover.png`, so it sits
-   * alongside the launch descriptor (`rr_autostostfile.json`). Idempotent: replaces an existing
-   * file of the same name.
-   *
-   * Called from the onboarding ROM step right after [copyRomFromSource] succeeds. The banner is
-   * tiny so a re-copy on every onboarding is cheap; the cover survives pack updates because
-   * [extractZipToPack] only writes to [packDir].
+   * Replaces the cover banner in [romDir]. Pack extraction only writes to [packDir], so updates
+   * leave the cover intact.
    */
   suspend fun writeRrCover(): Unit =
       withContext(Dispatchers.IO) {
@@ -442,14 +375,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
       }
 
   /**
-   * Copies the app-shipped RR metadata into [romDir] as `rr_autostartfile.xml`, with the
-   * `{VERSION}` placeholder in the raw resource replaced by [version]. Sits alongside the launch
-   * descriptor (`rr_autostartfile.json`). Idempotent: replaces an existing file of the same name.
-   *
-   * Called from [com.skiletro.wheelwitch.domain.RewindPackManager] after every successful
-   * install/update so the version field Dolphin's launch-descriptor UI displays tracks the
-   * installed pack version. A throw here is non-fatal for the install: the cover banner and the
-   * version.txt under the pack root are the load-bearing state for the launcher; this is cosmetic.
+   * Replaces `rr_autostartfile.xml` in [romDir], substituting [version] for `{VERSION}` in the
+   * app-shipped resource. [com.skiletro.wheelwitch.domain.RewindPackManager] treats failures as
+   * non-fatal metadata refresh errors.
    */
   suspend fun writeRrMetadata(version: SemVersion): Unit =
       withContext(Dispatchers.IO) {
@@ -483,10 +411,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   }
 
   /**
-   * Writes [version] to `pack/RetroRewind6/version.txt`, replacing any existing file. Called by
-   * [com.skiletro.wheelwitch.domain.RewindPackManager] only when the pack zip's own `version.txt`
-   * is missing or stale (typical for hotfix zips that don't ship a new `version.txt`), so a failed
-   * extract leaves the previous version on disk.
+   * Replaces `pack/RetroRewind6/version.txt`. The pack manager calls this after all extraction and
+   * deletion steps succeed if the on-disk version differs from the target. Extraction itself may
+   * also overwrite the version file; this is not a rollback mechanism.
    */
   suspend fun writeVersion(version: SemVersion): Unit =
       withContext(Dispatchers.IO) {
@@ -528,10 +455,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     )
   }
 
-  /**
-   * Reads `GameSettings/<gamePrefix>.ini` if it exists, or null when the file is absent. Used by
-   * [ensureRmcGameInis] to inspect and merge existing per-game settings before writing.
-   */
+  /** Reads `GameSettings/<gamePrefix>.ini`, creating [gameSettingsDir] if needed. */
   fun readGameIni(gamePrefix: String): String? =
       readDolphinText(
           resolver,
@@ -555,16 +479,9 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   }
 
   /**
-   * Ensures the `GameSettings/RMC.ini` file contains the settings that force-disable cheats and
-   * RetroAchievements for Mario Kart Wii, and strips conflicting settings from other `RMC*.ini`
-   * files.
-   *
-   * The `[Dolphin.Core] EnableCheats = False` trick overrides the user-facing `[Core] EnableCheats`
-   * toggle so it cannot be re-enabled from Dolphin's settings GUI. The same trick does not work for
-   * `[Achievements.Achievements]`, so it is only set once.
-   *
-   * Existing user settings in `RMC.ini` (other keys, other sections) are preserved: the method only
-   * ensures the three required key- value pairs are present and correct.
+   * Disables cheats and RetroAchievements in `RMC.ini` and the global achievements config, then
+   * removes conflicting keys from sibling `RMC*.ini` files. Unrelated settings above the generated
+   * notice are retained; everything from the notice onward is replaced.
    */
   fun ensureRmcGameInis() {
     ensureRmcGameIni()
@@ -572,7 +489,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     stripConflictingKeysFromSiblingGameInis()
   }
 
-  /** Ensures `GameSettings/RMC.ini` contains the force-disable settings. */
   private fun ensureRmcGameIni() {
     val gameIni = DolphinGameIni
     var requiredSuffix = "\n${gameIni.GAME_INI_NOTICE}"
@@ -584,9 +500,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
             gameIni.CHEATS_KEY,
             gameIni.FORCE_DISABLE_VALUE,
         )
-    // If the force-disabling should not be as aggressive, the following single line could be
-    // commented out (it breaks some game-specific settings in the "General" section as well,
-    // but this should not matter, as those settings are usually globally configured).
+    // Dolphin.Core overrides the global cheats toggle, but can also affect other General settings.
     requiredSuffix =
         gameIni.addIniKeyValueAtTheEnd(
             requiredSuffix,
@@ -603,16 +517,13 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         )
     val existing = readGameIni(gameIni.RMC_PREFIX).orEmpty()
     var content = existing
-    // Remove our required settings if they were already present to work with the user-specific
-    // settings.
+    // Remove the generated suffix before normalizing user sections and rebuilding it.
     content = content.removeSuffix(requiredSuffix)
-    // Perform section rename operations on the settings not configured by Wheel Witch to preserve
-    // the required ordering of our sections.
+    // Move user Core settings ahead of the generated override sections.
     content = gameIni.renameSection(content, "[Core]", "[Core]")
     content = gameIni.renameSection(content, "[Dolphin.Core]", "[Core]")
     content =
         gameIni.renameSection(content, "[Achievements.Achievements]", "[Achievements.Achievements]")
-    // Remove stuff we should not need or want anymore, the user has been warned.
     content = gameIni.removeAllBelowNotice(content)
     content = gameIni.removeIniKeyInSection(content, "[Core]", gameIni.CHEATS_KEY)
     content = gameIni.removeIniKeyInSection(content, "[Dolphin.Core]", gameIni.CHEATS_KEY)
@@ -622,7 +533,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
             "[Achievements.Achievements]",
             gameIni.ACHIEVEMENTS_KEY,
         )
-    // Finally, append our required settings.
     content += requiredSuffix
     if (content != existing) {
       writeGameIni(gameIni.RMC_PREFIX, content)
@@ -640,8 +550,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
             "[Achievements]",
             gameIni.ACHIEVEMENTS_KEY,
         )
-    // The RetroAchievements disabling seems a bit broken, as Dolphin often needs to be closed
-    // and re-opened if the global setting was enabled.
+    // Dolphin may need to restart before a change to the global achievements setting takes effect.
     achievementsContent =
         gameIni.addIniKeyValue(
             achievementsContent,
@@ -670,8 +579,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     for (sibling in siblings) {
       val name = sibling.name ?: continue
       val siblingContent = readDolphinText(resolver, sibling) ?: continue
-      // For good measure, remove the cheats and RetroAchievements settings from all files which
-      // could override the base GameINI file.
       var cleaned = gameIni.removeIniKeyInSection(siblingContent, "[Core]", gameIni.CHEATS_KEY)
       cleaned =
           gameIni.removeIniKeyInSection(
@@ -705,7 +612,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     )
   }
 
-  // --- internals --------------------------------------------------------
 
   /**
    * Replaces any existing file named [fileName] under [romDir] with the contents of the raw
@@ -763,7 +669,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   }
 
   companion object {
-    /** Tag used by Timber in this file's log lines. */
     const val TAG = "DolphinTree"
 
     /** Memoised tree from [fromPersisted]; kept in sync with [memoUri]. */
@@ -782,11 +687,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
      */
     const val LAUNCH_JSON_NAME = com.skiletro.wheelwitch.util.launcher.DolphinLauncher.RR_JSON_NAME
 
-    /**
-     * Name of the Retro Rewind subdirectory inside the pack dir. The pack zip extracts here (so a
-     * zip entry `RetroRewind6/version.txt` lands at `pack/RetroRewind6/version.txt`) and it's also
-     * where the launcher's `riivolution/RetroRewind6.xml` is rooted.
-     */
+    /** Retro Rewind subtree shared by the pack version and launch XML paths. */
     const val RETRO_REWIND_DIR_NAME = "RetroRewind6"
 
     /** Filename of the pack version file under [RETRO_REWIND_DIR_NAME]. */
@@ -828,7 +729,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
                   InvalidTreeUriException(InvalidTreeReason.NotTreeUri, "Not a tree URI: $treeUri")
               )
 
-      // Primary external storage: primary:Android/data/<dolphin>/files
       if (
           treeUri.authority == "com.android.externalstorage.documents" &&
               treeId == DolphinPaths.expectedTreeId()
@@ -836,10 +736,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
         return Result.success(Unit)
       }
 
-      // Dolphin's own SAF provider root, which maps to the same
-      // physical folder. The picker surfaces this on devices where
-      // Dolphin is installed; it lets apps write into Dolphin's
-      // folder without the legacy MANAGE_EXTERNAL_STORAGE permission.
       if (treeUri.authority == "org.dolphinemu.dolphinemu.user" && treeId == "root/") {
         return Result.success(Unit)
       }
@@ -848,10 +744,7 @@ class DolphinTree(context: Context, val treeUri: Uri) {
           "Tree $treeUri (authority='${treeUri.authority}', docId='$treeId') " +
               "is not the Dolphin user folder. Expected either primary external storage " +
               "(primary:Android/data/org.dolphinemu.dolphinemu/files) or the Dolphin app's own storage root."
-      // Subfolder of an accepted root: give the user a specific hint
-      // about which parent to pick, so they don't have to guess.
-      // Common case is "root/Dump" or "root/GameSettings" on the
-      // Dolphin provider, or "<dolphin>/files/SomeApp" on primary.
+      // Distinguish subfolders so onboarding can direct the user to the accepted root.
       val reason =
           when {
             treeUri.authority == "com.android.externalstorage.documents" &&
@@ -956,12 +849,6 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   }
 }
 
-// --- top-level SAF helpers used by SaveManager and the unified save backup ---
-//
-// Kept as free functions (not methods on DolphinTree) so a mocked DolphinTree
-// in unit tests doesn't intercept them with MockK's relaxed defaults — the real
-// implementation runs against the mocked ContentResolver / DocumentFile chain
-// the test wires up.
 
 internal fun transferFromFully(
     target: FileChannel,
@@ -994,10 +881,8 @@ internal fun findDir(parent: DocumentFile?, name: String): DocumentFile? {
 }
 
 /**
- * Walks an existing path under [root] split by [parts] without creating any directories, and
- * returns the file named [fileName] if it exists. Returns null when any intermediate directory or
- * the file itself is missing. Used by [com.skiletro.wheelwitch.data.SaveManager] to discover
- * vanilla and patched-ISO NAND saves without creating empty directories in Dolphin's virtual NAND.
+ * Finds `Wii/title/<titleId>/<subdir>/data/rksys.dat` without creating NAND directories.
+ * Returns null if any directory or the save file is absent.
  */
 internal fun findNandSaveFile(root: DocumentFile, titleId: String, subdir: String): DocumentFile? {
   val wiiDir = root.findFile("Wii") ?: return null
@@ -1015,10 +900,7 @@ internal fun findNandSaveFile(root: DocumentFile, titleId: String, subdir: Strin
   return if (file.exists() && file.isFile) file else null
 }
 
-/**
- * Walks [parts] under [root], creating intermediate directories as needed. Used by the unified save
- * backup to reach nested user-data paths like `Wii/shared2/menu/FaceLib/`.
- */
+/** Walks [parts] under [root], creating intermediate directories for restore writes. */
 internal fun navigateOrCreate(root: DocumentFile, parts: List<String>): DocumentFile {
   var current = root
   for (part in parts) {
@@ -1027,14 +909,14 @@ internal fun navigateOrCreate(root: DocumentFile, parts: List<String>): Document
   return current
 }
 
-/** Reads raw bytes from [file], or null when [file] is null or unreadable. */
+/** Returns null for a missing/non-file document or a null stream; I/O exceptions propagate. */
 internal fun readDolphinBytes(resolver: ContentResolver, file: DocumentFile?): ByteArray? {
   if (file == null || !file.exists() || !file.isFile) return null
   val input = resolver.openInputStream(file.uri) ?: return null
   return input.use { it.readBytes() }
 }
 
-/** Reads [file] as UTF-8 text, or null when [file] is null or unreadable. */
+/** Reads UTF-8 text; null documents or streams yield null, while I/O exceptions propagate. */
 internal fun readDolphinText(
     resolver: ContentResolver,
     file: DocumentFile?,
@@ -1062,10 +944,8 @@ internal fun writeDolphinBytes(
 }
 
 /**
- * Recursively walks [dir] and writes every file into [out] as a `ZipEntry` whose name is [basePath]
- * joined with the file's relative path. Missing or non-directory [dir] is a no-op. The JDK's
- * `ZipInputStream` creates directories on the fly during restore, so no explicit directory entries
- * are emitted.
+ * Writes files recursively under [dir] to ZIP paths prefixed by [basePath]. Missing or
+ * non-directory [dir] is a no-op. Empty directories are omitted; restore creates parents as needed.
  */
 internal fun recursiveCopyToStream(
     resolver: ContentResolver,

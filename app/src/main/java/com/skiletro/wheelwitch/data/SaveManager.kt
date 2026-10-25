@@ -17,27 +17,18 @@ import org.json.JSONObject
 import timber.log.Timber
 
 /**
- * Unified save data backup/restore and per-region helpers for the Licenses viewer.
+ * Save backup/restore and per-region access for the Licenses viewer.
  *
- * ## Per-region read API (Licenses viewer)
- *
- * The Licenses screen still needs to know which regions are present and to read each region's
- * `rksys.dat` bytes for parsing, so [Region], [regionFromRomFileName], [listRegions], [hasSave],
- * and [readSave] remain. They share a single path layout under
- * `pack/riivolution/save/RetroWFC/<region>/rksys.dat` driven by
- * [com.skiletro.wheelwitch.data.DolphinTree.packDir].
- *
- * ## Unified save data backup/restore (Settings)
- *
- * The Settings Save Data section exposes three actions that touch the user's save data in a single
- * zip:
+ * Region saves live under `pack/riivolution/save/RetroWFC/<region>/rksys.dat` and use
+ * `RetroWFC/<region>/rksys.dat` in the ZIP. Shared-data ZIP paths are relative to Dolphin's user root:
  * ```
  * wheelwitch-save-<millis>.zip
  * ├── manifest.json            (includes the source pack "rrVersion")
  * ├── RetroWFC/
  * │   ├── RMCP/rksys.dat
  * │   ├── RMCE/rksys.dat
- * │   └── RMCJ/rksys.dat      (all regions, missing ones skipped)
+ * │   ├── RMCJ/rksys.dat
+ * │   └── RMCK/rksys.dat      (missing regions skipped)
  * └── Wii/shared2/
  *     ├── menu/FaceLib/RFL_DB.dat
  *     └── Pulsar/RetroRewind6/
@@ -47,18 +38,13 @@ import timber.log.Timber
  *         └── Ghosts/<...>     (recursive, individual files only)
  * ```
  *
- * Vanilla NAND saves and the patched-ISO save are NOT included in new backups, but restore still
- * accepts them so older backups keep round-tripping.
+ * New backups omit NAND saves; restore also accepts the known NAND paths used by older backups.
+ * `manifest.json` records the installed pack version as `rrVersion`. Restore writes
+ * `RRGameSettings.pul` only when both versions parse and match; other recognized entries have no
+ * version gate. Unknown or unsafe paths are skipped.
  *
- * The manifest records the Retro Rewind pack version ([DolphinTree .readVersion]) the backup was
- * taken from as `rrVersion`. `RRGameSettings.pul` is reset by the pack on every update, so restore
- * only writes it when the backup's `rrVersion` matches the currently installed pack version —
- * otherwise the current file is left untouched. Restore of every other entry is unconditional.
- *
- * The format is the `wheelwitch-save` v2 zip. Restore reads `manifest.json` first, refuses anything
- * whose `type` isn't `wheelwitch-save` or whose `version` is higher than the app supports, then
- * writes every other entry to the right place under Dolphin's user folder. Paths are validated
- * against [userDataPathPrefixes] to refuse zip-slip entries.
+ * The `wheelwitch-save` v2 manifest precedes data entries. Restore rejects the wrong type and
+ * versions newer than [SaveManager.BACKUP_FORMAT_VERSION] before writing data.
  */
 class InvalidBackupException(
     val reason: Reason,
@@ -99,20 +85,12 @@ object SaveManager {
    */
   const val PATCHED_ISO_HEX_ID = "524d4352"
 
-  /**
-   * Path prefix for the per-region `rksys.dat` tree under `<pack>/riivolution/save/`. Kept as a
-   * `const val` so the pack extraction carve-out
-   * ([com.skiletro.wheelwitch.data.DolphinTree.writeZipEntry]) can reference it without an
-   * allocation per entry. The full set of user-data prefixes (including the Mii DB and Pulsar
-   * paths) lives in [userDataPathPrefixes].
-   */
+  /** Pack-relative save tree excluded from pack extraction and deletion. */
   const val SAVE_PRESERVE_PREFIX = "riivolution/save/"
 
   /**
-   * Path prefixes inside the pack directory whose files are owned by the user, not the pack. The
-   * pack extraction ([com.skiletro.wheelwitch.data.DolphinTree.extractZipToPack]) skips any zip
-   * entry that starts with one of these prefixes so an update never clobbers user save data, the
-   * Mii DB, Pulsar settings, or ghost data. The trailing slash makes the match precise.
+   * Pack-relative prefixes excluded from extraction and deletion. Restore uses a separate allowlist
+   * in [resolveRestoreTarget]; these are not backup-entry paths.
    */
   val userDataPathPrefixes: List<String> =
       listOf(
@@ -121,10 +99,7 @@ object SaveManager {
           "Wii/shared2/Pulsar/RetroRewind6/",
       )
 
-  /**
-   * Names of the well-known user-data files outside the `riivolution/save/` tree. Held in one place
-   * so [hasAnySave], [backup], and [delete] stay in lock-step.
-   */
+  /** Shared user-data filenames used by presence checks, backup, and deletion. */
   object UserDataPaths {
     /** System-wide Mii database at `Wii/shared2/menu/FaceLib/`. */
     const val RFL_DB = "RFL_DB.dat"
@@ -136,10 +111,7 @@ object SaveManager {
     const val GHOSTS_DIR = "Ghosts"
   }
 
-  /**
-   * The Pulsar game-settings file that the pack resets on every update. Restore only writes it when
-   * the backup's `rrVersion` matches the installed pack version.
-   */
+  /** Restore requires matching pack versions before replacing this game-settings file. */
   private const val GAME_SETTINGS_PUL = "RRGameSettings.pul"
 
   /** Version of the `wheelwitch-save` zip format emitted by [backup]. */
@@ -148,12 +120,7 @@ object SaveManager {
   /** Type tag stored in `manifest.json`; restore rejects anything else. */
   const val BACKUP_TYPE: String = "wheelwitch-save"
 
-  /**
-   * Maps a ROM file name to its [Region]. Returns null if [name] does not start with any known
-   * region code. Match is case-insensitive so the helper tolerates the rare mixed-case pick (the
-   * ROM is always uppercased on copy in [DolphinTree.copyRomFromSource] but defensive parsing is
-   * cheap).
-   */
+  /** Maps a ROM filename's case-insensitive prefix to a region, or null if unrecognized. */
   fun regionFromRomFileName(name: String): Region? =
       Region.entries.firstOrNull { name.startsWith(it.code, ignoreCase = true) }
 
@@ -175,20 +142,14 @@ object SaveManager {
     return file.exists()
   }
 
-  /**
-   * Reads the raw `rksys.dat` bytes for [region] (null if absent). Used by
-   * [com.skiletro.wheelwitch.viewmodel.SaveDataViewModel] to feed [RksysParser]. Idempotent and
-   * side-effect free.
-   */
+  /** Reads raw region save bytes without creating directories; returns null when absent. */
   suspend fun readSave(tree: DolphinTree, region: Region): ByteArray? =
       withContext(Dispatchers.IO) { readSaveBytes(tree, region) }
 
-  // --- unified save data ------------------------------------------------
 
   /**
-   * True when any file the unified backup covers is present: a per-region `rksys.dat`, the Mii DB,
-   * any Pulsar pul file, or files in the Ghosts directory. Looks up current directories without
-   * creating them. Drives the Save Data section's enabled/disabled state.
+   * Checks for region saves, shared settings/Mii data, or a non-empty Ghosts directory without
+   * creating directories. Ghosts children need not themselves be files.
    */
   fun hasAnySave(tree: DolphinTree): Boolean {
     if (Region.entries.any { hasSave(tree, it) }) return true
@@ -211,9 +172,8 @@ object SaveManager {
    * included, stamped with the installed Retro Rewind pack version ([DolphinTree.readVersion]) as
    * `rrVersion`.
    *
-   * Missing files are silently skipped — the backup is partial-tolerant so a fresh install with no
-   * Retro Rewind data still produces a valid zip that round-trips. Returns a [BackupSummary] with
-   * the per-section counts.
+   * Missing files are skipped, so an install without save data still produces a valid empty backup.
+   * Counts reflect the availability pre-pass, except region counts reflect files actually copied.
    */
   suspend fun backup(tree: DolphinTree, dest: Uri): Result<BackupSummary> =
       withContext(Dispatchers.IO) {
@@ -223,13 +183,7 @@ object SaveManager {
                   ?: throw IOException("Cannot open output stream for $dest")
           output.use { stream ->
             ZipOutputStream(stream).use { zip ->
-              // The restore reads the zip sequentially with
-              // ZipInputStream (no seek). The manifest must be the
-              // first entry so the restore can validate it before
-              // processing the data. To populate the manifest with
-              // real counts, do a pre-pass that collects what's
-              // available, then write manifest + data in a single
-              // stream.
+              // Restore cannot seek backward: collect availability first and put the manifest before data.
               val availableRegions = Region.entries.filter { hasSave(tree, it) }
               val faceLibFile = tree.faceLibDir?.findFile(UserDataPaths.RFL_DB)
               val faceLibAvailable =
@@ -316,20 +270,14 @@ object SaveManager {
       }
 
   /**
-   * Reads the user-picked [source] zip (typically from `ACTION_OPEN_DOCUMENT`) and overwrites the
-   * user's save data in place. The zip's `manifest.json` is validated first; zips without a
-   * matching `type` / `version` are rejected with a descriptive error. Per-entry paths are
-   * validated against [userDataPathPrefixes] to refuse zip-slip-style entries that point outside
-   * the protected user-data directories.
+   * Overwrites recognized user-data entries from [source] after validating its manifest type and
+   * supported format version. Unsafe and unknown paths are skipped by [resolveRestoreTarget].
+   * Legacy NAND save paths remain supported.
    *
-   * `RRGameSettings.pul` is only written when the backup's `rrVersion` matches the currently
-   * installed pack version ([DolphinTree.readVersion]); the pack resets that file on every update,
-   * so restoring a stale one would corrupt the current install's game settings. Every other entry
-   * (including the vanilla NAND saves and patched-ISO saves found in older backups) is restored
-   * unconditionally.
-   *
-   * Intermediate directories are created on demand. Missing source files are silently skipped (the
-   * backup may have been taken before some files existed).
+   * `RRGameSettings.pul` is written only when the backup and installed pack versions both parse and
+   * match. Target resolution can create directories even for that skipped entry. Other recognized
+   * files are restored regardless of pack version; absent archive entries leave current files alone.
+   * Writes are in-place, without rollback if a later entry fails.
    */
   suspend fun restore(tree: DolphinTree, source: Uri): Result<RestoreSummary> =
       withContext(Dispatchers.IO) {
@@ -401,9 +349,8 @@ object SaveManager {
       }
 
   /**
-   * Wipes every file the unified backup covers: all regions' `rksys.dat`, the Mii DB, all Pulsar
-   * pul files, and the contents of the Ghosts directory. The parent directories are left in place
-   * (Dolphin/Pulsar may recreate them on next launch). Idempotent.
+   * Deletes backed-up region and shared save data, leaving parent directories in place.
+   * Legacy NAND saves are not deleted. Individual provider deletion failures are not reported.
    */
   suspend fun delete(tree: DolphinTree): Result<Unit> =
       withContext(Dispatchers.IO) {
@@ -426,7 +373,6 @@ object SaveManager {
         }
       }
 
-  // --- per-region internals ---------------------------------------------
 
   private fun readSaveBytes(tree: DolphinTree, region: Region): ByteArray? {
     val file = saveFile(tree, region)
@@ -442,12 +388,10 @@ object SaveManager {
     return dir.findFile(SAVE_FILE_NAME)
   }
 
-  // --- shared internals --------------------------------------------------
 
   /**
-   * Resolves a [DocumentFile] parent + filename for a backup zip entry. Returns null when the entry
-   * path isn't under one of the [userDataPathPrefixes] or the known NAND paths (zip-slip defence).
-   * Creates intermediate directories as needed.
+   * Resolves safe backup paths for RetroWFC regions, known NAND saves, FaceLib files, and Pulsar
+   * files/Ghosts. Returns null for unrecognized paths; accepted paths create parent directories.
    */
   private fun resolveRestoreTarget(
       tree: DolphinTree,
@@ -590,12 +534,7 @@ object SaveManager {
     writeZipBytes(zip, "manifest.json", obj.toString(2).encodeToByteArray())
   }
 
-  /**
-   * Internal manifest payload. The `version` and `type` tags live in the JSON envelope; the
-   * [BackupSummary] / [RestoreSummary] returned to the view-model is a flat count projection for UI
-   * use. The `rrVersion` stamp records which Retro Rewind pack version the backup was taken from
-   * (null when the pack was not installed).
-   */
+  /** Manifest availability snapshot; [rrVersion] is null when no pack version could be read. */
   internal data class BackupManifest(
       val regions: List<String>,
       val rrVersion: String?,
