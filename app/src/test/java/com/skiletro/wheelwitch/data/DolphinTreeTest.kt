@@ -209,6 +209,130 @@ class DolphinTreeTest {
     assertThat(tree.pulsarRrDir).isEqualTo(rr)
   }
 
+  @Test
+  fun `missing save queries backup and delete never create directories`() = runBlocking {
+    val tree = DolphinTree(context, treeUri)
+    every { root.findFile(any()) } returns null
+    assertThat(SaveManager.listRegions(tree)).isEmpty()
+    assertThat(SaveManager.hasSave(tree, SaveManager.Region.PAL)).isFalse()
+    assertThat(SaveManager.readSave(tree, SaveManager.Region.PAL)).isNull()
+    assertThat(SaveManager.hasAnySave(tree)).isFalse()
+    assertThat(tree.readVersion()).isNull()
+    val dest = mockk<Uri>()
+    every { resolver.openOutputStream(dest) } returns ByteArrayOutputStream()
+    assertThat(SaveManager.backup(tree, dest).isSuccess).isTrue()
+    assertThat(SaveManager.delete(tree).isSuccess).isTrue()
+    verify(exactly = 0) { root.createDirectory(any()) }
+  }
+
+  @Test
+  fun `restore makes absent optional directories visible for discovery backup and delete`() =
+      runBlocking {
+        // A mutable provider hierarchy: creation and deletion change subsequent findFile results.
+        fun directory(doc: DocumentFile): DocumentFile {
+          val children = mutableMapOf<String, DocumentFile>()
+          every { doc.isDirectory } returns true
+          every { doc.exists() } returns true
+          every { doc.findFile(any()) } answers { children[firstArg()] }
+          every { doc.listFiles() } answers { children.values.toTypedArray() }
+          every { doc.createDirectory(any()) } answers
+              {
+                val name = firstArg<String>()
+                directory(mockk(relaxed = true)).also { children[name] = it }
+              }
+          every { doc.createFile(any(), any()) } answers
+              {
+                val name = secondArg<String>()
+                val file = mockk<DocumentFile>(relaxed = true)
+                val uri = mockk<Uri>()
+                val bytes = ByteArrayOutputStream()
+                every { file.name } returns name
+                every { file.uri } returns uri
+                every { file.exists() } answers { children[name] === file }
+                every { file.isFile } returns true
+                every { file.delete() } answers { children.remove(name) != null }
+                every { resolver.openOutputStream(uri) } returns bytes
+                every { resolver.openInputStream(uri) } answers
+                    {
+                      ByteArrayInputStream(bytes.toByteArray())
+                    }
+                children[name] = file
+                file
+              }
+          return doc
+        }
+        directory(root)
+        val tree = DolphinTree(context, treeUri)
+        assertThat(tree.wiiDir).isNull()
+        assertThat(tree.shared2Dir).isNull()
+        assertThat(tree.faceLibDir).isNull()
+        assertThat(tree.pulsarDir).isNull()
+        assertThat(tree.pulsarRrDir).isNull()
+        assertThat(SaveManager.hasAnySave(tree)).isFalse()
+
+        val entries =
+            mapOf(
+                "manifest.json" to """{"type":"wheelwitch-save","version":2}""",
+                "RetroWFC/RMCP/rksys.dat" to "save",
+                "Wii/shared2/menu/FaceLib/RFL_DB.dat" to "miis",
+                "Wii/shared2/Pulsar/RetroRewind6/RRRating.pul" to "rating",
+            )
+        val sourceBytes = ByteArrayOutputStream()
+        ZipOutputStream(sourceBytes).use { zip ->
+          for ((name, content) in entries) {
+            zip.putNextEntry(ZipEntry(name))
+            zip.write(content.toByteArray())
+            zip.closeEntry()
+          }
+        }
+        val source = mockk<Uri>()
+        every { resolver.openInputStream(source) } returns
+            ByteArrayInputStream(sourceBytes.toByteArray())
+        assertThat(SaveManager.restore(tree, source).isSuccess).isTrue()
+        assertThat(tree.wiiDir).isNotNull()
+        assertThat(tree.shared2Dir).isNotNull()
+        assertThat(tree.faceLibDir).isNotNull()
+        assertThat(tree.pulsarDir).isNotNull()
+        assertThat(tree.pulsarRrDir).isNotNull()
+        assertThat(SaveManager.hasAnySave(tree)).isTrue()
+        assertThat(SaveManager.readSave(tree, SaveManager.Region.PAL))
+            .isEqualTo("save".toByteArray())
+        val dest = mockk<Uri>()
+        val backupBytes = ByteArrayOutputStream()
+        every { resolver.openOutputStream(dest) } returns backupBytes
+        val summary = SaveManager.backup(tree, dest).getOrThrow()
+        assertThat(summary.rksys).isEqualTo(1)
+        assertThat(summary.faceLib).isTrue()
+        assertThat(summary.pulsar).isEqualTo(1)
+        java.util.zip.ZipInputStream(ByteArrayInputStream(backupBytes.toByteArray())).use { zip ->
+          val restored = mutableMapOf<String, String>()
+          while (true) {
+            val entry = zip.nextEntry ?: break
+            restored[entry.name] = zip.readBytes().toString(Charsets.UTF_8)
+          }
+          assertThat(restored.filterKeys { it != "manifest.json" })
+              .containsExactlyEntriesIn(entries.filterKeys { it != "manifest.json" })
+        }
+        assertThat(SaveManager.delete(tree).isSuccess).isTrue()
+        assertThat(SaveManager.hasAnySave(tree)).isFalse()
+      }
+
+  @Test
+  fun `optional directories observe external appearance replacement and removal`() {
+    val tree = DolphinTree(context, treeUri)
+    every { root.findFile("Wii") } returns null
+    assertThat(tree.wiiDir).isNull()
+    val first = mockDir("Wii")
+    every { root.findFile("Wii") } returns first
+    assertThat(tree.wiiDir).isSameInstanceAs(first)
+    val replacement = mockDir("Wii")
+    every { root.findFile("Wii") } returns replacement
+    assertThat(tree.wiiDir).isSameInstanceAs(replacement)
+    every { root.findFile("Wii") } returns null
+    assertThat(tree.wiiDir).isNull()
+    verify(exactly = 0) { root.createDirectory(any()) }
+  }
+
   // --- top-level helpers (used by SaveManager) ------------------------
 
   @Test
@@ -604,37 +728,38 @@ class DolphinTreeTest {
   }
 
   @Test
-  fun `extractZipToPack reports PreparingFolders then WritingFiles phases`(@TempDir tempDir: Path) =
-      runBlocking {
-        val (_, packDir, _) = setupDirChain()
-        val zip = File(tempDir.toFile(), "pack.zip")
-        ZipOutputStream(zip.outputStream()).use { zos ->
-          zos.putNextEntry(ZipEntry("a/"))
-          zos.closeEntry()
-          zos.putNextEntry(ZipEntry("a/b.txt"))
-          zos.write("x".encodeToByteArray())
-          zos.closeEntry()
-        }
-        val aDir = mockk<DocumentFile>(relaxed = true)
-        every { packDir.findFile("a") } returns null
-        every { packDir.createDirectory("a") } returns aDir
-        val created = mockk<DocumentFile>(relaxed = true)
-        every { created.uri } returns Uri.parse("content://tree/pack/a/b.txt")
-        every { aDir.createFile("application/octet-stream", "b.txt") } returns created
-        val output = ByteArrayOutputStream()
-        every { resolver.openOutputStream(created.uri) } returns output
+  fun `extractZipToPack reports PreparingFolders then WritingFiles phases`(
+      @TempDir tempDir: Path
+  ): Unit = runBlocking {
+    val (_, packDir, _) = setupDirChain()
+    val zip = File(tempDir.toFile(), "pack.zip")
+    ZipOutputStream(zip.outputStream()).use { zos ->
+      zos.putNextEntry(ZipEntry("a/"))
+      zos.closeEntry()
+      zos.putNextEntry(ZipEntry("a/b.txt"))
+      zos.write("x".encodeToByteArray())
+      zos.closeEntry()
+    }
+    val aDir = mockk<DocumentFile>(relaxed = true)
+    every { packDir.findFile("a") } returns null
+    every { packDir.createDirectory("a") } returns aDir
+    val created = mockk<DocumentFile>(relaxed = true)
+    every { created.uri } returns Uri.parse("content://tree/pack/a/b.txt")
+    every { aDir.createFile("application/octet-stream", "b.txt") } returns created
+    val output = ByteArrayOutputStream()
+    every { resolver.openOutputStream(created.uri) } returns output
 
-        val tree = DolphinTree(context, treeUri)
-        val progress = mutableListOf<ExtractProgress>()
-        tree.extractZipToPack(zip) { progress.add(it) }
+    val tree = DolphinTree(context, treeUri)
+    val progress = mutableListOf<ExtractProgress>()
+    tree.extractZipToPack(zip) { progress.add(it) }
 
-        assertThat(progress.first().phase).isEqualTo(ExtractingPhase.PreparingFolders)
-        assertThat(progress.first().filesTotal).isEqualTo(1)
-        assertThat(progress.first().currentFile).isNull()
-        // Every subsequent callback is in the writing phase.
-        assertThat(progress.drop(1).map { it.phase })
-            .containsExactly(ExtractingPhase.WritingFiles, ExtractingPhase.WritingFiles)
-      }
+    assertThat(progress.first().phase).isEqualTo(ExtractingPhase.PreparingFolders)
+    assertThat(progress.first().filesTotal).isEqualTo(1)
+    assertThat(progress.first().currentFile).isNull()
+    // Every subsequent callback is in the writing phase.
+    assertThat(progress.drop(1).map { it.phase })
+        .containsExactly(ExtractingPhase.WritingFiles, ExtractingPhase.WritingFiles)
+  }
 
   @Test
   fun `extractZipToPack creates every ancestor directory even when no file lives at intermediate levels`(

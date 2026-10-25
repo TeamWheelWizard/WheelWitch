@@ -88,9 +88,9 @@ data class ExtractProgress(
  *         └── Pulsar/RetroRewind6/    : Retro Rewind's Pulsar config + Ghosts/
  * ```
  *
- * Construction is cheap: lazy subdirectory properties defer their first `findFile` /
- * `createDirectory` until the UI actually asks for them. This keeps the constructor side-effect
- * free and lets tests stub individual directories.
+ * Construction resolves only the SAF root. Required write directories are created lazily; optional
+ * user-data directories are looked up afresh on every access so Dolphin writes and restores are
+ * visible even when this wrapper is reused. Lookups never create optional directories.
  *
  * The tree URI must be the user-picked SAF grant that matches [DolphinPaths.expectedTreeId].
  * [Companion.validate] is the gate: the stock SAF picker cannot be restricted to a single folder,
@@ -137,7 +137,17 @@ class DolphinTree(context: Context, val treeUri: Uri) {
     findOrCreateDir(wheelWitchDir, "pack") ?: error("Cannot create or find pack/ in WheelWitch dir")
   }
 
-  /** Deletes an existing non-user-data file under [packDir] without creating directories. */
+  /** Existing pack directory, without initializing the creating [packDir] property. */
+  internal val existingPackDir: DocumentFile?
+    get() = findDir(findDir(root, "WheelWitch"), "pack")
+
+  /** Existing ROM directory, without initializing the creating [romDir] property. */
+  internal val existingRomDir: DocumentFile?
+    get() = findDir(findDir(root, "WheelWitch"), "rom")
+
+  /**
+   * Deletes an existing non-user-data file, initializing [packDir] but not entry subdirectories.
+   */
   fun deletePackEntry(relativePath: String): Boolean {
     val normalized = ZipSafety.normalizeEntryName(relativePath)
     if (!ZipSafety.isSafeEntryName(normalized, SaveManager.userDataPathPrefixes)) {
@@ -182,28 +192,33 @@ class DolphinTree(context: Context, val treeUri: Uri) {
    * `Wii/shared2/...` (Mii DB, Pulsar settings, ghost data). May be null when the user has never
    * run Retro Rewind; the unified backup tolerates that and just skips the corresponding entries.
    */
-  val wiiDir: DocumentFile? by lazy { findDir(root, "Wii") }
+  val wiiDir: DocumentFile?
+    get() = findDir(root, "Wii")
 
   /**
    * `Wii/shared2/` under [wiiDir]. Null if [wiiDir] is null or the `shared2/` subdir hasn't been
    * created by Dolphin yet.
    */
-  val shared2Dir: DocumentFile? by lazy { findDir(wiiDir, "shared2") }
+  val shared2Dir: DocumentFile?
+    get() = findDir(wiiDir, "shared2")
 
   /**
    * `Wii/shared2/menu/FaceLib/` under [shared2Dir] — home of the system-wide Mii database
    * (`RFL_DB.dat`).
    */
-  val faceLibDir: DocumentFile? by lazy { findDir(findDir(shared2Dir, "menu"), "FaceLib") }
+  val faceLibDir: DocumentFile?
+    get() = findDir(findDir(shared2Dir, "menu"), "FaceLib")
 
   /** `Wii/shared2/Pulsar/` under [shared2Dir] — Pulsar mod settings. */
-  val pulsarDir: DocumentFile? by lazy { findDir(shared2Dir, "Pulsar") }
+  val pulsarDir: DocumentFile?
+    get() = findDir(shared2Dir, "Pulsar")
 
   /**
    * `Wii/shared2/Pulsar/RetroRewind6/` under [pulsarDir] — the Retro Rewind specific Pulsar subdir.
    * Holds the rating pul files and the Ghosts/ directory backed up by the unified save.
    */
-  val pulsarRrDir: DocumentFile? by lazy { findDir(pulsarDir, RETRO_REWIND_DIR_NAME) }
+  val pulsarRrDir: DocumentFile?
+    get() = findDir(pulsarDir, RETRO_REWIND_DIR_NAME)
 
   /**
    * Copies the bytes at [source] into [romDir] as `<gameId>.<ext>`. Replaces an existing file of
@@ -455,10 +470,11 @@ class DolphinTree(context: Context, val treeUri: Uri) {
   /**
    * Reads the `version.txt` file at `pack/RetroRewind6/version.txt` and parses it as a
    * [SemVersion]. Returns null when the file is missing or unparseable; both are treated as "no
-   * local version".
+   * local version". Does not create the pack hierarchy.
    */
   fun readVersion(): SemVersion? {
-    val text = readDolphinText(resolver, retroRewindDir.findFile(VERSION_FILE_NAME)) ?: return null
+    val directory = findDir(existingPackDir, RETRO_REWIND_DIR_NAME) ?: return null
+    val text = readDolphinText(resolver, directory.findFile(VERSION_FILE_NAME)) ?: return null
     val parsed = SemVersion.parse(text.trim())
     if (parsed == null) {
       Timber.tag(TAG).w("Could not parse version file contents: %s", text.trim())
@@ -867,12 +883,12 @@ class DolphinTree(context: Context, val treeUri: Uri) {
 
     /**
      * Reconstructs the persisted [DolphinTree] from [PrefsKeys.WHEELWITCH_TREE_URI_KEY], or returns
-     * null if the URI is missing or no longer valid (e.g. the user revoked the SAF grant). When the
-     * grant is lost, the persisted URI is cleared so the UI can route to onboarding.
+     * null if no URI is stored or reconstruction fails. A failed reconstruction clears the stored
+     * URI so the UI can route to onboarding. Reconstruction initializes [wheelWitchDir].
      *
-     * The rebuilt tree is memoised for the process lifetime; repeat calls with the unchanged URI
-     * skip the resolver rebuild. The memo is invalidated by [persist] (a new folder pick) and on
-     * rebuild failure so a stale grant can never be served a cached tree.
+     * The wrapper and SAF root are memoised while the stored URI is unchanged. [persist], a missing
+     * stored URI, or reconstruction failure invalidates the memo. Reuse does not revalidate the
+     * provider grant; optional user-data directory getters still perform fresh lookups.
      */
     @Synchronized
     fun fromPersisted(context: Context): DolphinTree? {

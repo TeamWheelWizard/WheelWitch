@@ -158,18 +158,17 @@ object SaveManager {
       Region.entries.firstOrNull { name.startsWith(it.code, ignoreCase = true) }
 
   /**
-   * Returns the regions for which the user has a ROM in [DolphinTree.romDir]. Order matches the
-   * iteration order of [DocumentFile.listFiles], which is platform-dependent but stable for a given
-   * picker result.
+   * Returns the regions for which the user has a ROM in the existing Dolphin ROM directory. Does
+   * not create directories. Order matches the provider's [DocumentFile.listFiles] order.
    */
   fun listRegions(tree: DolphinTree): List<Region> {
-    val files = tree.romDir.listFiles()
+    val files = tree.existingRomDir?.listFiles() ?: return emptyList()
     return files.mapNotNull { regionFromRomFileName(it.name ?: "") }.distinct()
   }
 
   /**
    * True when a `rksys.dat` exists at `<packRoot>/riivolution/save/RetroWFC/<region>/rksys.dat`.
-   * Intermediate directories are created on demand if missing.
+   * Missing intermediate directories are left untouched.
    */
   fun hasSave(tree: DolphinTree, region: Region): Boolean {
     val file = saveFile(tree, region) ?: return false
@@ -188,8 +187,8 @@ object SaveManager {
 
   /**
    * True when any file the unified backup covers is present: a per-region `rksys.dat`, the Mii DB,
-   * any Pulsar pul file, or the Ghosts directory. Cheap, single-shot, no side effects. Drives the
-   * Save Data section's enabled/disabled state.
+   * any Pulsar pul file, or files in the Ghosts directory. Looks up current directories without
+   * creating them. Drives the Save Data section's enabled/disabled state.
    */
   fun hasAnySave(tree: DolphinTree): Boolean {
     if (Region.entries.any { hasSave(tree, it) }) return true
@@ -436,12 +435,12 @@ object SaveManager {
   }
 
   private fun saveFile(tree: DolphinTree, region: Region): DocumentFile? {
-    val dir = saveDir(tree, region)
+    var dir = tree.existingPackDir ?: return null
+    for (name in listOf("riivolution", "save", "RetroWFC", region.code)) {
+      dir = findDir(dir, name) ?: return null
+    }
     return dir.findFile(SAVE_FILE_NAME)
   }
-
-  private fun saveDir(tree: DolphinTree, region: Region): DocumentFile =
-      navigateOrCreate(tree.packDir, listOf("riivolution", "save", "RetroWFC", region.code))
 
   // --- shared internals --------------------------------------------------
 
@@ -461,7 +460,8 @@ object SaveManager {
       val parts = rest.split('/').filter { it.isNotEmpty() }
       if (parts.size != 2 || parts[0] !in Region.entries.map { it.code }) return null
       val region = Region.entries.first { it.code == parts[0] }
-      val dir = saveDir(tree, region)
+      val dir =
+          navigateOrCreate(tree.packDir, listOf("riivolution", "save", "RetroWFC", region.code))
       return dir to parts[1]
     }
     if (normalized.startsWith("Wii/title/$TITLE_ID/")) {

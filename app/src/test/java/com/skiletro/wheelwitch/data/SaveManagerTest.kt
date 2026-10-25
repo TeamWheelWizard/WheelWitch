@@ -51,7 +51,7 @@ class SaveManagerTest {
   fun `listRegions returns distinct regions present in romDir`() {
     val tree = mockk<DolphinTree>(relaxed = true)
     val romDir = mockk<DocumentFile>(relaxed = true)
-    every { tree.romDir } returns romDir
+    every { tree.existingRomDir } returns romDir
     every { romDir.listFiles() } returns
         arrayOf(
             mockRomFile("RMCP01.iso"),
@@ -76,6 +76,26 @@ class SaveManagerTest {
     val chain = setupSaveChain(region = Region.PAL, fileExists = false)
     assertThat(SaveManager.hasSave(chain.tree, Region.PAL)).isFalse()
   }
+
+  @Test
+  fun `missing intermediate save directories are not created by reads discovery or delete`() =
+      runTest {
+        val tree = mockk<DolphinTree>(relaxed = true)
+        val pack = mockDir("pack")
+        val riivolution = mockDir("riivolution")
+        every { tree.existingPackDir } returns pack
+        every { pack.findFile("riivolution") } returns riivolution
+        every { riivolution.findFile("save") } returns null
+        every { tree.faceLibDir } returns null
+        every { tree.pulsarRrDir } returns null
+        assertThat(SaveManager.hasSave(tree, Region.PAL)).isFalse()
+        assertThat(SaveManager.readSave(tree, Region.PAL)).isNull()
+        assertThat(SaveManager.hasAnySave(tree)).isFalse()
+        assertThat(SaveManager.delete(tree).isSuccess).isTrue()
+        verify(exactly = 0) { pack.createDirectory(any()) }
+        verify(exactly = 0) { riivolution.createDirectory(any()) }
+        verify(exactly = 0) { tree.packDir }
+      }
 
   // --- userDataPathPrefixes (shared with the pack-update carve-out) --
 
@@ -104,7 +124,7 @@ class SaveManagerTest {
     val tree = mockk<DolphinTree>(relaxed = true)
     // The hasSave helper for each region walks packDir/riivolution/save/RetroWFC/<code>/rksys.dat.
     // A relaxed mock returns null for findFile calls, so the chain doesn't resolve to a file.
-    every { tree.packDir.findFile(any<String>()) } returns null
+    every { tree.existingPackDir } returns null
     every { tree.faceLibDir } returns null
     every { tree.pulsarRrDir } returns null
 
@@ -660,7 +680,7 @@ class SaveManagerTest {
   @Test
   fun `delete is idempotent when nothing exists`() = runTest {
     val tree = mockk<DolphinTree>(relaxed = true)
-    every { tree.packDir.findFile(any<String>()) } returns null
+    every { tree.existingPackDir } returns null
     every { tree.faceLibDir } returns null
     every { tree.pulsarRrDir } returns null
 
@@ -682,9 +702,8 @@ class SaveManagerTest {
 
   /**
    * Wires up a save chain of the form `packDir/riivolution/save/RetroWFC/<regionCode>/rksys.dat`.
-   * The intermediate directory documents are explicitly marked as directories (relaxed mocks
-   * default to `isDirectory = false`, which would make the production `navigateOrCreate` try to
-   * create a new directory and break the chain).
+   * The intermediate directory documents are explicitly marked as directories so both existing-only
+   * lookup and restore creation traverse the same provider hierarchy.
    */
   private fun setupSaveChain(
       region: Region,
@@ -703,6 +722,7 @@ class SaveManagerTest {
 
     every { tree.resolver } returns resolver
     every { tree.packDir } returns packDir
+    every { tree.existingPackDir } returns packDir
 
     every { packDir.findFile("riivolution") } returns dir1
     every { dir1.findFile("save") } returns dir2
@@ -815,6 +835,7 @@ class SaveManagerTest {
     val rootDir = mockk<DocumentFile>(relaxed = true)
     every { tree.resolver } returns resolver
     every { tree.packDir } returns packDir
+    every { tree.existingPackDir } returns packDir
     every { tree.root } returns rootDir
 
     // Per-region rksys.dat
