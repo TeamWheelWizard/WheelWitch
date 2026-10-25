@@ -39,7 +39,7 @@ class DropboxApiTest {
   private val files = mockk<DbxUserFilesRequests>()
   private val api = DropboxApi(client)
 
-  /** Dropbox revs are 9+ hex chars; the SDK's builder validates both. */
+  /** Use SDK-valid revision fixtures: at least nine hexadecimal characters. */
   private fun fileMeta(rev: String = "000000001", name: String = "save.zip"): FileMetadata =
       FileMetadata.newBuilder(name, "id1", Date(1000L), Date(5000L), rev, 10L).build()
 

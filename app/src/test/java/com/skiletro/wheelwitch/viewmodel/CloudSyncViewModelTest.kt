@@ -52,7 +52,6 @@ class CloudSyncViewModelTest {
   @BeforeEach
   fun setUp() {
     Dispatchers.setMain(dispatcher)
-    // Simulate a persisted tree by default; individual tests override.
     val mainPrefs = mockk<SharedPreferences>(relaxed = true)
     every { app.getSharedPreferences(PrefsKeys.PREFS_NAME, Context.MODE_PRIVATE) } returns mainPrefs
     every { mainPrefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null) } returns
@@ -327,7 +326,6 @@ class CloudSyncViewModelTest {
     model.onAppResume()
     coVerify(exactly = 0) { api.fetchSaveMeta() }
     val connected = model.uiState.value as SyncUiState.Connected
-    // Auto path: offline is a silent skip, never an Error surface.
     assertThat(connected.status).isEqualTo(SyncStatus.Idle)
   }
 

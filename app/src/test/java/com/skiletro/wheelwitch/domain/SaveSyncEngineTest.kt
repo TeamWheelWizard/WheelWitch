@@ -67,7 +67,7 @@ class SaveSyncEngineTest {
 
   @Test
   fun `foreign recent lock is fresh`() {
-    val lock = CloudLock("dev-other", 100L, 999_999L) // serverModified 1s before now
+    val lock = CloudLock("dev-other", 100L, 999_999L) // serverModified 1 ms before now
     assertThat(engine.isLockFresh(lock, "dev-me")).isTrue()
   }
 

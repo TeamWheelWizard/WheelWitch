@@ -30,10 +30,10 @@ class RankCalculatorTest {
             stats(
               vrPoints = 50000.0, // internal 500 -> norm 50
               wins = 60,
-              losses = 40, // 60% win, 100 total
-              firsts = 2250, // 100%
-              dist = 40000.0, // 100%
-              dist1st = 10000.0, // 100%
+              losses = 40,
+              firsts = 2250,
+              dist = 40000.0,
+              dist1st = 10000.0,
             )
         )
     assertThat(result.meetsRaceReq).isTrue()
@@ -104,7 +104,6 @@ class RankCalculatorTest {
 
   @Test
   fun `computeNeeds reports per-stat needs and feasibility for a mid score`() {
-    // rank 8 (94 <= score < 100); next threshold is 100.
     val needs =
         computeNeeds(
             stats(

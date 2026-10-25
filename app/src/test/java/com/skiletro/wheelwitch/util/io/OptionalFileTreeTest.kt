@@ -29,7 +29,6 @@ class OptionalFileTreeTest {
   @Test
   fun `drops when disabled`() {
     plant(enabled = true, minPriority = Log.VERBOSE)
-    // Swap to disabled by planting a new tree
     Timber.uprootAll()
     plant(enabled = false, minPriority = Log.VERBOSE)
     Timber.tag("Tag").i("hello")
@@ -136,8 +135,8 @@ class OptionalFileTreeTest {
   @Test
   fun `isLoggable returns true when enabled and above minPriority`() {
     plant(enabled = true, minPriority = Log.WARN)
-    Timber.tag("Tag").i("info") // dropped
-    Timber.tag("Tag").w("warn") // kept
+    Timber.tag("Tag").i("info")
+    Timber.tag("Tag").w("warn")
     val contents = file.readText()
     assertThat(contents).doesNotContain("info")
     assertThat(contents).contains("warn")

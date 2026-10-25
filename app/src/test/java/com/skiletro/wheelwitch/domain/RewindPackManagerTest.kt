@@ -42,7 +42,6 @@ class RewindPackManagerTest {
     unmockkObject(FileDownloader)
   }
 
-  // --- checkStatus -----------------------------------------------------
 
   @Test
   fun `checkStatus returns NotInstalled when no local version and server reachable`() =
@@ -111,16 +110,12 @@ class RewindPackManagerTest {
 
   @Test
   fun `checkStatus surfaces exceptions as they bubble up`() = runBlocking {
-    // The view-model layer wraps checkStatus in runCatching; the
-    // manager itself lets exceptions propagate so the caller decides
-    // how to handle them.
     coEvery { tree.readVersion() } throws IllegalStateException("SAF boom")
 
     val ex = runCatching { manager().checkStatus() }.exceptionOrNull()
     assertThat(ex).isInstanceOf(IllegalStateException::class.java)
   }
 
-  // --- installLatest ---------------------------------------------------
 
   @Test
   fun `installLatest writes the version when the zip's version txt is missing`() = runBlocking {
@@ -173,7 +168,7 @@ class RewindPackManagerTest {
         coEvery { tree.readVersion() } returns server.latestVersion
         coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
 
-        val result = manager().installLatest { /* no-op */ }
+        val result = manager().installLatest {  }
 
         assertThat(result.isSuccess).isTrue()
         coVerify(exactly = 0) { tree.writeVersion(any()) }
@@ -196,10 +191,9 @@ class RewindPackManagerTest {
     coEvery { tree.writeRrMetadata(server.latestVersion) } throws
         IllegalStateException("metadata boom")
 
-    val result = manager().installLatest { /* no-op */ }
+    val result = manager().installLatest {  }
 
-    // The version.txt is load-bearing; the metadata XML is cosmetic.
-    // A metadata write failure must not turn a successful install red.
+    // Metadata is cosmetic; version.txt determines the installed version.
     assertThat(result.isSuccess).isTrue()
     coVerify(exactly = 1) { tree.writeVersion(server.latestVersion) }
   }
@@ -230,11 +224,7 @@ class RewindPackManagerTest {
     val result = manager().installLatest { phase -> phases.add(phase) }
 
     assertThat(result.isSuccess).isTrue()
-    // The first three reports are Downloading (one from the downloader's
-    // start-of-attempt hook, one at the end of the success path, plus
-    // a third the throttled callback adds; we accept any Downloading
-    // prefix and only assert the *eventual* transition to Extracting).
-    // The Extracting phase reports 5 entries (1 pre-pass + 4 writing).
+    // The downloader is mocked, so only extraction callbacks have a fixed sequence here.
     assertThat(phases.filterIsInstance<RewindPackManager.InstallProgress.Extracting>())
         .containsExactly(
             RewindPackManager.InstallProgress.Extracting(
@@ -279,7 +269,6 @@ class RewindPackManagerTest {
             ),
         )
         .inOrder()
-    // The last phase is always Extracting, never Downloading.
     assertThat(phases.last()).isInstanceOf(RewindPackManager.InstallProgress.Extracting::class.java)
   }
 
@@ -294,12 +283,10 @@ class RewindPackManagerTest {
         }
     coEvery { tree.extractZipToPack(any(), any()) } throws IllegalStateException("extract boom")
 
-    val result = manager().installLatest { /* no-op */ }
+    val result = manager().installLatest {  }
     assertThat(result.isFailure).isTrue()
-    // No leftover zip in the cache dir.
     assertThat(cacheDir.listFiles()?.toList().orEmpty().any { it.name == "RetroRewind.zip" })
         .isFalse()
-    // The version is NOT written because the extract failed.
     coVerify(exactly = 0) { tree.writeVersion(any()) }
     coVerify(exactly = 0) { tree.writeRrMetadata(any()) }
   }
@@ -310,7 +297,7 @@ class RewindPackManagerTest {
         manager(
                 server = fakeServer(serverInfoResult = { Result.failure(Exception("Server boom")) })
             )
-            .installLatest { /* no-op */ }
+            .installLatest {  }
     assertThat(result.isFailure).isTrue()
     coVerify(exactly = 0) {
       FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any())
@@ -326,7 +313,7 @@ class RewindPackManagerTest {
                         fullZipUrl = { throw RuntimeException("Failed to fetch install URL") }
                     )
             )
-            .installLatest { /* no-op */ }
+            .installLatest {  }
 
     assertThat(result.isFailure).isTrue()
     coVerify(exactly = 0) {
@@ -345,21 +332,17 @@ class RewindPackManagerTest {
         }
     coEvery { tree.extractZipToPack(any(), any()) } throws CancellationException("cancelled")
 
-    val ex = runCatching { manager().installLatest { /* no-op */ } }.exceptionOrNull()
+    val ex = runCatching { manager().installLatest {  } }.exceptionOrNull()
 
     // runCatching was applied by the *caller* here; the manager must not
     // convert cooperative cancellation into Result.failure itself.
     assertThat(ex).isInstanceOf(CancellationException::class.java)
   }
 
-  // --- update ----------------------------------------------------------
 
   @Test
   fun `update falls back to full reinstall when no local version`() = runBlocking {
-    // First readVersion (initial local version check) returns null.
-    // Second readVersion (post-extract check) also returns null so the
-    // pack's own version.txt is missing — the typical hotfix shape —
-    // and writeVersion is exercised.
+    // Model both an absent installation and an archive without version.txt.
     coEvery { tree.readVersion() } returns null andThen null
     val server = serverInfo()
     coEvery { FileDownloader.downloadInParallel(any(), any(), any(), any(), any(), any()) } answers
@@ -375,11 +358,9 @@ class RewindPackManagerTest {
 
     val result =
         manager(server = fakeServer(fullZipUrl = { "https://example.com/full.zip" })).update {
-          /* no-op */
         }
 
     assertThat(result.isSuccess).isTrue()
-    // Full zip URL used, not an incremental step URL.
     coVerify(exactly = 1) {
       FileDownloader.downloadInParallel(
           url = "https://example.com/full.zip",
@@ -436,11 +417,9 @@ class RewindPackManagerTest {
 
     val result =
         manager(server = fakeServer(serverInfoResult = { Result.success(server) })).update {
-          /* no-op */
         }
 
     assertThat(result.isSuccess).isTrue()
-    // Only 3.3.1 and 3.3.2 are downloaded; 3.3.0 is the current local.
     coVerify(exactly = 1) {
       FileDownloader.downloadInParallel(
           url = "https://example.com/3.3.1.zip",
@@ -461,7 +440,6 @@ class RewindPackManagerTest {
           initialBackoffMillis = any(),
       )
     }
-    // The full zip URL was NOT used.
     coVerify(exactly = 0) {
       FileDownloader.downloadInParallel(
           url = "https://example.com/RetroRewind.zip",
@@ -575,7 +553,6 @@ class RewindPackManagerTest {
     verify(exactly = 0) { tree.deletePackEntry("RetroRewind6/future.bin") }
   }
 
-  // --- reinstall -------------------------------------------------------
 
   @Test
   fun `reinstall performs a full install`() = runBlocking {
@@ -594,7 +571,6 @@ class RewindPackManagerTest {
 
     val result =
         manager(server = fakeServer(fullZipUrl = { "https://example.com/full.zip" })).reinstall {
-          /* no-op */
         }
 
     assertThat(result.isSuccess).isTrue()
@@ -609,7 +585,7 @@ class RewindPackManagerTest {
         manager(
                 server = fakeServer(serverInfoResult = { Result.failure(Exception("Server boom")) })
             )
-            .reinstall { /* no-op */ }
+            .reinstall {  }
 
     assertThat(result.isFailure).isTrue()
     coVerify(exactly = 0) {
@@ -630,7 +606,6 @@ class RewindPackManagerTest {
 
     val result =
         manager(server = fakeServer(fullZipUrl = { "https://example.com/full.zip" })).reinstall {
-          /* no-op */
         }
 
     assertThat(result.isFailure).isTrue()
@@ -638,7 +613,6 @@ class RewindPackManagerTest {
     coVerify(exactly = 0) { tree.writeRrMetadata(any()) }
   }
 
-  // --- helpers ---------------------------------------------------------
 
   private fun manager(server: PackServerSource = fakeServer()) =
       RewindPackManager(tree = tree, cacheDir = cacheDir, server = server)

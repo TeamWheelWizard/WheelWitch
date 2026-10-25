@@ -25,7 +25,6 @@ import org.junit.jupiter.api.Test
 
 class SaveManagerTest {
 
-  // --- region / listRegions / hasSave (per-region API for Licenses) ---
 
   @Test
   fun `regionFromRomFileName returns correct region for all three codes`() {
@@ -97,7 +96,6 @@ class SaveManagerTest {
         verify(exactly = 0) { tree.packDir }
       }
 
-  // --- userDataPathPrefixes (shared with the pack-update carve-out) --
 
   @Test
   fun `userDataPathPrefixes contains all three protected directories with trailing slashes`() {
@@ -111,19 +109,13 @@ class SaveManagerTest {
 
   @Test
   fun `SAVE_PRESERVE_PREFIX is the first userDataPathPrefixes entry for backward compat`() {
-    // The pack-update carve-out in DolphinTree.writeZipEntry still
-    // references SAVE_PRESERVE_PREFIX; the unified list is the
-    // source of truth and includes it.
     assertThat(SaveManager.userDataPathPrefixes.first()).isEqualTo(SaveManager.SAVE_PRESERVE_PREFIX)
   }
 
-  // --- hasAnySave --------------------------------------------------------
 
   @Test
   fun `hasAnySave is false when the tree is empty`() {
     val tree = mockk<DolphinTree>(relaxed = true)
-    // The hasSave helper for each region walks packDir/riivolution/save/RetroWFC/<code>/rksys.dat.
-    // A relaxed mock returns null for findFile calls, so the chain doesn't resolve to a file.
     every { tree.existingPackDir } returns null
     every { tree.faceLibDir } returns null
     every { tree.pulsarRrDir } returns null
@@ -182,7 +174,6 @@ class SaveManagerTest {
     assertThat(SaveManager.hasAnySave(env.tree)).isFalse()
   }
 
-  // --- backup -----------------------------------------------------------
 
   @Test
   fun `backup writes a manifest plus per-region rksys files to the user-picked zip`() = runTest {
@@ -361,7 +352,6 @@ class SaveManagerTest {
     assertThat(entries.map { it.name }).doesNotContain("Wii/title/00010004/524d4352/data/rksys.dat")
   }
 
-  // --- restore ----------------------------------------------------------
 
   @Test
   fun `restore rejects a zip whose manifest is missing`() = runTest {
@@ -449,7 +439,6 @@ class SaveManagerTest {
     val source = mockk<Uri>(relaxed = true)
     setupRestoreEnv(env)
 
-    // Build a backup zip on the fly and stream it into restore.
     val backupOutput = ByteArrayOutputStream()
     every { env.resolver.openOutputStream(any()) } returns backupOutput
     SaveManager.backup(env.tree, mockk(relaxed = true))
@@ -539,11 +528,9 @@ class SaveManagerTest {
                     .encodeToByteArray()
             )
             zos.closeEntry()
-            // Safe entry.
             zos.putNextEntry(ZipEntry("RetroWFC/RMCP/rksys.dat"))
             zos.write("safe-data".encodeToByteArray())
             zos.closeEntry()
-            // Traversal entries — should all be skipped.
             zos.putNextEntry(ZipEntry("../../escape.txt"))
             zos.write("bad".encodeToByteArray())
             zos.closeEntry()
@@ -564,7 +551,6 @@ class SaveManagerTest {
     val result = SaveManager.restore(env.tree, source)
 
     assertThat(result.isSuccess).isTrue()
-    // Only the safe RetroWFC entry was processed; traversal entries were skipped.
     val summary = result.getOrThrow()
     assertThat(summary.rksys).isEqualTo(1)
     assertThat(summary.vanillaSaves).isEqualTo(0)
@@ -573,7 +559,6 @@ class SaveManagerTest {
     assertThat(summary.ghosts).isEqualTo(0)
   }
 
-  // --- RRGameSettings version gate -------------------------------------
 
   @Test
   fun `restore writes RRGameSettings pul when the backup RR version matches the installed pack`() =
@@ -608,7 +593,6 @@ class SaveManagerTest {
         val result = SaveManager.restore(env.tree, source)
 
         assertThat(result.isSuccess).isTrue()
-        // RRRating.pul still restores; RRGameSettings.pul does not.
         assertThat(ratingOutput.toByteArray()).isEqualTo("RRRating.pul".encodeToByteArray())
         verify(exactly = 0) { env.resolver.openOutputStream(gsUri) }
       }
@@ -655,7 +639,6 @@ class SaveManagerTest {
     verify(exactly = 0) { env.resolver.openOutputStream(gsUri) }
   }
 
-  // --- delete -----------------------------------------------------------
 
   @Test
   fun `delete wipes per-region rksys the Mii DB and all pul files`() = runTest {
@@ -666,12 +649,9 @@ class SaveManagerTest {
     val result = SaveManager.delete(env.tree)
 
     assertThat(result.isSuccess).isTrue()
-    // Region files are deleted.
     verify { env.regionFile("RMCP").delete() }
     verify { env.regionFile("RMCE").delete() }
-    // RFL_DB.dat is deleted.
     verify { env.faceLibFile.delete() }
-    // Each pul file is deleted.
     verify { env.pulFile("RRRating.pul").delete() }
     verify { env.pulFile("RRGameSettings.pul").delete() }
     verify { env.pulFile("RRSettings.pul").delete() }
@@ -689,9 +669,7 @@ class SaveManagerTest {
     assertThat(result.isSuccess).isTrue()
   }
 
-  // --- helpers ---------------------------------------------------------
 
-  /** Holds the mocks wired up by [setupSaveChain] so individual tests can inspect them. */
   private class MockSaveChain(
       val tree: DolphinTree,
       val resolver: ContentResolver,
@@ -780,7 +758,6 @@ class SaveManagerTest {
     }
   }
 
-  /** A DocumentFile mock with `isDirectory = true` so `navigateOrCreate` keeps the chain. */
   private fun mockDir(name: String): DocumentFile {
     val dir = mockk<DocumentFile>(relaxed = true)
     every { dir.name } returns name
@@ -794,14 +771,7 @@ class SaveManagerTest {
     return file
   }
 
-  // --- backup / restore / delete environment --------------------------
 
-  /**
-   * The minimum set of mocks the unified [SaveManager.backup], [SaveManager.restore], and
-   * [SaveManager.delete] need. Stores the per-region `rksys.dat` files, the Mii DB, the three
-   * Pulsar pul files, and (optionally) a small Ghosts tree under
-   * `Wii/shared2/Pulsar/RetroRewind6/Ghosts/`.
-   */
   private class BackupEnv(
       val tree: DolphinTree,
       val resolver: ContentResolver,
@@ -838,7 +808,6 @@ class SaveManagerTest {
     every { tree.existingPackDir } returns packDir
     every { tree.root } returns rootDir
 
-    // Per-region rksys.dat
     val regionFiles = mutableMapOf<Region, DocumentFile>()
     for (region in Region.entries) {
       val dir = mockDir(region.code)
@@ -863,15 +832,12 @@ class SaveManagerTest {
       every { resolver.openOutputStream(fileUri) } returns ByteArrayOutputStream()
       regionFiles[region] = file
     }
-    // pack/riivolution/save/RetroWFC/<code>/ chain
     val retroWfcDir = mockDir("RetroWFC")
     val saveDir = mockDir("save")
     val riivDir = mockDir("riivolution")
     every { packDir.findFile("riivolution") } returns riivDir
     every { riivDir.findFile("save") } returns saveDir
     every { saveDir.findFile("RetroWFC") } returns retroWfcDir
-    // The per-region navigation chain the production code walks
-    // (pack/riivolution/save/RetroWFC/<code>) — the inner walk.
     for (region in Region.entries) {
       val regionDir = mockDir(region.code)
       every { regionDir.findFile(SaveManager.SAVE_FILE_NAME) } returns regionFiles[region]
@@ -879,7 +845,6 @@ class SaveManagerTest {
       every { retroWfcDir.findFile(region.code) } returns regionDir
     }
 
-    // FaceLib + Mii DB
     val faceLibDir = mockDir("FaceLib")
     val menuDir = mockDir("menu")
     val shared2Dir = mockDir("shared2")
@@ -902,7 +867,6 @@ class SaveManagerTest {
         ByteArrayInputStream("MII".encodeToByteArray())
     every { resolver.openOutputStream(faceLibUri) } returns ByteArrayOutputStream()
 
-    // Pulsar + pul files + (optional) Ghosts
     val pulsarDir = mockDir("Pulsar")
     val pulsarRrDir = mockDir("RetroRewind6")
     every { shared2Dir.findFile("Pulsar") } returns pulsarDir
@@ -952,8 +916,7 @@ class SaveManagerTest {
       every { pulsarRrDir.findFile(SaveManager.UserDataPaths.GHOSTS_DIR) } returns null
     }
 
-    // NAND (Wii/title/) — needed by findNandSaveFile and navigateOrCreate.
-    // Stub createDirectory so restore tests can create NAND path dirs.
+    // Allow restore to create missing NAND directories for legacy backups.
     val titleDir = mockDir("title")
     every { wiiDir.findFile("title") } returns titleDir
     every { wiiDir.createDirectory("title") } returns titleDir
@@ -1019,11 +982,7 @@ class SaveManagerTest {
     )
   }
 
-  /**
-   * Builds a manifest.json for hand-rolled restore zips. Mirrors the production [SaveManager]
-   * manifest shape; `rrVersion` is omitted from the JSON when null so tests can exercise both
-   * variants.
-   */
+  /** Omits null rrVersion to model backups without a version stamp. */
   private fun manifestJson(
       rrVersion: String?,
       retroWfc: List<String> = emptyList(),
@@ -1052,10 +1011,7 @@ class SaveManagerTest {
     return obj
   }
 
-  /**
-   * Builds a restore zip containing a manifest with [rrVersion] plus all three Pulsar pul file
-   * entries (contents match the env's stubbed input streams), stubbing [env] for the [source] URI.
-   */
+  /** Pulsar fixture contents match the environment's stubbed input streams. */
   private fun sourceUriWith(source: Uri, env: BackupEnv, rrVersion: String?) {
     val backupBytes =
         ByteArrayOutputStream().use { baos ->
@@ -1075,9 +1031,7 @@ class SaveManagerTest {
   }
 
   private fun setupRestoreEnv(env: BackupEnv) {
-    // The findFile chains wired up in setupBackupEnv already resolve
-    // every restore target; RFL_DB restore writes a new file at the
-    // same uri.
+    // setupBackupEnv already wires existing targets and replacement-file output streams.
   }
 
   private data class ZipRead(val name: String, val bytes: ByteArray)

@@ -46,7 +46,6 @@ class LogViewerViewModelTest {
       ioDispatcher = ioDispatcher,
     )
 
-  // --- init / reload ---------------------------------------------------
 
   @Test
   fun `init loads the log text into state`() = runTest {
@@ -90,7 +89,6 @@ class LogViewerViewModelTest {
     assertThat(vm.state.value.logText).isEqualTo("second snapshot")
   }
 
-  // --- copyToClipboard -------------------------------------------------
 
   @Test
   fun `copyToClipboard writes the text and bumps the copy trigger`() = runTest {

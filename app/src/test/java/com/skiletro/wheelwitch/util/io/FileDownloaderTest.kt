@@ -249,7 +249,6 @@ class FileDownloaderTest {
     assertThat(error!!.cause).hasMessageThat().contains("expected 5")
   }
 
-  // --- Tier 1: Accept-Encoding identity on the single-stream path ---
 
   @Test
   fun `downloadToFile sends Accept-Encoding identity header`() {
@@ -268,14 +267,8 @@ class FileDownloaderTest {
     assertThat(recorded.headers.get("Accept-Encoding")).isEqualTo("identity")
   }
 
-  // --- Tier 2: downloadInParallel ---
 
-  /**
-   * Installs a dispatcher that:
-   * - Replies to HEAD with `Accept-Ranges: bytes` and a Content-Length
-   * - Replies to GET with a `Range: bytes=start-end` header with the matching slice of [content] as
-   *   a 206 Partial Content response.
-   */
+  /** Advertises byte ranges on HEAD and serves inclusive ranges from [content] with HTTP 206. */
   private fun installRangeDispatcher(content: ByteArray) {
     server.dispatcher =
         object : Dispatcher() {
@@ -304,7 +297,6 @@ class FileDownloaderTest {
   }
 
   private fun parseRange(header: String): Pair<Long, Long> {
-    // "bytes=start-end"
     val parts = header.removePrefix("bytes=").split("-")
     return parts[0].toLong() to parts[1].toLong()
   }
@@ -410,9 +402,7 @@ class FileDownloaderTest {
   fun `downloadInParallel falls back to single-stream when server returns no Accept-Ranges`() =
       runBlocking {
 
-        // Default dispatcher: enqueue a HEAD (no Accept-Ranges) then a 200
-        // body. Only the 200 should be consumed by the GET; the parallel
-        // path is skipped entirely.
+        // Queue separate responses for the HEAD probe and fallback GET.
         server.enqueue(
             MockResponse.Builder()
                 .code(200)
@@ -475,10 +465,7 @@ class FileDownloaderTest {
             val range =
                 request.headers.get("Range") ?: return MockResponse.Builder().code(400).build()
             val (start, end) = parseRange(range)
-            // The first chunk (bytes 0-255) is the one that gets
-            // a 503 on its first attempt; the dispatcher hands
-            // out 503 / 200 / 200 / 200 in rotation. Track
-            // attempt count for the first chunk specifically.
+            // Fail by range, not arrival order: parallel requests can arrive in any order.
             if (start == 0L) {
               val n = firstChunkAttempts.incrementAndGet()
               if (n == 1) return MockResponse.Builder().code(503).build()
@@ -544,7 +531,6 @@ class FileDownloaderTest {
 
     assertThat(ex).isNotNull()
     assertThat(reports.none { it.progress == 1f }).isTrue()
-    // The pre-allocated file must be cleaned up on failure.
     assertThat(targetFile.exists()).isFalse()
   }
 
@@ -564,8 +550,7 @@ class FileDownloaderTest {
             val range =
                 request.headers.get("Range") ?: return MockResponse.Builder().code(400).build()
             val (start, end) = parseRange(range)
-            // Stagger the two chunks so a 200ms progress tick
-            // lands between their completions.
+            // Stagger completions to allow an intermediate progress tick.
             if (start == 0L) Thread.sleep(150) else Thread.sleep(400)
             val slice = content.copyOfRange(start.toInt(), (end + 1).toInt())
             return MockResponse.Builder()
@@ -613,9 +598,6 @@ class FileDownloaderTest {
 
         assertThat(reports).isNotEmpty()
         val downloaded = reports.map { it.bytesDownloaded }
-        // Strictly monotonic (or equal between back-to-back ticks; we
-        // assert that bytesDownloaded is non-decreasing and the final
-        // report hits totalBytes).
         for (i in 1 until downloaded.size) {
           assertThat(downloaded[i]).isAtLeast(downloaded[i - 1])
         }

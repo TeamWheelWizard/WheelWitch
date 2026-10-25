@@ -52,7 +52,6 @@ class GameTypeParserTest {
         }
     }
 
-    // --- ISO ---
 
     @Test
     fun `parse ISO with valid game ID`() {
@@ -82,7 +81,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isEqualTo("")
     }
 
-    // --- RVZ ---
 
     @Test
     fun `parse RVZ with valid magic and game ID`() {
@@ -115,7 +113,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- WBFS ---
 
     @Test
     fun `parse WBFS with valid header returns Wbfs without game ID`() {
@@ -180,7 +177,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- WAD ---
 
     @Test
     fun `parse WAD with valid magic`() {
@@ -206,7 +202,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- checkValidity ---
 
     @Test
     fun `lowercase extension remains valid under Turkish locale`() {

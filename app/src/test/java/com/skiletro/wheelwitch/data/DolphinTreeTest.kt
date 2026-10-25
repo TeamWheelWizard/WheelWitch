@@ -64,7 +64,6 @@ class DolphinTreeTest {
     unmockkStatic(com.skiletro.wheelwitch.util.prefs.Prefs::class)
   }
 
-  // --- constructor & lazy subdirectories -------------------------------
 
   @Test
   fun `constructor error when DocumentFile fromTreeUri returns null`() {
@@ -159,7 +158,6 @@ class DolphinTreeTest {
     assertThat(error).hasMessageThat().contains("short transfer")
   }
 
-  // --- new lazy user-data subdirs (Wii/shared2/...) -------------------
 
   @Test
   fun `wiiDir is null when Wii is absent from the tree root`() {
@@ -333,7 +331,6 @@ class DolphinTreeTest {
     verify(exactly = 0) { root.createDirectory(any()) }
   }
 
-  // --- top-level helpers (used by SaveManager) ------------------------
 
   @Test
   fun `navigateOrCreate walks the parts and returns the deepest directory`() {
@@ -384,13 +381,10 @@ class DolphinTreeTest {
     assertThat(findDir(parent, "Wii")).isNull()
   }
 
-  // --- validate --------------------------------------------------------
 
   @Test
   fun `validate succeeds for primary storage with the expected tree id and authority`() {
-    // The @BeforeEach sets Uri.parse to return the shared `treeUri`
-    // mock whose `authority` defaults to null. We stub it here to
-    // simulate what a real primary-storage URI would carry.
+    // Uri.parse is stubbed to return treeUri regardless of the input string.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns DolphinPaths.expectedTreeId()
     every { treeUri.authority } returns "com.android.externalstorage.documents"
@@ -400,11 +394,7 @@ class DolphinTreeTest {
 
   @Test
   fun `validate succeeds for the Dolphin provider root URI`() {
-    // The Dolphin app exposes its own SAF provider
-    // (org.dolphinemu.dolphinemu.user). The picker surfaces it on
-    // devices where Dolphin is installed; the document id is
-    // "root/". This URI is a valid alternative to the primary-storage
-    // form and does not require MANAGE_EXTERNAL_STORAGE.
+    // Dolphin's SAF root is an alternative to direct external-storage access.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns "root/"
     every { treeUri.authority } returns "org.dolphinemu.dolphinemu.user"
@@ -414,10 +404,7 @@ class DolphinTreeTest {
 
   @Test
   fun `validate fails for a subfolder of the Dolphin provider`() {
-    // A subfolder of the Dolphin provider (e.g. root/GameSettings)
-    // is rejected; the WheelWitch subdirs must be created at the
-    // top of Dolphin's user folder, not inside some intermediate
-    // location.
+    // WheelWitch paths must resolve relative to Dolphin's user root.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns "root/GameSettings"
     every { treeUri.authority } returns "org.dolphinemu.dolphinemu.user"
@@ -438,9 +425,7 @@ class DolphinTreeTest {
 
   @Test
   fun `validate fails when the tree id matches but the authority is unknown`() {
-    // Defense against authority confusion: a primary-storage-shaped
-    // document id under a non-Dolphin authority (e.g. a different
-    // app's SAF provider or a content:// tree) is rejected.
+    // A matching document ID must not authorize an unrelated provider.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns DolphinPaths.expectedTreeId()
     every { treeUri.authority } returns "com.example.otherapp"
@@ -460,9 +445,6 @@ class DolphinTreeTest {
 
   @Test
   fun `validate error message hints at the parent for a subfolder of the Dolphin provider`() {
-    // The user picked root/Dump from the Dolphin provider picker. The
-    // base "wrong folder" message alone is unhelpful; the user has to
-    // guess what to pick instead. The hint tells them the parent.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns "root/Dump"
     every { treeUri.authority } returns "org.dolphinemu.dolphinemu.user"
@@ -475,9 +457,6 @@ class DolphinTreeTest {
 
   @Test
   fun `validate error message hints at the parent for a subfolder of the primary storage root`() {
-    // Same hint, but for the primary external storage case: the user
-    // picked the dolphin's files dir + a subdir instead of the files
-    // dir itself.
     mockkStatic(DocumentsContract::class)
     val subfolderId = "${DolphinPaths.expectedTreeId()}/Dump"
     every { DocumentsContract.getTreeDocumentId(any()) } returns subfolderId
@@ -491,9 +470,6 @@ class DolphinTreeTest {
 
   @Test
   fun `validate error message has no parent hint for an unrelated tree id`() {
-    // When the picked tree is unrelated to both accepted roots, the
-    // base "wrong folder" message is the best we can do. No parent
-    // hint should be appended.
     mockkStatic(DocumentsContract::class)
     every { DocumentsContract.getTreeDocumentId(any()) } returns "primary:Documents"
     every { treeUri.authority } returns "com.android.externalstorage.documents"
@@ -502,7 +478,6 @@ class DolphinTreeTest {
     assertThat(msg).doesNotContain("subfolder")
   }
 
-  // --- fromPersisted / persist ----------------------------------------
 
   @Test
   fun `fromPersisted returns null when no URI is persisted`() {
@@ -524,7 +499,6 @@ class DolphinTreeTest {
 
   @Test
   fun `fromPersisted clears the pref and returns null when fromTreeUri returns null`() {
-    // Override the setUp stub: this test wants fromTreeUri to fail.
     every { DocumentFile.fromTreeUri(context, any()) } returns null
     val editor = mockk<SharedPreferences.Editor>(relaxed = true)
     val prefs = mockk<SharedPreferences>(relaxed = true)
@@ -572,7 +546,6 @@ class DolphinTreeTest {
     verify { editor.apply() }
   }
 
-  // --- copyRomFromSource -----------------------------------------------
 
   @Test
   fun `copyRomFromSource copies bytes into romDir as gameId ext`() = runBlocking {
@@ -613,7 +586,6 @@ class DolphinTreeTest {
         verify { existing.delete() }
       }
 
-  // --- extractZipToPack ------------------------------------------------
 
   @Test
   fun `extractZipToPack writes each file entry into packDir`(@TempDir tempDir: Path) = runBlocking {
@@ -636,8 +608,7 @@ class DolphinTreeTest {
     val progress = mutableListOf<ExtractProgress>()
     tree.extractZipToPack(zip) { progress.add(it) }
 
-    // Sequence: 1 PreparingFolders + 2 files × 2 callbacks (before/after).
-    // filesDone walks 0, 0, 1, 1, 2; phase walks PF, W, W, W, W.
+    // One preparation callback, then before/after callbacks for each file.
     assertThat(progress.map { it.filesDone }).containsExactly(0, 0, 1, 1, 2).inOrder()
     assertThat(progress.map { it.filesTotal }).containsExactly(2, 2, 2, 2, 2).inOrder()
     assertThat(progress.map { it.phase })
@@ -681,10 +652,8 @@ class DolphinTreeTest {
 
     verify { packDir.createDirectory("riivolution") }
     assertThat(output.toString(Charsets.UTF_8)).isEqualTo("<xml/>")
-    // The directory pre-pass fires first.
     assertThat(progress.first().phase).isEqualTo(ExtractingPhase.PreparingFolders)
     assertThat(progress.first().currentFile).isNull()
-    // The file write phase follows, with the live entry name.
     val writingEntries = progress.filter { it.phase == ExtractingPhase.WritingFiles }
     assertThat(writingEntries.map { it.currentFile })
         .containsExactly("riivolution/RetroRewind6.xml", "riivolution/RetroRewind6.xml")
@@ -696,8 +665,6 @@ class DolphinTreeTest {
     val (_, packDir, _) = setupDirChain()
     val zip = File(tempDir.toFile(), "pack.zip")
     ZipOutputStream(zip.outputStream()).use { zos ->
-      // Directory entry followed by a file entry; directory should not
-      // produce a DocumentFile.createFile call.
       zos.putNextEntry(ZipEntry("subdir/"))
       zos.closeEntry()
       zos.putNextEntry(ZipEntry("subdir/inside.txt"))
@@ -718,11 +685,9 @@ class DolphinTreeTest {
     val progress = mutableListOf<ExtractProgress>()
     tree.extractZipToPack(zip) { progress.add(it) }
 
-    // Only one file entry → one pair of WritingFiles callbacks.
     val writingEntries = progress.filter { it.phase == ExtractingPhase.WritingFiles }
     assertThat(writingEntries.map { it.filesDone }).containsExactly(0, 1).inOrder()
     assertThat(writingEntries.first().currentFile).isEqualTo("subdir/inside.txt")
-    // Only the file entry produces a write.
     verify(exactly = 0) { packDir.createFile(any<String>(), any<String>()) }
     verify(exactly = 1) { subdirDir.createFile("application/octet-stream", "inside.txt") }
   }
@@ -756,7 +721,6 @@ class DolphinTreeTest {
     assertThat(progress.first().phase).isEqualTo(ExtractingPhase.PreparingFolders)
     assertThat(progress.first().filesTotal).isEqualTo(1)
     assertThat(progress.first().currentFile).isNull()
-    // Every subsequent callback is in the writing phase.
     assertThat(progress.drop(1).map { it.phase })
         .containsExactly(ExtractingPhase.WritingFiles, ExtractingPhase.WritingFiles)
   }
@@ -765,10 +729,6 @@ class DolphinTreeTest {
   fun `extractZipToPack creates every ancestor directory even when no file lives at intermediate levels`(
       @TempDir tempDir: Path
   ) = runBlocking {
-    // File at a/b/c/leaf.txt; no files directly under a/ or a/b/ on
-    // their own. The pre-pass must still create the full a -> a/b ->
-    // a/b/c chain, which it didn't before the ancestor-set fix
-    // (the direct-parent-only set missed "a" and "a/b" entirely).
     val (_, packDir, _) = setupDirChain()
     val zip = File(tempDir.toFile(), "pack.zip")
     ZipOutputStream(zip.outputStream()).use { zos ->
@@ -792,7 +752,7 @@ class DolphinTreeTest {
     every { resolver.openOutputStream(created.uri) } returns output
 
     val tree = DolphinTree(context, treeUri)
-    tree.extractZipToPack(zip) { /* no-op */ }
+    tree.extractZipToPack(zip) {  }
 
     verify { packDir.createDirectory("a") }
     verify { aDir.createDirectory("b") }
@@ -824,7 +784,7 @@ class DolphinTreeTest {
         every { resolver.openOutputStream(uri) } returns baos
 
         val tree = DolphinTree(context, treeUri)
-        tree.extractZipToPack(zip) { /* no-op */ }
+        tree.extractZipToPack(zip) {  }
 
         verify { existing.delete() }
         assertThat(baos.toString(Charsets.UTF_8)).isEqualTo(fileContent)
@@ -836,10 +796,7 @@ class DolphinTreeTest {
         val (_, packDir, _) = setupDirChain()
         val zip = File(tempDir.toFile(), "pack.zip")
         ZipOutputStream(zip.outputStream()).use { zos ->
-          // One entry per protected prefix. The carve-out should leave
-          // each pre-existing file alone and not even try to create a
-          // replacement (which would otherwise get suffixed with `.1`
-          // on the next update).
+          // Protected user data must not be replaced by pack templates.
           zos.putNextEntry(ZipEntry("riivolution/save/RetroWFC/PAL/rksys.dat"))
           zos.write("template".encodeToByteArray())
           zos.closeEntry()
@@ -850,7 +807,6 @@ class DolphinTreeTest {
           zos.write("rating".encodeToByteArray())
           zos.closeEntry()
         }
-        // Chain: pack/riivolution/save/RetroWFC/PAL/rksys.dat
         val riivolutionDir = mockk<DocumentFile>(relaxed = true)
         val saveDir = mockk<DocumentFile>(relaxed = true)
         val retroWfcDir = mockk<DocumentFile>(relaxed = true)
@@ -867,7 +823,6 @@ class DolphinTreeTest {
         every { palDir.findFile("rksys.dat") } returns existingSave
         every { palDir.createFile(any<String>(), any<String>()) } returns mockk(relaxed = true)
 
-        // Chain: pack/Wii/shared2/menu/FaceLib/RFL_DB.dat
         val wiiDir = mockk<DocumentFile>(relaxed = true)
         val shared2Dir = mockk<DocumentFile>(relaxed = true)
         val menuDir = mockk<DocumentFile>(relaxed = true)
@@ -884,7 +839,6 @@ class DolphinTreeTest {
         every { faceLibDir.findFile("RFL_DB.dat") } returns existingFaceLib
         every { faceLibDir.createFile(any<String>(), any<String>()) } returns mockk(relaxed = true)
 
-        // Chain: pack/Wii/shared2/Pulsar/RetroRewind6/RRRating.pul
         val pulsarDir = mockk<DocumentFile>(relaxed = true)
         val pulsarRrDir = mockk<DocumentFile>(relaxed = true)
         every { shared2Dir.findFile("Pulsar") } returns null
@@ -896,10 +850,8 @@ class DolphinTreeTest {
         every { pulsarRrDir.createFile(any<String>(), any<String>()) } returns mockk(relaxed = true)
 
         val tree = DolphinTree(context, treeUri)
-        tree.extractZipToPack(zip) { /* no-op */ }
+        tree.extractZipToPack(zip) {  }
 
-        // Every existing file is left alone and no replacement is
-        // created. The carve-out covers all three user-data prefixes.
         verify(exactly = 0) { existingSave.delete() }
         verify(exactly = 0) { palDir.createFile(any<String>(), any<String>()) }
         verify(exactly = 0) { existingFaceLib.delete() }
@@ -938,9 +890,8 @@ class DolphinTreeTest {
         setupPackEntryWrite(packDir, "good.txt", outputs)
 
         val tree = DolphinTree(context, treeUri)
-        tree.extractZipToPack(zip) { /* no-op */ }
+        tree.extractZipToPack(zip) {  }
 
-        // Only the safe entry was written; traversal and absolute entries were filtered out.
         assertThat(outputs).containsKey("good.txt")
         assertThat(outputs).doesNotContainKey("escape.txt")
         assertThat(outputs).doesNotContainKey("escape2.txt")
@@ -949,7 +900,6 @@ class DolphinTreeTest {
         assertThat(outputs).doesNotContainKey("sneaky.txt")
       }
 
-  // --- writeLaunchJson / readLaunchJson --------------------------------
 
   @Test
   fun `writeLaunchJson writes content as rr_autostartfile json`() {
@@ -1011,7 +961,6 @@ class DolphinTreeTest {
     assertThat(tree.readLaunchJson()).isEqualTo("payload")
   }
 
-  // --- writeRrCover / writeRrMetadata ----------------------------------
 
   @Test
   fun `writeRrCover writes the cover png into romDir and replaces an existing one`() = runBlocking {
@@ -1064,7 +1013,6 @@ class DolphinTreeTest {
         val rendered = output.toString(Charsets.UTF_8)
         assertThat(rendered).contains("<version>6.11.6</version>")
         assertThat(rendered).doesNotContain("{VERSION}")
-        // The rest of the template is preserved.
         assertThat(rendered).contains("<name>Retro Rewind</name>")
         assertThat(rendered).contains("<app version=\"1\">")
       }
@@ -1090,7 +1038,6 @@ class DolphinTreeTest {
     assertThat(output.toString(Charsets.UTF_8)).isEqualTo("<x>6.11.6</x>")
   }
 
-  // --- readVersion / writeVersion -------------------------------------
 
   @Test
   fun `readVersion returns null when the version file is missing`() {
@@ -1157,7 +1104,6 @@ class DolphinTreeTest {
         assertThat(output.toString(Charsets.UTF_8)).isEqualTo("3.2.6")
       }
 
-  // --- persistUriPermission -------------------------------------------
 
   @Test
   fun `persistUriPermission takes read and write flags`() {
@@ -1171,7 +1117,6 @@ class DolphinTreeTest {
     }
   }
 
-  // --- readConfigIni / writeConfigIni ---------------------------------
 
   @Test
   fun `readConfigIni returns null when Config dir is missing`() {
@@ -1259,7 +1204,6 @@ class DolphinTreeTest {
     assertThat(output.toString(Charsets.UTF_8)).isEqualTo("payload")
   }
 
-  // --- readGameIni / writeGameIni -------------------------------------
 
   @Test
   fun `readGameIni returns null when file is absent`() {
@@ -1326,7 +1270,6 @@ class DolphinTreeTest {
     assertThat(output.toString(Charsets.UTF_8)).isEqualTo("new content")
   }
 
-  // --- ensureRmcGameInis ----------------------------------------------
 
   @Test
   fun `ensureRmcGameInis creates RMC ini from scratch when absent`() {
@@ -1382,7 +1325,6 @@ class DolphinTreeTest {
     val gameSettingsDir = setupGameSettingsDir()
     val configDir = setupConfigDir()
     every { configDir.findFile("RetroAchievements.ini") } returns null
-    // RMC.ini already correct — no rewrite needed.
     val rmcFile = mockk<DocumentFile>(relaxed = true)
     val rmcUri = mockk<Uri>(relaxed = true)
     every { rmcFile.uri } returns rmcUri
@@ -1393,7 +1335,6 @@ class DolphinTreeTest {
                 .encodeToByteArray()
         )
 
-    // RMCP01.ini has conflicting EnableCheats = True.
     val rmcp01File = mockk<DocumentFile>(relaxed = true)
     val rmcp01Uri = mockk<Uri>(relaxed = true)
     every { rmcp01File.name } returns "RMCP01.ini"
@@ -1457,12 +1398,10 @@ Enabled = False
     val tree = DolphinTree(context, treeUri)
     tree.ensureRmcGameInis()
 
-    // No createFile or openOutputStream calls — content unchanged.
     verify(exactly = 0) { gameSettingsDir.createFile(any<String>(), any<String>()) }
     verify(exactly = 0) { resolver.openOutputStream(any()) }
   }
 
-  // --- addIniKeyValueAtTheEnd (pure) ----------------------------------------
 
   @Test
   fun `addIniKeyValueAtTheEnd appends section and key when both absent`() {
@@ -1471,7 +1410,6 @@ Enabled = False
     assertThat(result).contains("EnableCheats = False")
   }
 
-  // --- removeIniKeyInSection (pure) ------------------------------------
 
   @Test
   fun `removeIniKeyInSection removes key from section`() {
@@ -1497,12 +1435,8 @@ Enabled = False
     assertThat(result).isEqualTo(input)
   }
 
-  // --- helpers ---------------------------------------------------------
 
-  /**
-   * Stubs the lazy subdirectory chain so the full WheelWitch path resolves to fresh [DocumentFile]
-   * mocks. Returns `(romDir, packDir, wheelWitchDir)`.
-   */
+  /** Returns `(romDir, packDir, wheelWitchDir)` beneath the tree root. */
   private fun setupDirChain(): Triple<DocumentFile, DocumentFile, DocumentFile> {
     val wheelWitchDir = mockk<DocumentFile>(relaxed = true)
     val romDir = mockk<DocumentFile>(relaxed = true)
@@ -1516,10 +1450,6 @@ Enabled = False
     return Triple(romDir, packDir, wheelWitchDir)
   }
 
-  /**
-   * Stubs the [DolphinTree.retroRewindDir] lazy so it resolves to a fresh [DocumentFile] mock under
-   * the given [packDir]. Used by the version-related tests.
-   */
   private fun setupRetroRewindDir(packDir: DocumentFile): DocumentFile {
     val retroRewindDir = mockk<DocumentFile>(relaxed = true)
     every { packDir.findFile(DolphinTree.RETRO_REWIND_DIR_NAME) } returns retroRewindDir
@@ -1527,16 +1457,13 @@ Enabled = False
     return retroRewindDir
   }
 
-  /** Stubs a top-level pack entry write: a file `<name>` is created and its bytes captured. */
   private fun setupPackEntryWrite(
       packDir: DocumentFile,
       name: String,
       outputs: MutableMap<String, ByteArrayOutputStream>,
   ) {
     val file = mockk<DocumentFile>(relaxed = true)
-    // Use a unique mock Uri per file so the byte stream destinations
-    // don't collapse; Uri.parse under unitTests.isReturnDefaultValues
-    // returns null, so we can't rely on it.
+    // The shared Uri.parse stub would collapse distinct files onto one output stream.
     val uri = mockk<Uri>(relaxed = true)
     every { file.uri } returns uri
     every { packDir.createFile("application/octet-stream", name) } returns file
@@ -1545,13 +1472,11 @@ Enabled = False
     every { resolver.openOutputStream(uri) } returns baos
   }
 
-  /** Stubs `Prefs.main(context)` to return [prefs] for tests that read or write prefs. */
   private fun mockPrefsMain(prefs: SharedPreferences) {
     mockkStatic("com.skiletro.wheelwitch.util.prefs.Prefs")
     io.mockk.every { com.skiletro.wheelwitch.util.prefs.Prefs.main(context) } returns prefs
   }
 
-  /** Stubs the `Config/` directory under the tree root. */
   private fun setupConfigDir(): DocumentFile {
     val configDir = mockk<DocumentFile>(relaxed = true)
     every { findOrCreateDir(root, "Config") } returns configDir
@@ -1560,7 +1485,6 @@ Enabled = False
     return configDir
   }
 
-  /** Stubs the `GameSettings/` directory under the tree root. */
   private fun setupGameSettingsDir(): DocumentFile {
     val gameSettingsDir = mockk<DocumentFile>(relaxed = true)
     every { root.findFile("GameSettings") } returns gameSettingsDir
@@ -1568,9 +1492,6 @@ Enabled = False
     return gameSettingsDir
   }
 
-  /**
-   * A DocumentFile mock with `isDirectory = true` so `navigateOrCreate` / `findDir` keep the chain.
-   */
   private fun mockDir(name: String): DocumentFile {
     val dir = mockk<DocumentFile>(relaxed = true)
     every { dir.name } returns name

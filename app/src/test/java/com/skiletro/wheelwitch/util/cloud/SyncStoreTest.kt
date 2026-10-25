@@ -19,8 +19,7 @@ class SyncStoreTest {
 
   private fun store(): StoreFixture {
     val editor = mockk<SharedPreferences.Editor>(relaxed = true)
-    // Editor is fluent: stub every setter to return the editor itself so
-    // chained production calls land on the same mock instance.
+    // Preserve the editor identity across fluent setter chains.
     every { editor.putString(any(), any()) } returns editor
     every { editor.putBoolean(any(), any()) } returns editor
     every { editor.putLong(any(), any()) } returns editor
@@ -42,7 +41,6 @@ class SyncStoreTest {
     val first = f.store.deviceId()
     assertThat(first).isNotEmpty()
     verify(exactly = 1) { f.editor.putString(PrefsKeys.SYNC_DEVICE_ID_KEY, first) }
-    // Second call is served from the in-memory cache, not prefs.
     assertThat(f.store.deviceId()).isEqualTo(first)
     verify(exactly = 1) { f.editor.putString(PrefsKeys.SYNC_DEVICE_ID_KEY, any()) }
   }

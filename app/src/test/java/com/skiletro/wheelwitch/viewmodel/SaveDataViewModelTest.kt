@@ -125,7 +125,6 @@ class SaveDataViewModelTest {
           ioDispatcher = ioDispatcher,
       )
 
-  // --- per-region Licenses viewer tests (unchanged behaviour) ---------
 
   @Test
   fun `refresh performs SAF scans on the injected IO dispatcher`() = runTest {
@@ -165,7 +164,6 @@ class SaveDataViewModelTest {
     assertThat(vm.hasAnySave.value).isFalse()
   }
 
-  // --- refreshIfStale -------------------------------------------------
 
   @Test
   fun `refreshIfStale skips when a refresh ran within the staleness window`() = runTest {
@@ -178,7 +176,6 @@ class SaveDataViewModelTest {
     vm.refresh()
     val callsAfterFirst = leaderboardCalls
 
-    // Move the clock forward by less than the staleness window.
     fixedNow += 1_000L
     vm.refreshIfStale(maxAgeMs = 5_000L)
 
@@ -196,7 +193,6 @@ class SaveDataViewModelTest {
     vm.refresh()
     val callsAfterFirst = leaderboardCalls
 
-    // Move the clock forward past the staleness window.
     fixedNow += 6_000L
     vm.refreshIfStale(maxAgeMs = 5_000L)
 
@@ -437,7 +433,6 @@ class SaveDataViewModelTest {
         vm = buildVm()
 
         vm.refresh()
-        // Second refresh answers with the fresh badge set immediately…
         vm.refresh()
         assertThat(vm.badges.value).isEqualTo(fresh)
 
@@ -513,7 +508,6 @@ class SaveDataViewModelTest {
     vm.refresh()
     assertThat(vm.mergedLicenses.value[Region.PAL]?.get(0)?.exists).isTrue()
 
-    // After delete: save is gone, refresh must publish 4 empty slots.
     coEvery { SaveManager.delete(mockTree) } returns Result.success(Unit)
     coEvery { SaveManager.readSave(mockTree, Region.PAL) } returns null
     coEvery { SaveManager.hasSave(mockTree, Region.PAL) } returns false
@@ -555,7 +549,6 @@ class SaveDataViewModelTest {
     }
   }
 
-  // --- unified save data tests ----------------------------------------
 
   @Test
   fun `backup delegates to SaveManager and persists the timestamp on success`() = runTest {
@@ -721,12 +714,10 @@ class SaveDataViewModelTest {
     assertThat(label).isNotEmpty()
   }
 
-  // --- helpers ----------------------------------------------------------
 
   /**
-   * Builds a minimal `rksys.dat` byte array with one valid license at the given [slot] and a
-   * 20-byte UTF-16BE [name]. All other fields (VR, race counts, Mii RFL) are zero. The array is
-   * large enough for all 4 license slots.
+   * Builds a zero-filled `rksys.dat` fixture with an RKPD marker, UTF-16BE [name] at 0x14,
+   * and big-endian [pid] at 0x5C relative to [slot]'s license base. Fits all four slots.
    */
   private fun rksysWithLicense(pid: Long, name: String, slot: Int): ByteArray {
     val bytes = ByteArray(0x20000)

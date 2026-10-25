@@ -22,7 +22,6 @@ class DolphinConfigTest {
     unmockkStatic(Uri::class)
   }
 
-  // --- IsoPaths.toIniLines ---------------------------------------------
 
   @Test
   fun `toIniLines on an empty list renders just the count line`() {
@@ -49,7 +48,6 @@ class DolphinConfigTest {
         .inOrder()
   }
 
-  // --- read ------------------------------------------------------------
 
   @Test
   fun `read of blank content returns empty paths`() {
@@ -106,10 +104,7 @@ class DolphinConfigTest {
 
   @Test
   fun `read ignores malformed ISOPath lines and the strays they break the block on`() {
-    // A malformed `ISOPathBad` (no digit) breaks the contiguous block;
-    // it's not in the ISOPathN regex family. The trailing ISOPath2
-    // then sits outside the block and is also ignored, matching the
-    // behavior we use in upsert/remove to keep the file canonical.
+    // A non-ISOPathN line ends the contiguous block, excluding later strays.
     val content =
         "[General]\n" +
             "ISOPath0 = \n" + // empty value; still parsed as ""
@@ -120,14 +115,9 @@ class DolphinConfigTest {
     assertThat(paths).containsExactly("", "good").inOrder()
   }
 
-  // --- upsert ----------------------------------------------------------
 
   @Test
   fun `upsert into empty content writes a new General section with the block`() {
-    // The output is a well-formed INI: a [General] header followed by
-    // a blank line and the ISOPaths block. This matches the non-blank
-    // path so a caller can re-upsert into the result without producing
-    // a stray block.
     val out = DolphinConfig.upsert("", "/Games")
     assertThat(out).isEqualTo("[General]\n\nISOPaths = 1\nISOPath0 = /Games")
   }
@@ -240,7 +230,6 @@ class DolphinConfigTest {
         )
   }
 
-  // --- remove ----------------------------------------------------------
 
   @Test
   fun `remove of a present path decrements count and renumbers`() {
@@ -297,7 +286,6 @@ class DolphinConfigTest {
         )
   }
 
-  // --- dolphinUserTreeUri ---------------------------------------------
 
   @Test
   fun `dolphinUserTreeUri for a single segment uses root prefix with the segment`() {

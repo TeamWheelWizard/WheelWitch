@@ -16,10 +16,9 @@ class RksysParserTest {
     private const val MII_RFL_OFFSET = 0x5684
     private const val MII_RFL_DATA_LENGTH = 74
 
-    /** Creates a buffer large enough for all 4 license slots. */
+    /** The default size accommodates all four license slots. */
     fun createBuffer(size: Int = 0x20000) = ByteArray(size)
 
-    /** Writes 4-byte ASCII text at a given offset. */
     fun ByteArray.writeAscii(offset: Int, text: String) {
       val bytes = text.encodeToByteArray()
       bytes.copyInto(this, offset)
@@ -47,7 +46,7 @@ class RksysParserTest {
       this[offset + 3] = value.toByte()
     }
 
-    /** Writes a UTF-16BE string into the buffer (null-terminated by the parser). */
+    /** Writes UTF-16BE code units without adding a terminator. */
     fun ByteArray.writeUTF16BE(offset: Int, text: String) {
       for ((i, c) in text.withIndex()) {
         val pos = offset + i * 2
@@ -56,7 +55,6 @@ class RksysParserTest {
       }
     }
 
-    /** Writes arbitrary bytes at offset. */
     fun ByteArray.writeBytes(offset: Int, data: ByteArray) {
       data.copyInto(this, offset)
     }
@@ -72,7 +70,6 @@ class RksysParserTest {
   @Test
   fun `parse buffer without RKPD magic returns exists false`() {
     val buf = createBuffer()
-    // deliberately no RKPD magic
     val info = RksysParser.parse(buf)
     info.licenses.forEach { assertThat(it.exists).isFalse() }
   }
@@ -129,7 +126,6 @@ class RksysParserTest {
   @Test
   fun `parse mixed slots with some missing RKPD`() {
     val buf = createBuffer()
-    // Only slot 0 and slot 2 have RKPD
     buf.writeAscii(RksysParser.LICENSE_BASES[0], "RKPD")
     buf.writeUTF16BE(RksysParser.LICENSE_BASES[0] + MII_NAME_OFFSET, "First")
     buf.writeAscii(RksysParser.LICENSE_BASES[2], "RKPD")
@@ -146,7 +142,6 @@ class RksysParserTest {
 
   @Test
   fun `parse license with short RFL data returns null miiDataBase64`() {
-    // Create buffer that ends before MII_RFL_OFFSET + MII_RFL_DATA_LENGTH
     val buf = ByteArray(RksysParser.LICENSE_BASES[0] + MII_RFL_OFFSET + 10) // only 10 bytes of RFL data
     buf.writeAscii(RksysParser.LICENSE_BASES[0], "RKPD")
 
@@ -173,7 +168,6 @@ class RksysParserTest {
     val buf = createBuffer()
     val base = RksysParser.LICENSE_BASES[0]
     buf.writeAscii(base, "RKPD")
-    // Use a PID value other than `0L`
     buf.writeUInt32BE(base + PID_OFFSET, 1L)
 
     val info = RksysParser.parse(buf)
@@ -197,8 +191,6 @@ class RksysParserTest {
     val buf = createBuffer()
     val base = RksysParser.LICENSE_BASES[0]
     buf.writeAscii(base, "RKPD")
-    // Write "A", leave a null code unit, then write "B".
-    // The null should terminate the read at the parser.
     buf.writeUTF16BE(base + MII_NAME_OFFSET, "A")
     // Leave null (2 bytes of zero) after "A"
     buf.writeUTF16BE(base + MII_NAME_OFFSET + 4, "B")

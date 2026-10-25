@@ -57,9 +57,7 @@ class DolphinPathsTest {
 
   @Test
   fun `physicalRoot only replaces the first occurrence of the package name`() {
-    // Some Android paths (e.g. FileProvider cache) can include the package name as
-    // a subdirectory. The package-swap trick must only swap the segment in
-    // /Android/data/<pkg>/, not every occurrence downstream.
+    // Preserve package-name occurrences in app-owned subdirectories.
     val ctx =
       mockWheelWitchContext(
         externalFilesDir =
