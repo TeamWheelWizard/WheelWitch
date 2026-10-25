@@ -31,7 +31,7 @@ object Prefs {
   fun badgeCache(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.BADGE_CACHE_PREFS, Context.MODE_PRIVATE)
 
-  /** Cloud sync state: tokens, revs, hashes, session flag. Encrypted in production. */
+  /** Ordinary preferences used for non-sensitive sync bookkeeping when encrypted storage fails. */
   fun sync(context: Context): SharedPreferences =
       context.getSharedPreferences(PrefsKeys.SYNC_PREFS, Context.MODE_PRIVATE)
 }

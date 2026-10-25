@@ -5,14 +5,12 @@ import androidx.compose.runtime.Immutable
 /** Describes the current state of the Retro Rewind Pack on disk relative to the update server. */
 @Immutable
 sealed class PackStatus {
-    /** No pack files found in storage. */
+    /** No parseable local pack version was found. */
     data object NotInstalled : PackStatus()
 
     /**
-     * Pack status could not be determined because the server was
-     * unreachable. The local install is still valid and usable, but
-     * the user is shown a retry affordance because the displayed
-     * version may be stale.
+     * Server info could not be fetched or parsed. [installedVersion] is the locally recorded
+     * version, not a validation of all pack files.
      */
     data class CheckFailed(val installedVersion: SemVersion?) : PackStatus()
 
@@ -23,7 +21,7 @@ sealed class PackStatus {
         val serverInfo: ServerInfo
     ) : PackStatus()
 
-    /** Pack matches the latest server version. */
+    /** Local version is at least the latest server version. */
     data class UpToDate(val currentVersion: SemVersion, val latestVersion: SemVersion) :
         PackStatus()
 }

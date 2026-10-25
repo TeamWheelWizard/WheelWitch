@@ -19,8 +19,8 @@ fun Context.isNetworkAvailable(): Boolean {
 }
 
 /**
- * Blocking HTTP GET returning the response body as a string. Throws on non-2xx responses or an
- * empty/missing body. Used by the metadata-style fetchers (RWFC endpoints, GitHub releases).
+ * Blocking HTTP GET returning the response body, including an empty body. Throws on non-2xx
+ * responses or transport failures.
  */
 fun fetchUrl(urlString: String, client: OkHttpClient = HttpClientProvider.client): String {
   val request = Request.Builder().url(urlString).build()

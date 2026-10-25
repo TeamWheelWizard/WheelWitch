@@ -8,13 +8,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Date
 
 /**
- * Flushes the in-memory [LogBuffer] to a timestamped text file in the app's
- * `cacheDir/logs/` directory, suitable for attaching to a bug-report email.
- *
- * The output is a plain-text report with a header (app version, git hash,
- * timestamp) followed by one line per captured [LogEntry]. Throwable stacks
- * are inlined into [LogEntry.message] by Timber, so they are rendered as part
- * of the message; the exporter does not re-render [LogEntry.throwable].
+ * Exports the in-memory buffer followed by any rotated and active on-disk logs.
+ * Reports include app/build metadata and may duplicate entries captured by both trees.
+ * Timber has already inlined throwable stacks into each message.
  */
 object LogExporter {
   private const val DIR_NAME = "logs"
@@ -25,14 +21,13 @@ object LogExporter {
   private val TIMESTAMP_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 
   /**
-   * Formats [dateTime] for export filenames. Exposed for tests; the shared
-   * [DateTimeFormatter] is thread-safe, unlike a shared `SimpleDateFormat`.
+   * Uses a thread-safe formatter for timestamped export filenames.
    */
   internal fun formatTimestamp(dateTime: LocalDateTime): String = dateTime.format(TIMESTAMP_FORMAT)
 
   /**
-   * Renders the current [LogBuffer] to a new file in `cacheDir/logs/`
-   * and returns it. The caller is responsible for sharing or copying the file.
+   * Writes the report to `cacheDir/logs/` with second-resolution filenames; exports within the
+   * same second overwrite the same file. Does not drain the in-memory buffer.
    */
   fun flushToCacheFile(context: Context): File {
     val dir = File(context.cacheDir, DIR_NAME)
@@ -48,7 +43,6 @@ object LogExporter {
    */
   fun exportToString(context: Context): String = buildReport(context)
 
-  /** Builds the report text. Exposed for tests so they can assert the format. */
   internal fun buildReport(context: Context): String {
     val sb = StringBuilder()
     sb.append("Wheel Witch v${BuildConfig.VERSION_NAME} ")
@@ -72,7 +66,7 @@ object LogExporter {
   /**
    * Appends the on-disk `wheelwitch.log.1` (older, rotated) and `wheelwitch.log`
    * (newer, active) files to [sb] under labelled section headers, when present.
-   * Older history is appended first so the report reads chronologically.
+   * The two disk files are ordered oldest first; the report's preceding buffer can overlap them.
    */
   private fun appendOnDiskLogs(sb: StringBuilder, logsDir: File) {
     val rotated = File(logsDir, ON_DISK_LOG_ROTATED_NAME)

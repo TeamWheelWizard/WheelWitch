@@ -64,11 +64,8 @@ private fun normalizeStatus(status: String): String = when {
 }
 
 /**
- * Extracts the "Memory usage: NNN UNIT" substring out of the check's
- * free-text [description] (the API does not return a structured memory
- * field). Returns a [MemoryInfo] with [MemoryInfo.used] set to
- * "NNNUNIT" (e.g. "256MB") on a match, or null when the description is
- * absent or does not contain the pattern.
+ * Extracts memory usage from the check's free-text [description]. Always returns [MemoryInfo];
+ * [MemoryInfo.used] is "NNNUNIT" on a match and null when no pattern is found.
  */
 private fun parseMemoryFromDescription(status: String, description: String?): MemoryInfo {
     val used = description?.let { desc ->

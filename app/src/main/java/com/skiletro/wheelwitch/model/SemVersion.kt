@@ -2,7 +2,7 @@ package com.skiletro.wheelwitch.model
 
 import androidx.compose.runtime.Immutable
 
-/** Three-part semantic version with optional pre-release label (e.g. "3.2.6-beta1"). */
+/** Three-part version; pre-release labels compare by text prefix then numeric trailing suffix. */
 @Immutable
 data class SemVersion(
     val major: Int,
@@ -18,8 +18,6 @@ data class SemVersion(
     if (preRelease != null && other.preRelease != null) {
       comparePreRelease(preRelease, other.preRelease).let { if (it != 0) return it }
     }
-    // A released version (no pre-release) outranks any pre-release of the
-    // same major.minor.patch, e.g. 3.2.6 > 3.2.6-beta1.
     if (preRelease == null && other.preRelease != null) return 1
     if (preRelease != null && other.preRelease == null) return -1
     return 0
@@ -62,7 +60,7 @@ data class SemVersion(
 
     /**
      * Parses a version string ("v3.2.6", "3.2.6-beta1") into [SemVersion], or null on failure.
-     * Accepts >= 3 numeric segments; anything beyond patch is ignored.
+     * Requires three integer core segments; ignores additional core segments and preserves the label.
      */
     fun parse(text: String): SemVersion? {
       val cleaned = text.trimStart('v', 'V')

@@ -14,27 +14,16 @@ import org.json.JSONObject
 import timber.log.Timber
 
 /**
- * Constants and helpers for the Dolphin Emulator package.
- *
- * [buildLaunchJson] is the pure JSON-shape helper that produces the
- * `dolphin-game-mod-descriptor` body Riivolution reads. [launch]
- * combines the descriptor with the physical path of the user-picked
- * ROM and fires an [Intent] at Dolphin's main activity with the
- * `AutoStartFile` extra pointing at the on-disk JSON.
- *
- * Path consistency invariant: the descriptor's `base-file`,
- * `root`, and `xml` fields, plus the `AutoStartFile` extra, all derive
- * from the same [DolphinPaths.physicalRoot] call. This guarantees
- * Riivolution can `open(2)` every path the descriptor references.
+ * Builds Dolphin's `dolphin-game-mod-descriptor` and launches it through `AutoStartFile`.
+ * Descriptor paths use [DolphinPaths] to address the same layout written through [DolphinTree].
+ * Paths must be readable by Dolphin; constructing them does not verify access or existence.
  */
 object DolphinLauncher {
   const val DOLPHIN_PACKAGE = "org.dolphinemu.dolphinemu"
   const val DOLPHIN_MAIN_ACTIVITY = "$DOLPHIN_PACKAGE.ui.main.MainActivity"
 
   /**
-   * Filename of the launch descriptor at the WheelWitch root. Also
-   * re-exported as [com.skiletro.wheelwitch.data.DolphinTree.LAUNCH_JSON_NAME]
-   * so there is one source of truth.
+   * Launch descriptor filename, stored in `WheelWitch/rom/`.
    */
   const val RR_JSON_NAME = "rr_autostartfile.json"
 
@@ -59,7 +48,6 @@ object DolphinLauncher {
   /** ROM file extensions that count as a valid launch ROM. */
   val ROM_EXTENSIONS = setOf("iso", "rvz", "wbfs")
 
-  /** Tag used by Timber in this object's log lines. */
   private const val TAG = "DolphinLauncher"
 
   /** Returns true if the Dolphin package is installed on the device. */
@@ -87,17 +75,8 @@ object DolphinLauncher {
     }
 
   /**
-   * Build the `dolphin-game-mod-descriptor` JSON body that Riivolution
-   * reads when launching Retro Rewind. Pure: no I/O, no Android state.
-   *
-   * The output uses the field names, ordering, and choice values
-   * that Dolphin's `dolphin-game-mod-descriptor` schema expects. The
-   * three path fields (`base-file`, `root`, `xml`) are derived from
-   * the caller's `baseFilePath` and `packRootPath`. For the launch
-   * to succeed, all three must come from the same `physicalRoot`
-   * call (the Path consistency invariant). `xml` is the join of
-   * `packRootPath` and [xmlRelPath], so passing the same pack root
-   * for both `root` and the prefix of `xml` is automatic.
+   * Builds the descriptor without I/O. [baseFilePath] and [packRootPath] must be filesystem
+   * paths readable by Dolphin; [xmlRelPath] is resolved beneath the pack root.
    */
   fun buildLaunchJson(
     baseFilePath: String,
@@ -130,21 +109,9 @@ object DolphinLauncher {
   }
 
   /**
-   * Writes the launch descriptor to the SAF tree and fires the
-   * Dolphin intent with [LAUNCH_EXTRA_NAME] pointing at the
-   * descriptor's physical path.
-   *
-   * Steps:
-   * 1. Compute `base-file` (the ROM's physical path under
-   *    [DolphinPaths.romDir]) and `root` (the pack dir).
-   * 2. Build the descriptor with [buildLaunchJson] and write it via
-   *    [DolphinTree.writeLaunchJson].
-   * 3. Fire an intent at [DOLPHIN_MAIN_ACTIVITY] with
-   *    [LAUNCH_EXTRA_NAME] = the JSON's physical path.
-   *
-   * Returns a failure (instead of throwing) if Dolphin isn't
-   * installed, if the external files dir is unavailable, or if the
-   * SAF write throws.
+   * Writes the descriptor through SAF and starts Dolphin with its physical path.
+   * All exceptions are captured in [Result]; success only confirms that the intent was started,
+   * not that Dolphin loaded the descriptor.
    */
   fun launch(
     context: Context,
@@ -172,11 +139,8 @@ object DolphinLauncher {
     }
 
   /**
-   * Builds the [Intent] that launches Dolphin's main activity with
-   * the launch-descriptor's physical path. Extracted from [launch]
-   * so the intent shape can be tested directly with a real [Intent]
-   * instance (mocking `Context.startActivity` on Android's abstract
-   * `Context.startActivity` drops the argument in MockK).
+   * Builds the explicit Dolphin intent with a physical descriptor path and NEW_TASK for
+   * non-Activity contexts.
    */
   fun buildDolphinIntent(jsonPath: String): Intent =
     Intent().apply {
@@ -186,22 +150,15 @@ object DolphinLauncher {
     }
 
   /**
-   * Outcome of [launchRetroRewind]. The auto-start path is the
-   * preferred UX; RR launches with the descriptor pre-loaded. The
-   * fallback path is fired when the auto-start attempt fails (e.g.
-   * the `AutoStartFile` extra throws "can't find content or path"
-   * inside Dolphin). We start Dolphin bare so the user can pick RR
-   * from the library; the WheelWitch-managed `ISOPathN` entry keeps
-   * RR in that library.
+   * Outcome of the local launch attempt. Descriptor loading errors inside Dolphin are not
+   * observable here. The fallback is attempted only when local setup or intent dispatch fails.
    */
   sealed class LaunchResult {
-    /** Auto-start path worked; RR is launching with the descriptor. */
+    /** The descriptor intent was dispatched; Dolphin has not confirmed loading it. */
     data object AutoStarted : LaunchResult()
 
     /**
-     * Auto-start failed but we started Dolphin without the extra so
-     * the user can launch RR from the library. [cause] carries the
-     * original failure for logging.
+     * A bare Dolphin launch was attempted after [cause]. Its success is not checked.
      */
     data class FallbackStarted(val cause: Throwable) : LaunchResult()
 
@@ -216,20 +173,9 @@ object DolphinLauncher {
   }
 
   /**
-   * High-level entry point used by the home screen launch button.
-   * Performs the full pre-launch sequence in order:
-   *
-   * 1. Validate Dolphin is installed.
-   * 2. Reconstruct the [DolphinTree] from the persisted SAF URI.
-   * 3. Pick the launch ROM (the first ISO/RVZ/WBFS in
-   *    `tree.romDir`, alphabetically by file name).
-   * 4. Upsert the rom directory into Dolphin's `Config/Dolphin.ini`
-   *    so RR shows up in the library.
-   * 5. Write the launch descriptor and fire the `AutoStartFile`
-   *    intent via [launch].
-   * 6. On any failure, fall back to starting Dolphin without the
-   *    extra and return [LaunchResult.FallbackStarted]. The user
-   *    can still launch RR from the library.
+   * Uses the persisted SAF tree and attempts descriptor launch after best-effort game INI
+   * setup and ROM-library registration. Missing Dolphin, storage, or ROM returns a specific
+   * outcome. Setup or dispatch failure after ROM selection attempts a bare Dolphin launch.
    */
   fun launchRetroRewind(context: Context): LaunchResult {
     if (!isDolphinInstalled(context)) return LaunchResult.DolphinNotInstalled
@@ -239,9 +185,7 @@ object DolphinLauncher {
   }
 
   /**
-   * Overload that takes an explicit [tree]. Useful for callers that
-   * already hold a tree (tests, composables that construct it
-   * inline) and want to skip the [DolphinTree.fromPersisted] lookup.
+   * Uses an existing [tree] rather than looking up the persisted SAF URI.
    */
   fun launchRetroRewind(context: Context, tree: DolphinTree): LaunchResult {
     if (!isDolphinInstalled(context)) return LaunchResult.DolphinNotInstalled
@@ -267,12 +211,8 @@ object DolphinLauncher {
   }
 
   /**
-   * Reads `Config/Dolphin.ini` from [tree], upserts the
-   * `content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From`
-   * URI (the rom directory the user picked via SAF), and writes the
-   * file back. The URI is the one Dolphin's own SAF provider expects.
-   * See [DolphinConfig.dolphinUserTreeUri]. This is the bridge that
-   * makes "RR shows up in Dolphin's library" work.
+   * Registers `WheelWitch/rom` in Dolphin's library using its document-provider URI.
+   * Writes `Config/Dolphin.ini` only when [DolphinConfig.upsert] changes the content.
    */
   fun registerRomPathInConfig(
     context: Context,
@@ -297,10 +237,8 @@ object DolphinLauncher {
   }
 
   /**
-   * Picks the launch ROM. Returns the first ISO/RVZ/WBFS file in
-   * [DolphinTree.romDir] in iteration order, or null when no
-   * recognized ROM is present. Multi-region setups surface one ROM
-   * per region; this picks the first by name for the launch.
+   * Returns the first ISO/RVZ/WBFS entry from [DolphinTree.romDir] in provider iteration order,
+   * or null. No sorting or file-content validation is performed.
    */
   fun pickRomFile(tree: DolphinTree): DocumentFile? =
     tree.romDir.listFiles()?.firstOrNull { file ->
@@ -310,9 +248,8 @@ object DolphinLauncher {
     }
 
   /**
-   * Bare Dolphin launch: no `AutoStartFile` extra. Used as the
-   * fallback when the auto-start path throws inside Dolphin. Returns
-   * true if the intent was started, false if Dolphin isn't installed.
+   * Starts Dolphin without `AutoStartFile`. Returns false if the package lookup or intent
+   * dispatch fails; cannot observe errors inside Dolphin.
    */
   fun startDolphin(context: Context): Boolean {
     if (!isDolphinInstalled(context)) return false

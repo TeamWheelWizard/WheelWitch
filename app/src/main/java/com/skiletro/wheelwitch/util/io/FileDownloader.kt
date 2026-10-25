@@ -32,10 +32,7 @@ data class DownloadProgress(
 )
 
 /**
- * Progress snapshot for a parallel chunked download, emitted to UI consumers.
- *
- * Structurally identical to [DownloadProgress] with one extra field ([activeChunks]) so the UI can
- * show a "X of N chunks" indicator if it wants. Fields are an aggregate across the worker pool.
+ * Aggregate progress across chunk workers, including workers waiting for the first response.
  */
 data class ParallelDownloadProgress(
     val progress: Float,
@@ -46,18 +43,13 @@ data class ParallelDownloadProgress(
 )
 
 /**
- * Shared HTTP download utility used by both [com.skiletro.wheelwitch.domain.RewindPackManager] and
- * [com.skiletro.wheelwitch.util.mii.MiiWadInstaller].
+ * Blocking HTTP transfers with retries; the parallel entry point dispatches its work to IO.
  */
 object FileDownloader {
   private const val DOWNLOAD_BUFFER_SIZE = 256 * 1024
   private const val TAG = "FileDownloader"
 
-  /**
-   * Default chunk count for [downloadInParallel]. Four is conservative enough to sit under any
-   * CDN's per-host connection cap while still letting a single stream saturate a typical home
-   * broadband link.
-   */
+  /** Default number of byte-range workers. */
   const val DEFAULT_PARALLELISM: Int = 4
 
   /** Tick interval (ms) for the aggregate progress emitter in [downloadInParallel]. */
@@ -66,15 +58,12 @@ object FileDownloader {
   /**
    * Downloads [url] to [targetFile]. Blocking - call from a background dispatcher.
    *
-   * On transient failures (network [IOException] or HTTP 5xx), retries up to [maxRetries] times
-   * with exponential backoff ([initialBackoffMillis] * 2^attempt). HTTP 4xx and other non-2xx
-   * responses are treated as deterministic failures and are not retried. Throws on exhausted
-   * retries, on a 4xx, or on a missing/empty body.
+   * Retries [IOException] (including HTTP 5xx and file I/O errors) up to [maxRetries] times with
+   * exponential backoff. HTTP 4xx and detected empty bodies are not retried; other non-2xx
+   * responses fail immediately.
    *
-   * @param onProgress Optional callback with progress and instantaneous byte rate. Throttled to ≥1%
-   *   progress changes; always emits progress=1f at the end of a successful download. Reset to
-   *   bytesPerSecond=0 at the start of each retry attempt so the UI does not show a stale rate
-   *   during backoff.
+   * @param onProgress Progress with a smoothed byte rate, throttled to ≥1% changes when length is
+   *   known. Emits a zero snapshot before each attempt (after any backoff), and 100% after transfer.
    * @param client OkHttp client to use. Defaults to [HttpClientProvider.client]; pass
    *   [HttpClientProvider.largeDownloadClient] for big payloads to avoid spurious 15s read
    *   timeouts.
@@ -147,30 +136,19 @@ object FileDownloader {
   }
 
   /**
-   * Downloads [url] to [targetFile] in [parallelism] concurrent byte ranges. Blocking - call from a
-   * background dispatcher.
+   * Downloads [url] in concurrent byte ranges on IO. Falls back to [downloadToFile] if HEAD fails
+   * or does not advertise byte ranges and a positive content length.
    *
-   * Probes with HEAD first; if the server doesn't advertise `Accept-Ranges: bytes` or doesn't
-   * return a `Content-Length`, falls back to [downloadToFile] with the same retry / progress
-   * semantics. The Cloudflare-fronted update server in production supports ranges, so the parallel
-   * path is the common one.
+   * Sets the destination length before range writes; this does not guarantee disk space is
+   * reserved or file contents are complete. Consumers must wait for success before reading.
    *
-   * The destination file is pre-allocated to the final size before any chunk writes, so the OS
-   * pre-reserves disk space and the consumer
-   * ([com.skiletro.wheelwitch.data.DolphinTree.extractZipToPack]) always sees a complete-length
-   * file.
+   * Each chunk retries [IOException] except HTTP 4xx. A worker failure cancels the coroutine
+   * scope and the partial file is deleted after workers finish. Blocking requests and backoff
+   * sleeps do not cooperatively observe coroutine cancellation.
    *
-   * Per-chunk retry on transient errors (network IOException or HTTP 5xx) uses the same exponential
-   * backoff as [downloadToFile]. If any chunk exhausts its retries, the worker pool is cancelled,
-   * the partial file is deleted, and an IOException surfaces to the caller.
-   *
-   * @param parallelism Number of concurrent byte-range fetches. Defaults to [DEFAULT_PARALLELISM]
-   *   (4). Capped at 16 to keep the dispatcher clone reasonable. The per-call OkHttp dispatcher is
-   *   built with `maxRequests = parallelism + 4` and `maxRequestsPerHost = parallelism` so two
-   *   concurrent downloads don't fight over a shared dispatcher.
-   * @param onProgress Aggregate progress callback. Emitted at most once per [PROGRESS_TICK_MILLIS]
-   *   interval and at 100% on success. Reset to `bytesPerSecond = 0` at the start so a stale rate
-   *   from a prior download doesn't bleed in.
+   * @param parallelism Byte-range worker count, from 1 to 16, reduced for smaller byte counts.
+   * @param onProgress Aggregate smoothed rate and progress, polled every [PROGRESS_TICK_MILLIS]
+   *   and emitted on ≥1% changes, plus 100% on success. The ranged path has no initial reset.
    */
   suspend fun downloadInParallel(
       url: String,
@@ -232,8 +210,7 @@ object FileDownloader {
           return@withContext targetFile
         }
 
-        // Build a per-call dispatcher clone so concurrent downloads
-        // don't fight over the same client.
+        // Isolate asynchronous dispatcher limits; blocking execute() calls are not capped by them.
         val effectiveParallelism =
             if (totalBytes < parallelism.toLong()) totalBytes.toInt() else parallelism
         val parallelClient =
@@ -251,9 +228,7 @@ object FileDownloader {
         val activeChunks = AtomicLong(ranges.size.toLong())
         val bytesDone = AtomicLong(0L)
 
-        // Pre-allocate the file so the OS pre-reserves space and
-        // downstream consumers (e.g. ZipFile opening the cached pack)
-        // always see a complete-length file.
+        // Fix the final length before workers write disjoint ranges.
         RandomAccessFile(targetFile, "rw").use { it.setLength(totalBytes) }
 
         try {
@@ -284,15 +259,8 @@ object FileDownloader {
       }
 
   /**
-   * Probes the server with HEAD. Returns `(contentLength, rangesSupported)`. A `null`
-   * Content-Length or missing `Accept-Ranges: bytes` is treated as "ranges not supported"; the
-   * caller falls back to single-stream.
-   *
-   * The HEAD is a single round trip paid up front; the alternative (speculatively dispatch the
-   * first chunk and trust the response `Content-Range` for total bytes) was rejected because the
-   * pre-allocation invariant at line 268 (`file.length() == totalBytes`) requires the final size up
-   * front. The 100 ms RTT cost of the HEAD is dwarfed by the multi-RTT parallel download, so the
-   * serial ordering stays.
+   * HEAD determines the final size before range writes. Failed probes or missing range/length
+   * headers select the single-stream fallback.
    */
   private fun probeRanges(url: String, client: OkHttpClient): Pair<Long, Boolean> {
     val request = Request.Builder().url(url).head().build()
@@ -357,11 +325,8 @@ object FileDownloader {
             )
           }
       /**
-       * Workers for chunks other than the first chunk need to wait initially to avoid a race
-       * condition where the first request to the server gets a `200` response with the full
-       * download, ignoring the requested range. This would break the chunked downloader if a
-       * different chunk gets the `200` (at the very least it would force a retry). All following
-       * requests seem to correctly get partial `206` responses.
+       * Gate later workers until the first response arrives: some servers ignore the initial
+       * Range and return 200. Only the zero-offset worker can consume that response correctly.
        */
       val firstDone = CompletableDeferred<Unit>()
       val workers = ranges.map { range ->
@@ -533,7 +498,7 @@ object FileDownloader {
           throw IOException("Chunk HTTP ${it.code}")
         }
         if (it.code == 200 && !isFirstChunk) {
-          // Because we won't read the stream until we're in the correct range, we throw here.
+          // A full response starts at byte zero, not this worker's requested offset.
           throw IOException("Chunk byte range $range was ignored")
         }
         check(it.code == 200 || it.code == 206) {
@@ -577,8 +542,7 @@ object FileDownloader {
       onProgress: ((DownloadProgress) -> Unit)?,
       client: OkHttpClient,
   ): File {
-    // Accept-Encoding: identity skips the redundant gzip transport
-    // compression the pack zip is already DEFLATE-compressed.
+    // Avoid redundant transport compression for zip payloads.
     val request = Request.Builder().url(url).header("Accept-Encoding", "identity").build()
     val response = client.newCall(request).execute()
     try {
@@ -653,12 +617,12 @@ object FileDownloader {
   private fun instantBytesPerSecond(bytesSinceLast: Long, elapsedNanos: Long): Double =
       if (elapsedNanos <= 0L) 0.0 else (bytesSinceLast * 1_000_000_000.0) / elapsedNanos
 
-  /** Non-retriable: deterministic client error (HTTP 4xx). */
+  /** HTTP 4xx bypasses retries. */
   private class Http4xxException(message: String) : IOException(message)
 
-  /** Retriable: transient server error (HTTP 5xx). */
+  /** HTTP 5xx uses the IOException retry path. */
   private class Http5xxException(message: String) : IOException(message)
 
-  /** Non-retriable: response body missing or empty. */
+  /** Detected empty bodies bypass retries. */
   private class EmptyBodyException(message: String) : IOException(message)
 }

@@ -6,16 +6,14 @@ import androidx.compose.runtime.Immutable
  * Parsed Dolphin Emulator version, used to warn users running a build
  * with known security vulnerabilities.
  *
- * Dolphin version strings follow the scheme `YYYY[letter][-N]` (e.g.
- * `2606`, `2606a`, `2606-300`, `2503a-254` (the latter format does not seem
- * to be used anymore, however)). The [isAtLeastMinimum] comparison is
- * done on the year-month and, when present, the dev-build number.
+ * Accepts `YYMM[letter][-N]` releases (e.g. `2606a`, `2606-300`). At the minimum year-month,
+ * a dev-build number takes precedence over a hotfix letter in the security-floor comparison.
  */
 @Immutable
 data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? = null) {
   /**
-   * True when this version reaches the security floor:
-   * `MINIMUM_YEAR` with at least `MINIMUM_DEV_BUILD` and/or `MINIMUM_HOTFIX`, or any newer year.
+   * True for a newer year-month, or the minimum year-month with a sufficient dev build
+   * (when present) or stable hotfix.
    */
   fun isAtLeastMinimum(): Boolean = when {
     year > MINIMUM_YEAR -> true
@@ -40,12 +38,12 @@ data class DolphinVersion(val year: Int, val devBuild: Int?, val hotfix: Char? =
     private val LEGACY_PATTERN = Regex("""^\d+\.\d+-\d+$""")
 
     /**
-     * Parses a Dolphin [versionName] into [DolphinVersion], or null
-     * when no `YYYY[letter][-N]` segment is present.
+     * Parses a complete `YYMM[letter][-N]` version. Legacy `N.N-N` versions map to an
+     * always-outdated sentinel; other unrecognized strings return null.
      */
     fun parse(versionName: String?): DolphinVersion? {
       versionName?.let { LEGACY_PATTERN.find(it) }?.let {
-        // If we have a legacy path, return a negative version
+        // Recognized legacy builds predate the security floor.
         return DolphinVersion(-1, -1)
       }
       val match = versionName?.let { PATTERN.find(it) } ?: return null

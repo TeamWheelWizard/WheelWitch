@@ -31,7 +31,7 @@ object PrefsKeys {
   const val LAST_BACKUP_TIMESTAMP_KEY = "last_backup_timestamp"
   const val GAME_INI_NOTICE_SHOWN_KEY = "game_ini_notice_shown"
 
-  /** Cloud sync: tokens + sync bookkeeping, stored encrypted. */
+  /** Encrypted sync store name; ordinary fallback stores bookkeeping only, never credentials. */
   const val SYNC_PREFS = "sync_prefs"
   const val SYNC_DEVICE_ID_KEY = "device_id"
   const val SYNC_ACCESS_TOKEN_KEY = "access_token"

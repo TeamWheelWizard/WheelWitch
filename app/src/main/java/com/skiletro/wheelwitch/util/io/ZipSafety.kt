@@ -15,13 +15,12 @@ object ZipSafety {
   }
 
   /**
-   * Returns `true` when [name] is a safe, relative entry path
-   * suitable for extraction into a target directory.
+   * Returns true for a nonempty slash-separated relative path without `.` or `..` components.
    *
    * Rejected patterns:
    * - Absolute paths (`/etc/passwd`)
    * - Parent-directory components (`../escape`, `foo/../../bar`)
-   * - Current-directory components (`./sneaky`, `foo/./bar`)
+   * - Current-directory components remaining after normalization (`foo/./bar`, `././bar`)
    * - Empty components from double slashes (`foo//bar`)
    * - Paths starting with any prefix in [prefixBlockList]
    *

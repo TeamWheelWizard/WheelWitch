@@ -35,9 +35,8 @@ object LogTextRenderer {
       }
 
   /**
-   * Splits [text] into one [LogLine] per line, preserving order and content
-   * exactly (the concatenation of [LogLine.text] with `\n` separators equals
-   * [text]).
+   * Splits [text] into lines, omitting the final empty element for a trailing newline.
+   * Callers preserving exact content must retain whether that newline was present.
    */
   fun parseLogLines(text: String): List<LogLine> {
     val rawLines = text.lineSequence().toList()

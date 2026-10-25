@@ -18,19 +18,16 @@ import okhttp3.Request
 import org.json.JSONObject
 
 /**
- * PKCE + redirect plumbing for the WheelSync Dropbox OAuth flow.
- *
- * The redirect URI is a custom scheme (`com.skiletro.wheelwitch://dropbox`) handled by
- * [com.skiletro.wheelwitch.MainActivity]. Incoming redirect intents are fed to [offer] and land in
- * [redirectFlow], which the cloud-sync view-model collects to finish the token exchange.
+ * Routes custom-scheme OAuth redirects from [com.skiletro.wheelwitch.MainActivity] to
+ * the cloud-sync view-model, which validates state and exchanges the code.
  */
 object DropboxRedirect {
   const val REDIRECT_URI = "com.skiletro.wheelwitch://dropbox"
 
-  /** Last OAuth redirect Uri received; null until one arrives. */
+  /** Latest offered redirect, or null initially and after [reset]. */
   val redirectFlow = MutableStateFlow<Uri?>(null)
 
-  /** Feed an incoming intent Uri; true when it is our redirect. */
+  /** Accepts URIs starting with [REDIRECT_URI]; state validation belongs to the consumer. */
   fun offer(uri: Uri?): Boolean {
     if (uri == null) return false
     val isOurs = uri.toString().startsWith(REDIRECT_URI)
@@ -38,7 +35,7 @@ object DropboxRedirect {
     return isOurs
   }
 
-  /** Clears the current redirect (used when starting a new flow). */
+  /** Clears the current redirect. */
   fun reset() {
     redirectFlow.value = null
   }
@@ -59,7 +56,6 @@ class DropboxAuthException(val statusCode: Int, body: String) :
  * key is a public identifier.
  *
  * Token-endpoint calls use the caller's [OkHttpClient] (default: [HttpClientProvider.client]).
- * [exchangeCodeAt] and [refreshAt] are internal seams the tests point at a MockWebServer.
  *
  * Refresh responses may omit `refresh_token` and `expires_in`; callers merge the fields they care
  * about onto the previously stored tokens rather than replacing them wholesale.

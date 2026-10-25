@@ -22,11 +22,7 @@ import okhttp3.OkHttpClient
 import timber.log.Timber
 
 /**
- * Application entry point. Plants Timber trees for logcat, the in-memory
- * bug-report buffer, and the optional on-disk log file. Implements
- * [SingletonImageLoader.Factory] so Coil is bootstrapped with a single
- * shared [ImageLoader] that uses [HttpClientProvider.client] for
- * network I/O and a 50 MB on-disk cache at [MiiFaceCache.directory].
+ * Configures Timber logging and Coil's shared HTTP client and Mii face caches.
  */
 class WheelWitchApp :
   Application(), SingletonImageLoader.Factory {
@@ -56,14 +52,7 @@ class WheelWitchApp :
   }
 
   /**
-   * Builds the singleton Coil [ImageLoader]. Wired once per process
-   * via [SingletonImageLoader.Factory] so every `AsyncImage` /
-   * `rememberAsyncImagePainter` shares the same memory + disk caches
-   * and OkHttp dispatcher.
-   *
-   * The disk cache directory is [MiiFaceCache.directory] (set by
-   * [onCreate]) so the Settings Mii face cache row can report and
-   * clear it without reaching into Coil's internals.
+   * Shares the disk cache location with Settings so it can report and clear the cache.
    */
   override fun newImageLoader(context: PlatformContext): ImageLoader {
     val diskCacheDir = MiiFaceCache.directory ?: File(context.cacheDir, MiiFaceCache.DIR_NAME)
@@ -87,7 +76,7 @@ class WheelWitchApp :
     /** Memory cache: up to 10% of the process's available app memory. */
     const val MEMORY_CACHE_PERCENT: Double = 0.10
 
-    /** Disk cache: 50 MB (matches the prior [MiiFaceCache] LRU cap). */
+    /** Disk cache limit: 50 MiB. */
     const val MAX_DISK_CACHE_BYTES: Long = 50L * 1024 * 1024
   }
 }

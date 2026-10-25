@@ -21,10 +21,9 @@ import java.io.File
  */
 object BugReportLauncher {
   /**
-   * Flushes the log buffer, copies a summary to the clipboard as a
-   * fallback, and opens the system share chooser pre-filled with the
-   * bug-report email and the log file as an attachment. Returns true
-   * when the chooser was launched.
+   * Exports the log buffer and opens the share chooser with the bug-report email and attachment.
+   * Copies the summary to the clipboard only if launching the chooser fails.
+   * Returns true when the chooser was launched.
    */
   fun launch(context: Context): Boolean {
     val logFile = LogExporter.flushToCacheFile(context)

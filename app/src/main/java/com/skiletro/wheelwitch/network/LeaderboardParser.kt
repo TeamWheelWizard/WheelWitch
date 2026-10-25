@@ -12,10 +12,9 @@ import org.json.JSONObject
 /**
  * Parses a `/api/leaderboard` JSON response into [LeaderboardResponse].
  *
- * The API has historically returned the entries array under several
- * field names (`players`, `data`, `results`, `leaderboard`, `entries`)
- * and pagination under camelCase, snake_case, or a `next` link. All
- * known variants are tolerated; a bare top-level array is also accepted.
+ * Accepts a bare array or an entries array under `players`, `data`, `results`, `leaderboard`,
+ * or `entries`. Pagination supports camelCase/snake_case fields and treats the presence of
+ * `next` as more pages when explicit flags are absent, even if its value is null.
  */
 fun parseLeaderboardResponse(jsonString: String): LeaderboardResponse {
     val data = jsonArrayFromResponse(

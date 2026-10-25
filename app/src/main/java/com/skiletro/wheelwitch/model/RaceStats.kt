@@ -14,8 +14,7 @@ data class HourStat(val hour: Int, val raceCount: Int)
 
 /**
  * Global race statistics parsed from the RWFC `/api/racestats/global`
- * response. All list fields default to empty when the corresponding JSON
- * array is absent.
+ * response. The parser supplies empty lists when corresponding arrays are absent.
  *
  * [trackedSince] is an ISO-8601 timestamp string (e.g. "2024-01-15") for
  * the earliest date included in the stats, or null when the server omits it.

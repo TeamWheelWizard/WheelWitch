@@ -17,12 +17,9 @@ data class SaveFileInfo(val licenses: List<LicenseInfo>) {
 }
 
 /**
- * One of 4 license slots in a `rksys.dat` file. `exists` is false
- * when the slot has no RKPD magic; all other fields are null in that
- * case. `miiDataBase64` is the 74-byte RFL Mii payload encoded as
- * base64. The two `leaderboard*` fields are populated asynchronously
- * by [com.skiletro.wheelwitch.viewmodel.SaveDataViewModel] after the
- * local save is parsed.
+ * One of four `rksys.dat` slots. The parser sets [exists] false and leaves payload fields null
+ * when RKPD magic is absent. [miiDataBase64] encodes the 74-byte RFL Mii payload.
+ * [leaderboardVr] and Mii fields may later be enriched with cached or fetched leaderboard data.
  */
 @Immutable
 data class LicenseInfo(

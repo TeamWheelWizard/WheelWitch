@@ -23,8 +23,8 @@ import org.json.JSONObject
 import timber.log.Timber
 
 /**
- * Parses RetroRewindVersion.txt format: lines of "version url path description". Skips malformed
- * lines.
+ * Parses "version url path description" lines, splitting on literal spaces at most three times.
+ * Skips lines without four parts or a parseable version; other fields are not validated.
  */
 internal fun parseUpdatesText(text: String): List<UpdateEntry> {
   return text
@@ -44,12 +44,8 @@ internal fun parseUpdatesText(text: String): List<UpdateEntry> {
 }
 
 /**
- * Normalises an update manifest URL:
- * - upgrades `http://` to `https://`
- * - drops the legacy `:8000` port
- *
- * Leaves anything HttpUrl can't parse unchanged so a malformed entry fails through to the normal
- * skip path in [parseUpdatesText].
+ * Upgrades parseable HTTP URLs to HTTPS on port 443, replacing any original port.
+ * HTTPS and unparseable URLs are returned unchanged; this does not validate manifest entries.
  */
 internal fun normalizeUpdateUrl(url: String): String {
   val parsed = url.toHttpUrlOrNull() ?: return url
@@ -57,7 +53,7 @@ internal fun normalizeUpdateUrl(url: String): String {
   return parsed.newBuilder().scheme("https").port(443).build().toString()
 }
 
-/** Parses RetroRewindDelete.txt format: lines of "version path". Skips malformed lines. */
+/** Parses "version path" lines; skips missing separators or invalid versions and strips one leading `/`. */
 internal fun parseDeletionsText(text: String): List<DeletionEntry> {
   return text
       .lines()
@@ -120,8 +116,7 @@ object VersionFileParser {
   }
 
   /**
-   * Fetches the full server health report. Returns a basic ServerHealth if the detailed endpoint
-   * fails.
+   * Fetches and parses the detailed health report; request or parse errors produce a failed Result.
    */
   fun fetchHealth(): Result<ServerHealth> = runCatching {
     val json = fetchUrl(HEALTH_URL)
@@ -184,7 +179,7 @@ object VersionFileParser {
     )
   }
 
-  /** Fetches the badges for each profile ID. Pids with no badges are omitted. */
+  /** Fetches badges by profile ID, omitting empty, unknown-only, or failed responses. */
   suspend fun fetchBadges(profileIds: Collection<Long>): Map<Long, List<BadgeType>> =
       coroutineScope {
         profileIds

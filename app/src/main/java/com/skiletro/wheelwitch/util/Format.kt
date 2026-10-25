@@ -1,11 +1,8 @@
 package com.skiletro.wheelwitch.util
 
 /**
- * Formats [bytes] as a human-readable size string.
- *
- * - `< 1 KB` -> "N B"
- * - `< 1 MB` -> "N KB" (integer division; rolls to MB at >= 1 MiB)
- * - else -> "M.NN MB"
+ * Formats sizes with binary (1024-based) thresholds and display labels B, KB, MB.
+ * KB uses integer division; MB uses two decimal places.
  */
 fun formatBytes(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
@@ -14,12 +11,8 @@ fun formatBytes(bytes: Long): String = when {
 }
 
 /**
- * Formats [bytesPerSecond] as a human-readable transfer rate with adaptive units.
- *
- * - `< 1 KB/s` -> "N B/s"
- * - `< 1 MB/s` -> "N.NN KB/s"
- * - `< 1 GB/s` -> "N.NN MB/s"
- * - else -> "N.NN GB/s"
+ * Formats transfer rates with binary (1024-based) thresholds and B/s through GB/s labels.
+ * Units above B/s use two decimal places.
  */
 fun formatBytesPerSecond(bytesPerSecond: Long): String = when {
     bytesPerSecond < 1024L -> "$bytesPerSecond B/s"

@@ -4,19 +4,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Returns the string at [key] as a non-empty String, or null when the key is
- * absent, explicitly null, or maps to an empty string. Centralizes the
- * `if (!obj.isNull(k)) obj.optString(k, "").takeIf { it.isNotEmpty() } else null`
- * pattern used across the RWFC API parsers.
+ * Returns the string-coerced value at [key], or null for an absent, null, or empty value.
  */
 fun JSONObject.optNonEmptyString(key: String): String? =
     if (isNull(key)) null
     else optString(key, "").takeIf { it.isNotEmpty() }
 
 /**
- * Returns the first non-empty string found under any of [keys], or null when
- * none of the keys are present. Used by parsers that handle responses whose
- * field names vary across API revisions (camelCase / snake_case / short forms).
+ * Returns the first non-empty string-coerced value under [keys], or null if none is found.
  */
 fun JSONObject.optAnyString(vararg keys: String): String? =
     keys.asSequence()
@@ -24,9 +19,7 @@ fun JSONObject.optAnyString(vararg keys: String): String? =
         .firstOrNull { it.isNotEmpty() }
 
 /**
- * Returns the first non-null [JSONArray] found under any of [keys], or null
- * when none of the keys map to an array. Used by parsers that handle responses
- * whose field names vary across API revisions.
+ * Returns the first [JSONArray] under [keys], or null if no value is an array.
  */
 fun JSONObject.optAnyArray(vararg keys: String): JSONArray? {
     for (key in keys) {
@@ -37,15 +30,8 @@ fun JSONObject.optAnyArray(vararg keys: String): JSONArray? {
 }
 
 /**
- * Coerces a [jsonString] (which may be either a bare JSON array or an object
- * wrapping the array under one of [keys]) into a [JSONArray]. Returns null
- * when the input is an object but none of [keys] are present. Used by parsers
- * that handle both response shapes from the RWFC API.
- *
- * The API has historically returned leaderboards and track lists as either a
- * bare top-level array or an object such as `{"players": [...]}` or
- * `{"tracks": [...]}`. Callers pass every field name they have seen in the
- * wild.
+ * Reads a bare JSON array or the first array under [keys] in an object.
+ * Returns null for an object without a matching array; malformed JSON throws.
  */
 fun jsonArrayFromResponse(jsonString: String, vararg keys: String): JSONArray? {
     val trimmed = jsonString.trim()

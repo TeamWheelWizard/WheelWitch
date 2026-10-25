@@ -12,15 +12,9 @@ import java.util.UUID
 import timber.log.Timber
 
 /**
- * All WheelSync local state in one class: OAuth tokens, sync bookkeeping (rev/hash of the last
- * synced zip, session flag, toggles), and the per-install device id used by the advisory cloud
- * lock.
- *
- * The [SharedPreferences] is constructor-injected so JVM tests use a plain mock —
- * [EncryptedSharedPreferences] needs a Keystore and is exercised only in the manual smoke test.
- * Production reaches the encrypted store through [create]. If Keystore is unavailable, only
- * non-sensitive bookkeeping remains available; credentials fail closed and are never written to
- * ordinary preferences.
+ * Persists OAuth credentials and sync bookkeeping. [create] uses encrypted preferences;
+ * if Keystore initialization fails, only non-sensitive bookkeeping remains available and
+ * credentials are never written to ordinary preferences.
  */
 class SyncStore(
     private val prefs: SharedPreferences,
@@ -89,7 +83,7 @@ class SyncStore(
       prefs.edit().putString(PrefsKeys.SYNC_STORED_HASH_KEY, value).apply()
     }
 
-  /** Set before a Dolphin launch, cleared after the post-session push. */
+  /** Marks a launched session awaiting sync; also cleared on no-change sync or disconnect. */
   var sessionPendingPush: Boolean
     get() = prefs.getBoolean(PrefsKeys.SYNC_SESSION_PENDING_KEY, false)
     set(value) {

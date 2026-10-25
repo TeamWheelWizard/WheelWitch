@@ -5,10 +5,10 @@ import androidx.annotation.Keep
 /** Decision output of [com.skiletro.wheelwitch.domain.SaveSyncEngine]. */
 @Keep
 sealed interface SyncAction {
-  /** Local + cloud unchanged. */
+  /** Neither side changed, or neither side has saves. */
   data object Noop : SyncAction
 
-  /** Cloud newer, local clean. */
+  /** Cloud changed while local is clean, or a fresh install has no local saves. */
   data object Pull : SyncAction
 
   /** Local changed, cloud unchanged. */

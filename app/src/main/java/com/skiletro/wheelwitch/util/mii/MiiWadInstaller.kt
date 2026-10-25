@@ -16,7 +16,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 import timber.log.Timber
 
-/** Downloads and installs the Mii Channel WAD file for use as a Mii Maker in Dolphin. */
+/** Downloads the Mii Channel WAD archive and launches the extracted WAD in Dolphin as Mii Maker. */
 object MiiWadInstaller {
   private const val MII_MAKER_ZIP_URL =
       "https://filecache45.gamebanana.com/mods/mii_channel_symbols_-_hacs.zip"
@@ -34,8 +34,8 @@ object MiiWadInstaller {
   }
 
   /**
-   * Downloads the WAD zip from GameBanana, extracts the `.wad` file, and returns it. Validates WAD
-   * magic header before returning.
+   * Downloads the WAD zip from GameBanana, verifies its SHA-256, and extracts a `.wad` file.
+   * WAD header validation happens separately in [launchWadFile].
    *
    * Leaves the extracted WAD at `cache/mii_maker/$WAD_FILE_NAME` (the file [getCachedWadFile]
    * returns). The intermediate zip is deleted after extraction.
@@ -75,8 +75,8 @@ object MiiWadInstaller {
   }
 
   /**
-   * Launches Dolphin with the given WAD file via `ACTION_VIEW` + `FileProvider` content URI.
-   * Validates magic header first (0x00 0x00 0x00 0x20).
+   * Launches Dolphin with a FileProvider content URI and read permission after validating the
+   * WAD header (0x00 0x00 0x00 0x20); the intent does not set an action.
    */
   fun launchWadFile(context: Context, wadFile: File): Result<Unit> = runCatching {
     require(isValidWad(wadFile)) { "Cached WAD file is corrupted or incomplete" }
@@ -123,8 +123,7 @@ object MiiWadInstaller {
         entry = zis.nextEntry
       }
     }
-    // Prefer the HACS variant: it is the symbol-patched build Dolphin needs
-    // to run Mii Maker. Fall back to any .wad if it is not present.
+    // Prefer the symbol-patched HACS variant used for Dolphin's Mii Maker.
     val chosen =
         wadFiles.firstOrNull { it.name.contains("HACS", ignoreCase = true) }
             ?: wadFiles.firstOrNull()

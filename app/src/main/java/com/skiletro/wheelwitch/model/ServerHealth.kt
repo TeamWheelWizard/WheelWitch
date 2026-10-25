@@ -5,8 +5,8 @@ import androidx.compose.runtime.Immutable
 /**
  * One named check in the `/api/health` response.
  *
- * [status] is normalized to one of "ok", "error", or "degraded" by the
- * health parser; [message] is the raw description, if any.
+ * The parser maps healthy/unhealthy to "ok"/"error" and lowercases other statuses.
+ * [message] is the description when nonempty.
  */
 @Immutable
 data class HealthCheckItem(
@@ -30,9 +30,7 @@ data class ServerHealth(
 /**
  * Memory subsystem check.
  *
- * The RWFC API embeds memory usage in the check's free-text description
- * rather than a structured field, so only [used] is populated by the
- * health parser.
+ * The parser extracts [used] from the free-text description, or leaves it null when unmatched.
  */
 @Immutable
 data class MemoryInfo(

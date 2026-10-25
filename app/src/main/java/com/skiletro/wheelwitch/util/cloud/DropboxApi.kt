@@ -15,9 +15,8 @@ import org.json.JSONObject
 data class CloudSaveMeta(val rev: String, val serverModifiedMillis: Long)
 
 /**
- * Contents of the cloud `lock.json` plus the file's server-side mtime. [serverModifiedMillis] is 0
- * until [DropboxApi.readLockWithServerTime] stamps it; lock staleness must be judged by the server
- * timestamp so client clock skew cannot fake freshness.
+ * Contents of `lock.json` plus its server-side mtime, or 0 when that timestamp is unavailable.
+ * Lock staleness must use server time rather than the client-supplied [startedAtMillis].
  */
 data class CloudLock(
     val deviceId: String,
@@ -36,19 +35,13 @@ data class CloudState(
 class DropboxWriteConflictException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 /**
- * Thin suspend + Result wrapper over [DbxClientV2] for the three WheelSync files. All paths are
- * relative to the app folder root (`/Apps/WheelSync/` — the SDK addresses app-folder paths from
- * `/`).
+ * Blocking SDK calls dispatched to IO, with paths relative to Dropbox's app-folder root.
  *
- * Error contract:
- * - `fetchSaveMeta` returns null ONLY when the cloud zip is absent (path lookup not-found). Network
- *   and other errors propagate, so callers can distinguish "cloud is empty" (safe to first-upload)
- *   from "cloud is unreachable" (must not push).
- * - `readLock`/`readState`/`readLockWithServerTime` return null on absent, corrupt, or unreachable
- *   payloads — the lock is advisory and the state is presentation metadata, so degrading to null is
- *   safe for both.
- * - Mutators return [Result]; failures leave the cloud untouched (Dropbox upload sessions commit
- *   atomically).
+ * [fetchSaveMeta] returns null for a missing path or non-file metadata; other errors propagate.
+ * [readLock] and [readState] return null on download or parse failure. [readLockWithServerTime]
+ * retains a parsed lock with a zero timestamp if metadata lookup fails.
+ * Downloads and mutators return [Result]; a failed response does not prove a remote mutation
+ * was not committed.
  */
 class DropboxApi(private val client: DbxClientV2) {
 
@@ -180,7 +173,6 @@ class DropboxApi(private val client: DbxClientV2) {
         }
       }
 
-  // --- internals ----------------------------------------------------------
 
   private fun downloadBytes(path: String): ByteArray {
     val out = ByteArrayOutputStream()
