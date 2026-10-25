@@ -8,7 +8,6 @@
     <issue id="NewerVersionAvailable" severity="ignore" />
     <issue id="AndroidGradlePluginVersion" severity="ignore" />
 
-    <!-- Intentional for sideloaded app -->
     <issue id="ScopedStorage" severity="ignore" />
 
     <!-- Intentional landscape lock for gamepad ergonomics -->

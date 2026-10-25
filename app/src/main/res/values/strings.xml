@@ -360,6 +360,8 @@
     <string name="log_viewer_share_file">Share as file</string>
     <string name="log_viewer_copied_to_clipboard">Logs copied to clipboard</string>
     <string name="cd_copy">Copy logs</string>
+
+    <!-- cloud sync dialogs -->
     <string name="sync_conflict_title">Save conflict</string>
     <string name="sync_conflict_body">Your local saves changed in %d region(s), but cloud saves were also updated from another device. Which should we keep?</string>
     <string name="sync_conflict_keep_local">Keep local</string>
