@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** 1dp vertical rule using the outline-variant color. */
 @Composable
 fun VerticalDivider(modifier: Modifier = Modifier) {
     Box(

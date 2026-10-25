@@ -5,16 +5,8 @@ import com.skiletro.wheelwitch.util.io.cacheSize
 import java.io.File
 
 /**
- * On-disk location shared between the Coil [coil3.ImageLoader] disk cache
- * and the Settings cache size/clear UI. The runtime Mii face cache
- * itself is owned by Coil (in-memory + on-disk, configured in
- * [com.skiletro.wheelwitch.WheelWitchApp]); this object only retains
- * the on-disk helpers so the Settings screen can report and clear the
- * cache without reaching into Coil's internals.
- *
- * The disk directory is `<cacheDir>/mii_faces/`. [init] / [initWith]
- * just record where the directory lives; they are idempotent and safe
- * to call multiple times.
+ * Shares Coil's `<cacheDir>/mii_faces/` disk-cache location with Settings for size reporting
+ * and deletion. [init] and [initWith] create the directory and record its location.
  */
 object MiiFaceCache {
   const val DIR_NAME = "mii_faces"
@@ -44,7 +36,7 @@ object MiiFaceCache {
     clear(dir)
   }
 
-  /** Removes every file directly under [dir]. Safe to call before [init]. */
+  /** Attempts to delete direct children of [dir], without recursing or requiring [init]. */
   @Synchronized
   fun clear(dir: File) {
     dir.listFiles()?.forEach { it.delete() }

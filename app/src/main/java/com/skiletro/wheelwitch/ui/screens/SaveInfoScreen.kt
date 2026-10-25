@@ -25,28 +25,15 @@ import com.skiletro.wheelwitch.ui.components.ScreenHeader
 import com.skiletro.wheelwitch.viewmodel.SaveDataViewModel
 
 /**
- * Licenses screen: 2x2 grid of the 4 license slots for the
- * currently selected region. Tapping a slot selects it (the active
- * license used elsewhere in the app). Region selection lives in
- * the Settings Save Data section; this screen is a pure viewer.
- *
- * The data lives in [SaveDataViewModel]; this composable just
- * observes it. [SaveDataViewModel.refresh] re-parses the save and
- * re-merges the leaderboard for the selected region's 4 slots
- * whenever the pack state transitions to Ready.
- *
- * Auto-refresh: a `DisposableEffect` listens for `Lifecycle.Event.ON_RESUME`
- * and triggers a refresh. The observer receives the current state on
- * subscription, so the first composition also refreshes (matching the
- * pattern used by [OnboardingScreen] for the Dolphin install check and
- * by [HomeScreen] for room refreshes).
+ * Shows the selected region's licenses; region selection belongs to Settings.
+ * Resume refreshes are deduplicated by [SaveDataViewModel.refreshIfStale].
  */
 @Composable
 fun SaveInfoScreen(viewModel: SaveDataViewModel, onClose: () -> Unit) {
   val selectedRegion by viewModel.selectedRegion.collectAsState()
   val mergedLicenses by viewModel.mergedLicenses.collectAsState()
   val scoreResults by viewModel.scoreResults.collectAsState()
-  val badges by viewModel.vanityBadges.collectAsState()
+  val badges by viewModel.badges.collectAsState()
   val isLoading by viewModel.isLoading.collectAsState()
   val error by viewModel.error.collectAsState()
 

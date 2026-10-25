@@ -8,13 +8,10 @@ import java.io.File
 /**
  * Optional Timber tree that appends each log call to a text file when enabled.
  *
- * The tree is reactive: [isEnabled] and [logFile] are invoked on every log call, so toggling
- * the corresponding setting takes effect immediately. When [logFile] returns null the call is
- * dropped. When the on-disk file exceeds [maxBytes], it is rotated (renamed to `.1` and a
- * fresh file is started).
+ * [isEnabled] is checked for each log call; [logFile] is resolved for accepted calls.
+ * Rotation is attempted before an append would exceed [maxBytes].
  *
- * Note: Timber already appends the throwable's stack trace to [message] when [t] is non-null,
- * so [formatLine] writes the message verbatim and does not re-render the throwable.
+ * Timber already includes throwable stacks in the message; do not render [t] again.
  */
 class OptionalFileTree(
   private val isEnabled: () -> Boolean,
@@ -34,27 +31,28 @@ class OptionalFileTree(
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 1_000_000L // 1 MB
 
-    internal fun formatLine(priority: Int, tag: String?, message: String): String {
-      val ts = LogEntry(System.currentTimeMillis(), priority, tag, message)
-      return "${ts.timestampMillis} ${ts.levelLabel()}/${tag ?: "?"}: $message"
-    }
+    internal fun formatLine(priority: Int, tag: String?, message: String): String =
+        LogEntry(System.currentTimeMillis(), priority, tag, message).serialize()
   }
 }
 
 /**
- * Appends [line] to [file], creating parent directories as needed. If the file would exceed
- * [maxBytes] after the write, rotates the existing file to `<file>.1` (overwriting any
- * previous `.1`) and starts a new file. Synchronized on the file path so concurrent log calls
- * from different threads do not interleave writes.
+ * Appends UTF-8 [line], creating parent directories as needed. Attempts rotation to `<file>.1`
+ * before an append would exceed [maxBytes]; if rename fails, attempts deletion of the active
+ * file. A single line can exceed the limit. Synchronization uses [File.absolutePath]'s String
+ * monitor, not a shared lock guaranteed to cover separate File instances for the same path.
  */
 internal fun appendWithRotation(file: File, line: String, maxBytes: Long) {
   val parent = file.parentFile
   if (parent != null && !parent.exists()) parent.mkdirs()
   synchronized(file.absolutePath) {
-    if (file.exists() && file.length() + line.length > maxBytes) {
+    if (file.exists() && file.length() + line.toByteArray().size > maxBytes) {
       val rotated = File(file.parentFile, file.name + ".1")
       if (rotated.exists()) rotated.delete()
-      file.renameTo(rotated)
+      if (!file.renameTo(rotated)) {
+        // Attempt to discard the active file if rotation is unavailable.
+        file.delete()
+      }
     }
     file.appendText(line)
   }

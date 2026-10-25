@@ -6,29 +6,10 @@ import java.io.File
 import kotlin.text.Regex.Companion.escape
 
 /**
- * Single source of truth for filesystem paths inside Dolphin's user folder.
- *
- * The physical root of Dolphin's per-user folder is computed from
- * WheelWitch's own external files dir via the package-swap trick: take
- * [Context.getExternalFilesDir], which returns
- * `/storage/emulated/<userId>/Android/data/<calling_pkg>/files`, and
- * replace `<calling_pkg>` with [DOLPHIN_PACKAGE]. The result is
- * `/storage/emulated/<userId>/Android/data/org.dolphinemu.dolphinemu/files`,
- * multi-user safe by construction for the common case where WheelWitch
- * and Dolphin live in the same user.
- *
- * All other helpers in this object compose on [physicalRoot], so every
- * downstream path stays consistent with the launch descriptor's
- * `base-file` / `root` / `xml` fields and the `AutoStartFile` extra.
- * That single source of truth is the path consistency invariant
- * required for Riivolution to resolve the launch descriptor.
- *
- * `DOLPHIN_PACKAGE` is re-exported from [DolphinLauncher]. Do not
- * redefine it. The Mii WAD installer imports the same constant from
- * the same place, so a rename must happen in one spot.
+ * Physical paths shared by launch descriptors and Dolphin configuration. SAF I/O uses
+ * [DolphinTree]; these paths are for consumers that require filesystem paths.
  */
 object DolphinPaths {
-  /** Re-exported from [DolphinLauncher]: single source of truth. */
   const val DOLPHIN_PACKAGE: String = DolphinLauncher.DOLPHIN_PACKAGE
 
   /** Subpath under Dolphin's `files/` dir where WheelWitch keeps the pack, ROM, and launch descriptor. */
@@ -56,7 +37,7 @@ object DolphinPaths {
   /** The directory where WheelWitch stores its pack, ROM, and launch descriptor. */
   fun wheelWitchDir(context: Context): File = File(physicalRoot(context), WHEELWITCH_SUBPATH)
 
-  /** Directory containing the extracted pack contents (the Retro Rewind zip extracts into the [RETRO_REWIND_SUBPATH] subdir). */
+  /** Extraction root; archive entry paths are relative to this directory. */
   fun packDir(context: Context): File = File(wheelWitchDir(context), "pack")
 
   /** Directory containing the user-picked Mario Kart Wii ROM, renamed to `<GAMEID>.<ext>`. */
@@ -71,14 +52,12 @@ object DolphinPaths {
   /** Dolphin's virtual NAND root. Used by the unified save backup to reach user data. */
   fun wiiDir(context: Context): File = File(physicalRoot(context), "Wii")
 
-  /** `Wii/shared2/` under [wiiDir]. */
   fun shared2Dir(context: Context): File = File(physicalRoot(context), "Wii/shared2")
 
   /** `Wii/shared2/menu/FaceLib/` — home of the system-wide Mii database (`RFL_DB.dat`). */
   fun faceLibDir(context: Context): File =
     File(physicalRoot(context), "Wii/shared2/menu/FaceLib")
 
-  /** `Wii/shared2/Pulsar/` — Pulsar mod settings. */
   fun pulsarDir(context: Context): File = File(physicalRoot(context), "Wii/shared2/Pulsar")
 
   /** `Wii/shared2/Pulsar/RetroRewind6/` — Retro Rewind's Pulsar subdir (rating, game settings, ghosts). */
@@ -89,7 +68,6 @@ object DolphinPaths {
   fun rrSaveDir(context: Context): File =
     File(packDir(context), "riivolution/save/RetroWFC")
 
-  /** `Wii/title/<titleId>/` under [physicalRoot]. */
   fun nandTitleDir(context: Context, titleId: String): File =
     File(physicalRoot(context), "Wii/title/$titleId")
 
@@ -107,11 +85,6 @@ object DolphinPaths {
   fun patchedIsoSaveDir(context: Context): File =
     File(nandTitleDir(context, SaveManager.TITLE_ID), "${SaveManager.PATCHED_ISO_HEX_ID}/data")
 
-  /**
-   * The expected SAF tree document id for the Dolphin user folder.
-   *
-   * The onboarding picker uses this with [DocumentsContract.getTreeDocumentId] to confirm the
-   * user picked the right folder. Anything else is rejected and re-prompted.
-   */
+  /** Primary-storage SAF tree ID; [DolphinTree.validate] also accepts Dolphin's provider root. */
   fun expectedTreeId(): String = "primary:Android/data/$DOLPHIN_PACKAGE/files"
 }

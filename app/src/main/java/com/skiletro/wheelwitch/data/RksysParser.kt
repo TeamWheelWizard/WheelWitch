@@ -7,15 +7,13 @@ import java.security.MessageDigest
 import java.util.Base64
 
 /**
- * Parses a Mario Kart Wii `rksys.dat` save file (big-endian binary
- * format, RKPD magic) into a [SaveFileInfo].
+ * Parses the big-endian license records in a Mario Kart Wii `rksys.dat` into [SaveFileInfo].
  *
  * The save file contains up to 4 license slots at fixed offsets
  * [LICENSE_BASES]. Each slot begins with the 4-byte ASCII magic
  * `RKPD`; absence of that magic marks the slot as `exists = false`.
  *
- * All offsets below are relative to the start of a license slot
- * ([LICENSE_BASES] entry).
+ * Field offsets are relative to a license slot; [LICENSE_BASES] are absolute file offsets.
  */
 object RksysParser {
   /**
@@ -33,7 +31,6 @@ object RksysParser {
   private const val RACE_LOSSES_OFFSET = 0x9C
   private const val VR_OFFSET = 0xB0
 
-  /** Additional stat offsets for rank calculation. */
   private const val TOTAL_DIST_OFFSET = 0xC4
   private const val FIRSTS_OFFSET = 0xDC
   private const val DIST1ST_OFFSET = 0xE0
@@ -105,21 +102,14 @@ object RksysParser {
    * Converts a Wii PID into a 12-digit friend code (`XXXX-XXXX-XXXX`)
    * using the JCMR + MD5 checksum algorithm.
    *
-   * The friend code is a 64-bit value whose layout is
-   * `[checksum:8][pid:32]` (high 8 bits are a 7-bit checksum, low 32
-   * bits are the PID), rendered as a 12-digit decimal.
-   *
-   * Buffer layout fed to MD5: PID (little-endian, 4 bytes) followed by
-   * the ASCII string "JCMR" (the Wii region/product code constant).
-   *
-   * The checksum is `(md5[0] & 0xFF) >> 1` because the friend-code high
-   * byte uses only 7 bits (the top bit is reserved).
+   * Packs a 7-bit checksum above the 32-bit PID, then renders the value as 12 decimal digits.
+   * MD5 input is the little-endian PID followed by ASCII "JCMR"; the checksum is the high seven
+   * bits of the digest's first byte.
    */
   private fun pidToFriendCode(pid: Long): String? {
     if (pid == 0L) {
       return null
     }
-    // Layout: PID (LE, 4 bytes) || "JCMR" (ASCII, 4 bytes)
     val buffer = ByteArray(8)
     buffer[0] = (pid and 0xFF).toByte()
     buffer[1] = ((pid shr 8) and 0xFF).toByte()
@@ -131,9 +121,7 @@ object RksysParser {
     buffer[7] = 'R'.code.toByte()
 
     val md5 = MessageDigest.getInstance("MD5").digest(buffer)
-    // Top 7 bits of md5[0] form the friend-code high byte.
     val checksum = (md5[0].toInt() and 0xFF) shr 1
-    // Pack [checksum:8][pid:32] into a 64-bit value.
     val fc = (checksum.toLong() shl 32) or pid
 
     val fcStr = fc.toString().padStart(12, '0')

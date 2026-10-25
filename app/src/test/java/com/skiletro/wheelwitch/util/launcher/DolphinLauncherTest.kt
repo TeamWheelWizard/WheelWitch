@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.DolphinTree
@@ -16,27 +17,36 @@ import io.mockk.unmockkStatic
 import io.mockk.verify
 import java.io.File
 import org.json.JSONObject
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class DolphinLauncherTest {
 
+  @BeforeEach
+  fun setUpUriEncoding() {
+    mockkStatic(Uri::class)
+    every { Uri.encode(any()) } answers { firstArg<String>() }
+  }
+
+  @AfterEach
+  fun tearDownUriEncoding() {
+    unmockkStatic(Uri::class)
+  }
+
   @Test
   fun `DOLPHIN_PACKAGE constant is preserved`() {
-    // Used by MiiWadInstaller.launchWadFile; must not change.
     assertThat(DolphinLauncher.DOLPHIN_PACKAGE).isEqualTo("org.dolphinemu.dolphinemu")
   }
 
   @Test
   fun `DOLPHIN_MAIN_ACTIVITY constant is preserved`() {
     assertThat(DolphinLauncher.DOLPHIN_MAIN_ACTIVITY)
-      .isEqualTo("org.dolphinemu.dolphinemu.ui.main.MainActivity")
+        .isEqualTo("org.dolphinemu.dolphinemu.ui.main.MainActivity")
   }
 
   @Test
   fun `RR_JSON_NAME is the new rr_autostartfile json filename`() {
-    // The on-disk launch descriptor is now "rr_autostartfile.json"
-    // (renamed from the legacy "RR.json"). DolphinTree.LAUNCH_JSON_NAME
-    // re-exports this value; see DolphinTreeTest for that linkage.
     assertThat(DolphinLauncher.RR_JSON_NAME).isEqualTo("rr_autostartfile.json")
   }
 
@@ -47,89 +57,72 @@ class DolphinLauncherTest {
     assertThat(DolphinLauncher.LAUNCH_EXTRA_NAME).isEqualTo("AutoStartFile")
   }
 
-  // --- buildLaunchJson ------------------------------------------------
 
   @Test
   fun `buildLaunchJson produces a parseable JSON object`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
-    // Smoke test: the body must be valid JSON. org.json.JSONObject
-    // throws on malformed input, so reaching the next assertion is
-    // the test.
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val obj = JSONObject(json)
     assertThat(obj.length()).isAtLeast(5)
   }
 
   @Test
   fun `buildLaunchJson top-level field names match the working reference`() {
-    // Field-names regression guard for the
-    // dolphin-game-mod-descriptor schema. If this fails, Dolphin's
-    // parser will likely reject the descriptor. Note: the
-    // org.json library does not preserve insertion order, so we
-    // assert the key set, not the key order.
+    // JSONObject does not guarantee key iteration order; compare sets.
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val obj = JSONObject(json)
     assertThat(jsonKeySet(obj))
-      .containsExactly("base-file", "display-name", "riivolution", "type", "version")
+        .containsExactly("base-file", "display-name", "riivolution", "type", "version")
   }
 
   @Test
   fun `buildLaunchJson writes the descriptor top-level values`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso",
-        packRootPath = "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath =
+                "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso",
+            packRootPath =
+                "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack",
+        )
     val obj = JSONObject(json)
     assertThat(obj.getString("base-file"))
-      .isEqualTo(
-        "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso"
-      )
+        .isEqualTo(
+            "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso"
+        )
     assertThat(obj.getString("display-name")).isEqualTo("Retro Rewind")
     assertThat(obj.getString("type")).isEqualTo("dolphin-game-mod-descriptor")
-    // version must be a JSON integer (1), not the string "1".
     assertThat(obj.getInt("version")).isEqualTo(1)
   }
 
   @Test
   fun `buildLaunchJson patch field names match the descriptor schema`() {
-    // Patch field names: options, root, xml.
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val patch =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
+        JSONObject(json).getJSONObject("riivolution").getJSONArray("patches").getJSONObject(0)
     assertThat(jsonKeySet(patch)).containsExactly("options", "root", "xml")
   }
 
   @Test
   fun `buildLaunchJson writes root and xml from the same packRootPath`() {
-    // Path consistency invariant: root and xml share packRootPath
-    // as their prefix, so a single physicalRoot input guarantees
-    // the two agree. base-file is the caller's responsibility; see
-    // the buildLaunchJson kdoc.
+    // Both patch paths must share a root; base-file is supplied independently by the caller.
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val patch =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
+        JSONObject(json).getJSONObject("riivolution").getJSONArray("patches").getJSONObject(0)
     assertThat(patch.getString("root")).isEqualTo("/r/pack")
     assertThat(patch.getString("xml")).isEqualTo("/r/pack/riivolution/RetroRewind6.xml")
   }
@@ -137,37 +130,33 @@ class DolphinLauncherTest {
   @Test
   fun `buildLaunchJson joins xmlRelPath to packRootPath with a single forward slash`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-        xmlRelPath = "riivolution/SubDir/Mod.xml",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+            xmlRelPath = "riivolution/SubDir/Mod.xml",
+        )
     val patch =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
+        JSONObject(json).getJSONObject("riivolution").getJSONArray("patches").getJSONObject(0)
     assertThat(patch.getString("xml")).isEqualTo("/r/pack/riivolution/SubDir/Mod.xml")
   }
 
   @Test
   fun `buildLaunchJson writes the default Pack1 MyStuff2 Savegame2 options`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val options =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
-        .getJSONArray("options")
+        JSONObject(json)
+            .getJSONObject("riivolution")
+            .getJSONArray("patches")
+            .getJSONObject(0)
+            .getJSONArray("options")
     assertThat(options.length()).isEqualTo(3)
-    // Each option's field set is choice, option-name, section-name.
     for (i in 0 until options.length()) {
       assertThat(jsonKeySet(options.getJSONObject(i)))
-        .containsExactly("choice", "option-name", "section-name")
+          .containsExactly("choice", "option-name", "section-name")
     }
     assertOption(options.getJSONObject(0), name = "Pack", choice = 1)
     assertOption(options.getJSONObject(1), name = "My Stuff", choice = 2)
@@ -177,19 +166,19 @@ class DolphinLauncherTest {
   @Test
   fun `buildLaunchJson customizes choices via parameters`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-        packChoice = 5,
-        myStuffChoice = 6,
-        separateSavegameChoice = 7,
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+            packChoice = 5,
+            myStuffChoice = 6,
+            separateSavegameChoice = 7,
+        )
     val options =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
-        .getJSONArray("options")
+        JSONObject(json)
+            .getJSONObject("riivolution")
+            .getJSONArray("patches")
+            .getJSONObject(0)
+            .getJSONArray("options")
     assertOption(options.getJSONObject(0), name = "Pack", choice = 5)
     assertOption(options.getJSONObject(1), name = "My Stuff", choice = 6)
     assertOption(options.getJSONObject(2), name = "Separate Savegame", choice = 7)
@@ -198,37 +187,32 @@ class DolphinLauncherTest {
   @Test
   fun `buildLaunchJson writes every section-name as the display name`() {
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val options =
-      JSONObject(json)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
-        .getJSONArray("options")
+        JSONObject(json)
+            .getJSONObject("riivolution")
+            .getJSONArray("patches")
+            .getJSONObject(0)
+            .getJSONArray("options")
     for (i in 0 until options.length()) {
-      assertThat(options.getJSONObject(i).getString("section-name"))
-        .isEqualTo("Retro Rewind")
+      assertThat(options.getJSONObject(i).getString("section-name")).isEqualTo("Retro Rewind")
     }
   }
 
   @Test
   fun `buildLaunchJson writes a single patch in the patches array`() {
-    // The descriptor is a single-patch shape. If we ever fan out
-    // to multi-patch, the JSON path tests will need an index; call
-    // out the constraint here.
     val json =
-      DolphinLauncher.buildLaunchJson(
-        baseFilePath = "/r/rom.iso",
-        packRootPath = "/r/pack",
-      )
+        DolphinLauncher.buildLaunchJson(
+            baseFilePath = "/r/rom.iso",
+            packRootPath = "/r/pack",
+        )
     val patches = JSONObject(json).getJSONObject("riivolution").getJSONArray("patches")
     assertThat(patches.length()).isEqualTo(1)
   }
 
-  // --- launch --------------------------------------------------------
 
   @Test
   fun `launch writes a descriptor with base-file pointing at the ROM`() {
@@ -243,9 +227,9 @@ class DolphinLauncherTest {
     assertThat(result.isSuccess).isTrue()
     val obj = JSONObject(written.captured)
     assertThat(obj.getString("base-file"))
-      .isEqualTo(
-        "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso"
-      )
+        .isEqualTo(
+            "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/rom/RMCP01.iso"
+        )
   }
 
   @Test
@@ -259,18 +243,18 @@ class DolphinLauncherTest {
     DolphinLauncher.launch(ctx, tree, romFile)
 
     val patch =
-      JSONObject(written.captured)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
+        JSONObject(written.captured)
+            .getJSONObject("riivolution")
+            .getJSONArray("patches")
+            .getJSONObject(0)
     assertThat(patch.getString("root"))
-      .isEqualTo(
-        "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack"
-      )
+        .isEqualTo(
+            "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack"
+        )
     assertThat(patch.getString("xml"))
-      .isEqualTo(
-        "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack/riivolution/RetroRewind6.xml"
-      )
+        .isEqualTo(
+            "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack/riivolution/RetroRewind6.xml"
+        )
   }
 
   @Test
@@ -296,20 +280,19 @@ class DolphinLauncherTest {
     DolphinLauncher.launch(ctx, tree, romFile, xmlRelPath = "riivolution/SubMod/Mod.xml")
 
     val patch =
-      JSONObject(written.captured)
-        .getJSONObject("riivolution")
-        .getJSONArray("patches")
-        .getJSONObject(0)
+        JSONObject(written.captured)
+            .getJSONObject("riivolution")
+            .getJSONArray("patches")
+            .getJSONObject(0)
     assertThat(patch.getString("xml"))
-      .isEqualTo(
-        "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack/riivolution/SubMod/Mod.xml"
-      )
+        .isEqualTo(
+            "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files/WheelWitch/pack/riivolution/SubMod/Mod.xml"
+        )
   }
 
   @Test
   fun `launch returns failure when Dolphin is not installed`() {
     val ctx = mockk<Context>(relaxed = true)
-    // isDolphinInstalled swallows the NameNotFoundException and returns false.
     every {
       ctx.packageManager.getPackageInfo(DolphinLauncher.DOLPHIN_PACKAGE, 0)
     } throws PackageManager.NameNotFoundException()
@@ -363,17 +346,17 @@ class DolphinLauncherTest {
     verify(exactly = 0) { ctx.startActivity(any()) }
   }
 
-  // --- registerRomPathInConfig ----------------------------------------
 
   @Test
   fun `registerRomPathInConfig writes the rom URI into the ini block`() {
     val ctx = mockInstalledDolphin()
     val tree = mockk<DolphinTree>(relaxed = true)
     val existingIni =
-      """
-      [General]
-      SomeKey = value
-      """.trimIndent()
+        """
+        [General]
+        SomeKey = value
+        """
+            .trimIndent()
     val written = slot<String>()
     every { tree.readConfigIni() } returns existingIni
     every { tree.writeConfigIni(capture(written)) } returns mockk(relaxed = true)
@@ -384,9 +367,9 @@ class DolphinLauncherTest {
     assertThat(ini).contains("[General]")
     assertThat(ini).contains("ISOPaths = 1")
     assertThat(ini)
-      .contains(
-        "ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From"
-      )
+        .contains(
+            "ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From"
+        )
     assertThat(ini).contains("SomeKey = value")
   }
 
@@ -395,11 +378,12 @@ class DolphinLauncherTest {
     val ctx = mockInstalledDolphin()
     val tree = mockk<DolphinTree>(relaxed = true)
     val existing =
-      """
-      [General]
-      ISOPaths = 1
-      ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From
-      """.trimIndent()
+        """
+        [General]
+        ISOPaths = 1
+        ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From
+        """
+            .trimIndent()
     every { tree.readConfigIni() } returns existing
     every { tree.writeConfigIni(any()) } returns mockk(relaxed = true)
 
@@ -413,8 +397,8 @@ class DolphinLauncherTest {
     val ctx = mockInstalledDolphin()
     val tree = mockk<DolphinTree>(relaxed = true)
     val ex =
-      runCatching { DolphinLauncher.registerRomPathInConfig(ctx, tree, "ROM.bin") }
-        .exceptionOrNull()
+        runCatching { DolphinLauncher.registerRomPathInConfig(ctx, tree, "ROM.bin") }
+            .exceptionOrNull()
     assertThat(ex).isInstanceOf(IllegalArgumentException::class.java)
   }
 
@@ -429,14 +413,13 @@ class DolphinLauncherTest {
     DolphinLauncher.registerRomPathInConfig(ctx, tree, "RMCE01.rvz")
 
     assertThat(written.captured)
-      .isEqualTo(
-        "[General]\n\n" +
-          "ISOPaths = 1\n" +
-          "ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From"
-      )
+        .isEqualTo(
+            "[General]\n\n" +
+                "ISOPaths = 1\n" +
+                "ISOPath0 = content://org.dolphinemu.dolphinemu.user/tree/root%2FWheelWitch%2From"
+        )
   }
 
-  // --- pickRomFile ----------------------------------------------------
 
   @Test
   fun `pickRomFile returns the first recognized ROM in the romDir`() {
@@ -478,7 +461,6 @@ class DolphinLauncherTest {
     assertThat(picked).isNull()
   }
 
-  // --- startDolphin ---------------------------------------------------
 
   @Test
   fun `startDolphin fires a bare Dolphin intent`() {
@@ -490,7 +472,6 @@ class DolphinLauncherTest {
     verify(exactly = 1) { ctx.startActivity(any<Intent>()) }
   }
 
-  // --- launchRetroRewind ---------------------------------------------
 
   @Test
   fun `launchRetroRewind returns DolphinNotInstalled when Dolphin is absent`() {
@@ -525,8 +506,7 @@ class DolphinLauncherTest {
 
     val result = DolphinLauncher.launchRetroRewind(ctx)
 
-    assertThat(result)
-      .isInstanceOf(DolphinLauncher.LaunchResult.StorageNotConfigured::class.java)
+    assertThat(result).isInstanceOf(DolphinLauncher.LaunchResult.StorageNotConfigured::class.java)
     unmockkStatic("com.skiletro.wheelwitch.data.DolphinTree")
   }
 
@@ -564,8 +544,7 @@ class DolphinLauncherTest {
 
     val result = DolphinLauncher.launchRetroRewind(ctx, tree)
 
-    assertThat(result)
-      .isInstanceOf(DolphinLauncher.LaunchResult.FallbackStarted::class.java)
+    assertThat(result).isInstanceOf(DolphinLauncher.LaunchResult.FallbackStarted::class.java)
     // writeLaunchJson threw before the auto-start intent was fired,
     // so only the fallback bare intent reaches startActivity.
     verify(exactly = 1) { ctx.startActivity(any<Intent>()) }
@@ -583,7 +562,6 @@ class DolphinLauncherTest {
     assertThat(started).isFalse()
   }
 
-  // --- dolphinVersionName --------------------------------------------
 
   @Test
   fun `dolphinVersionName returns the installed versionName`() {
@@ -612,7 +590,6 @@ class DolphinLauncherTest {
     assertThat(DolphinLauncher.DOLPHIN_DOWNLOAD_URL).isEqualTo("https://dolphin-emu.org/download/")
   }
 
-  // --- helpers --------------------------------------------------------
 
   private fun assertOption(obj: JSONObject, name: String, choice: Int) {
     assertThat(obj.getString("option-name")).isEqualTo(name)
@@ -627,11 +604,10 @@ class DolphinLauncherTest {
   }
 
   /**
-   * A `Context` mock that reports Dolphin as installed and returns a
-   * real [File] for [Context.getExternalFilesDir]. The returned path
-   * contains the WheelWitch package name so
-   * [com.skiletro.wheelwitch.data.DolphinPaths.physicalRoot] can
-   * package-swap to the Dolphin user folder.
+   * A `Context` mock that reports Dolphin as installed and returns a real [File] for
+   * [Context.getExternalFilesDir]. The returned path contains the WheelWitch package name so
+   * [com.skiletro.wheelwitch.data.DolphinPaths.physicalRoot] can package-swap to the Dolphin user
+   * folder.
    */
   private fun mockInstalledDolphin(): Context {
     val ctx = mockk<Context>(relaxed = true)
@@ -640,7 +616,7 @@ class DolphinLauncherTest {
     } returns mockk<PackageInfo>(relaxed = true)
     every { ctx.packageName } returns "com.skiletro.wheelwitch"
     every { ctx.getExternalFilesDir(null) } returns
-      File("/storage/emulated/0/Android/data/com.skiletro.wheelwitch/files")
+        File("/storage/emulated/0/Android/data/com.skiletro.wheelwitch/files")
     return ctx
   }
 

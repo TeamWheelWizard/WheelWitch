@@ -9,10 +9,7 @@ import com.skiletro.wheelwitch.model.ServerHealth
 import com.skiletro.wheelwitch.model.TimeTrialSubmission
 import com.skiletro.wheelwitch.model.TimeTrialTrack
 
-/**
- * Top-level page in the Online Menu. [Hub] is the landing screen that
- * links to the others; the rest trigger a fetch when navigated to.
- */
+/** Online destinations; entering a sub-screen requests its data through [OnlineViewModel]. */
 enum class OnlineMenuPage {
   Hub,
   Rooms,
@@ -20,13 +17,14 @@ enum class OnlineMenuPage {
   Health,
   RaceStats,
   TimeTrial,
+  ;
+
+  /** Shared-transition key for the page's title element. */
+  val titleSharedKey: String
+    get() = "online_title_$name"
 }
 
-/**
- * Shared shape for the four sub-screen state machines in [OnlineViewModel].
- * Each sub-screen starts at [Idle], transitions to [Loading] on fetch,
- * and ends at [Success] or [Error].
- */
+/** Room-list loading state, including server connectivity independently of room count. */
 @Immutable
 sealed class RoomsState {
   data object Idle : RoomsState()

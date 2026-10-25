@@ -61,6 +61,14 @@ class LogTextRendererTest {
   }
 
   @Test
+  fun `parse round-trips serialize output so regex and serializer stay in sync`() {
+    val line = LogEntry(1_700_000_000_000L, Log.ERROR, "Tag", "boom!").serialize()
+    val parsed = LogTextRenderer.parseLogLines(line).single()
+    assertThat(parsed.level).isEqualTo(Log.ERROR)
+    assertThat(parsed.text.substring(parsed.messageStart)).isEqualTo("boom!")
+  }
+
+  @Test
   fun `colorize preserves the exact input text`() {
     val text =
         "Wheel Witch v1.0 (build 1, git=abc)\n" +

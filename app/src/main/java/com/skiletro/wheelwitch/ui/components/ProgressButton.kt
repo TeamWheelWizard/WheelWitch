@@ -27,15 +27,8 @@ import com.skiletro.wheelwitch.util.formatBytesPerSecond
 import com.skiletro.wheelwitch.util.formatDownloadProgress
 
 /**
- * Indeterminate-style progress bar with a percent label, optional
- * "X / Y bytes" size label, and optional bytes-per-second readout.
- * Used by [com.skiletro.wheelwitch.ui.screens.HomeScreen]'s
- * bottom bar.
- *
- * During the extraction phase the caller also passes
- * [filesDone]/[filesTotal] (rendered as "X / Y files" next to the
- * percent) and [currentFile] (rendered as a small monospace line
- * under the bar so the user can see which file is being written).
+ * Determinate progress with optional byte counts, bytes-per-second rate, and file counts.
+ * [currentFile] replaces [label] beneath the bar when supplied.
  */
 @Composable
 fun ProgressButton(

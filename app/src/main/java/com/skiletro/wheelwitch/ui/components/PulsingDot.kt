@@ -14,22 +14,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import android.provider.Settings
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 
-/**
- * Animated status indicator dot.
- *
- * - The fill color smoothly transitions to [target] over [transitionMs].
- * - When [pulse] is true, the dot pulses (alpha 0.55→1.0 and scale
- *   0.85→1.15) on a 1100ms reverse cycle for a clear "alive" feel.
- */
+/** Status dot with animated color; pulsing is suppressed when the system animator scale is zero. */
 @Composable
 fun PulsingDot(
     target: Color,
@@ -44,19 +42,32 @@ fun PulsingDot(
         label = "dot_color"
     )
 
-    val transition = rememberInfiniteTransition(label = "dot_pulse")
-    val pulseFraction by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "dot_pulse_fraction"
-    )
+    val reduceMotion =
+        Settings.Global.getFloat(
+            LocalContext.current.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f
+        ) == 0f
+    val pulsing = pulse && !reduceMotion
 
-    val alpha = if (pulse) 0.55f + pulseFraction * 0.45f else 1f
-    val scale = if (pulse) 0.85f + pulseFraction * 0.3f else 1f
+    val pulseFraction by
+        if (pulsing) {
+            val transition = rememberInfiniteTransition(label = "dot_pulse")
+            transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1100, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "dot_pulse_fraction"
+            )
+        } else {
+            remember { mutableStateOf(0f) }
+        }
+
+    val alpha = if (pulsing) 0.55f + pulseFraction * 0.45f else 1f
+    val scale = if (pulsing) 0.85f + pulseFraction * 0.3f else 1f
 
     Box(
         modifier = modifier

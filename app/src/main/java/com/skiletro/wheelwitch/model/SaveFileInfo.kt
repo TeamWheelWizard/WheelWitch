@@ -1,10 +1,13 @@
 package com.skiletro.wheelwitch.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Parsed `rksys.dat` save file. Always contains exactly 4 license
  * slots; the parser marks each as `exists = true/false` based on the
  * RKPD magic at the slot base.
  */
+@Immutable
 data class SaveFileInfo(val licenses: List<LicenseInfo>) {
   init {
     require(licenses.size == 4) {
@@ -14,13 +17,11 @@ data class SaveFileInfo(val licenses: List<LicenseInfo>) {
 }
 
 /**
- * One of 4 license slots in a `rksys.dat` file. `exists` is false
- * when the slot has no RKPD magic; all other fields are null in that
- * case. `miiDataBase64` is the 74-byte RFL Mii payload encoded as
- * base64. The two `leaderboard*` fields are populated asynchronously
- * by [com.skiletro.wheelwitch.viewmodel.SaveDataViewModel] after the
- * local save is parsed.
+ * One of four `rksys.dat` slots. The parser sets [exists] false and leaves payload fields null
+ * when RKPD magic is absent. [miiDataBase64] encodes the 74-byte RFL Mii payload.
+ * [leaderboardVr] and Mii fields may later be enriched with cached or fetched leaderboard data.
  */
+@Immutable
 data class LicenseInfo(
   val slotIndex: Int,
   val exists: Boolean,

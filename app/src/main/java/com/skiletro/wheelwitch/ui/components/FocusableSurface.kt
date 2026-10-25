@@ -21,20 +21,8 @@ import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.buttonShape
 
 /**
- * A focusable card that draws a focus border when focused and optionally
- * handles click events.
- *
- * Replaces the repeated `.clickable {} + .focusable() + .onFocusChanged {} +
- * .focusBorder()` + `Surface` pattern that was copy-pasted across screens.
- *
- * - When [onClick] is non-null and [enabled] is true, the surface is
- *   clickable; otherwise it is focusable only.
- * - When [selected] is true, the focus border is shown regardless of focus
- *   state (used for things like a currently-selected license slot).
- * - Focus state is hoisted to a `remember` scope (NOT inside the clickable
- *   lambda) so the state survives recomposition correctly.
- * - The focus border is drawn with [shape], which may be a
- *   [RoundedCornerShape] or [CircleShape] (or falls back to [buttonShape]).
+ * Card with a gamepad focus ring; [selected] keeps the ring visible without focus.
+ * [enabled] controls focus and clicking; a null [onClick] leaves an enabled card focusable only.
  */
 @Composable
 fun FocusableSurface(

@@ -3,6 +3,7 @@ package com.skiletro.wheelwitch.data
 import com.google.common.truth.Truth.assertThat
 import com.skiletro.wheelwitch.data.GameTypeParser.GameFormat
 import org.junit.jupiter.api.Test
+import java.util.Locale
 
 class GameTypeParserTest {
 
@@ -51,7 +52,6 @@ class GameTypeParserTest {
         }
     }
 
-    // --- ISO ---
 
     @Test
     fun `parse ISO with valid game ID`() {
@@ -81,7 +81,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isEqualTo("")
     }
 
-    // --- RVZ ---
 
     @Test
     fun `parse RVZ with valid magic and game ID`() {
@@ -114,7 +113,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- WBFS ---
 
     @Test
     fun `parse WBFS with valid header returns Wbfs without game ID`() {
@@ -179,7 +177,6 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- WAD ---
 
     @Test
     fun `parse WAD with valid magic`() {
@@ -205,7 +202,19 @@ class GameTypeParserTest {
         assertThat(info.gameId).isNull()
     }
 
-    // --- checkValidity ---
+
+    @Test
+    fun `lowercase extension remains valid under Turkish locale`() {
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+
+            assertThat(GameTypeParser.checkValidity("game.iso", createIsoBuffer("RMCP01")))
+                .isTrue()
+        } finally {
+            Locale.setDefault(original)
+        }
+    }
 
     @Test
     fun `checkValidity returns true for valid ISO`() {

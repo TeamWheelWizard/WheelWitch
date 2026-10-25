@@ -5,45 +5,22 @@ import com.skiletro.wheelwitch.data.ExtractingPhase
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.util.io.DownloadProgress
 
-/**
- * High-level state for the pack update flow.
- *
- * Lifecycle: `Idle → Checking → Ready → Installing → Installed → Error`.
- * `Installing` and `Installed` are the new install/update states
- * added when the save/install/launch refactor reintroduced the
- * orchestration; `checkStatus` and the error path still cycle back to
- * `Ready` / `Error` respectively.
- */
+/** Pack status checks and install progress; successful installs trigger a fresh status check. */
 @Immutable
 sealed class UiState {
   /** Initial state before the first check completes. */
   data object Idle : UiState()
 
   /**
-   * A status check is in progress. [previousStatus] is the
-   * [PackStatus] resolved by the last check, so the UI can keep the
-   * primary action visible (but disabled) while the new check runs.
-   * Null on the first check after app start.
+   * Keeps the last resolved status visible during a check. Installation is disabled, but an
+   * installed pack can still be launched. [previousStatus] is null when no ready status is available.
    */
   data class Checking(val previousStatus: PackStatus?) : UiState()
 
   /** A status check finished; [status] is the current pack state. */
   data class Ready(val status: PackStatus) : UiState()
 
-  /**
-   * A pack install or update is in progress. The phase is one of:
-   *
-   * - [Installing.Downloading]: fetching the zip from the server.
-   *   Carries the full [DownloadProgress] (fraction, rate, byte
-   *   counts) for a determinate UI bar.
-   * - [Installing.Extracting]: unpacking the zip into the SAF tree.
-   *   Carries a determinate file-count bar, the current file name,
-   *   and a byte-count basis for future use.
-   *
-   * Both phases live under the same `Installing` parent so the home
-   * screen's `isBusy = state is UiState.Installing` check still
-   * works without a per-phase guard.
-   */
+  /** Download and extraction phases share the UI's busy-state guard. */
   @Immutable
   sealed class Installing : UiState() {
     /** Zip is being fetched from the update server. */
@@ -65,11 +42,7 @@ sealed class UiState {
     ) : Installing()
   }
 
-  /**
-   * An install just completed. The view-model auto-transitions to
-   * [Checking] immediately after this, so the UI typically sees this
-   * state for a single frame.
-   */
+  /** Install completion, immediately followed by a new status check. */
   data object Installed : UiState()
 
   /** A status check or install failed; [message] is user-facing. */

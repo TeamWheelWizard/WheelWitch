@@ -5,8 +5,5 @@
         path="settings.xml" />
     <include
         domain="sharedpref"
-        path="wheelwitch.xml" />
-    <include
-        domain="sharedpref"
         path="race_stats_cache.xml" />
 </full-backup-content>

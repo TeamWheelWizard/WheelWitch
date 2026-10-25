@@ -29,7 +29,6 @@ class OptionalFileTreeTest {
   @Test
   fun `drops when disabled`() {
     plant(enabled = true, minPriority = Log.VERBOSE)
-    // Swap to disabled by planting a new tree
     Timber.uprootAll()
     plant(enabled = false, minPriority = Log.VERBOSE)
     Timber.tag("Tag").i("hello")
@@ -83,6 +82,31 @@ class OptionalFileTreeTest {
   }
 
   @Test
+  fun `truncates in place when rename rotation fails`() {
+    file.writeText("x".repeat(1000))
+    val rotated = File(file.parentFile, file.name + ".1")
+    rotated.mkdirs()
+    File(rotated, "blocker").writeText("block")
+
+    appendWithRotation(file, "y".repeat(100), maxBytes = 100)
+
+    assertThat(rotated.exists()).isTrue()
+    assertThat(file.length()).isEqualTo(100L)
+    assertThat(file.readText()).isEqualTo("y".repeat(100))
+  }
+
+  @Test
+  fun `rotates based on utf8 byte length not char count`() {
+    val emoji = "\uD83D\uDE00"
+    file.writeText(emoji)
+    appendWithRotation(file, emoji + emoji, maxBytes = 10)
+
+    val rotated = File(file.parentFile, file.name + ".1")
+    assertThat(rotated.exists()).isTrue()
+    assertThat(file.length()).isEqualTo(emoji.toByteArray(Charsets.UTF_8).size * 2L)
+  }
+
+  @Test
   fun `drops entries below minPriority`() {
     plant(enabled = true, minPriority = Log.WARN)
     Timber.tag("Tag").d("drop")
@@ -111,8 +135,8 @@ class OptionalFileTreeTest {
   @Test
   fun `isLoggable returns true when enabled and above minPriority`() {
     plant(enabled = true, minPriority = Log.WARN)
-    Timber.tag("Tag").i("info") // dropped
-    Timber.tag("Tag").w("warn") // kept
+    Timber.tag("Tag").i("info")
+    Timber.tag("Tag").w("warn")
     val contents = file.readText()
     assertThat(contents).doesNotContain("info")
     assertThat(contents).contains("warn")

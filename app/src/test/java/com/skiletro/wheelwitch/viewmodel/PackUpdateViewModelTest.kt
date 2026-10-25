@@ -48,7 +48,6 @@ class PackUpdateViewModelTest {
       managerFactory = { manager },
     )
 
-  // --- init / checkStatus --------------------------------------------
 
   @Test
   fun `init triggers checkStatus and lands on Ready when manager returns a status`() = runTest {
@@ -56,8 +55,6 @@ class PackUpdateViewModelTest {
 
     val vm = viewModel()
 
-    // UnconfinedTestDispatcher runs the init coroutine synchronously
-    // on the calling thread, so the state has already settled to Ready.
     assertThat(vm.state.value).isEqualTo(UiState.Ready(PackStatus.NotInstalled))
   }
 
@@ -94,7 +91,6 @@ class PackUpdateViewModelTest {
     assertThat((vm.state.value as UiState.Error).message).contains("boom")
   }
 
-  // --- installLatest --------------------------------------------------
 
   @Test
   fun `installLatest transitions through Installing then Installed then back to Ready`() = runTest {
@@ -104,8 +100,7 @@ class PackUpdateViewModelTest {
 
     vm.installLatest()
 
-    // After success the VM auto-calls checkStatus, which lands on
-    // Ready(NotInstalled) (the only stubbed response).
+    // A successful install rechecks the manager's status rather than assuming UpToDate.
     assertThat(vm.state.value).isEqualTo(UiState.Ready(PackStatus.NotInstalled))
     coVerify(exactly = 1) { manager.installLatest(any()) }
   }
@@ -139,7 +134,6 @@ class PackUpdateViewModelTest {
     assertThat((state as UiState.Error).message).contains("Storage")
   }
 
-  // --- update ---------------------------------------------------------
 
   @Test
   fun `update routes to incremental when manager has an update to apply`() = runTest {
@@ -154,7 +148,6 @@ class PackUpdateViewModelTest {
     coVerify(exactly = 0) { manager.installLatest(any()) }
   }
 
-  // --- reinstall ------------------------------------------------------
 
   @Test
   fun `reinstall transitions through Installing then Installed then back to Ready`() = runTest {
@@ -197,7 +190,6 @@ class PackUpdateViewModelTest {
     assertThat((state as UiState.Error).message).contains("Storage")
   }
 
-  // --- clearError ----------------------------------------------------
 
   @Test
   fun `clearError from Error re-checks status`() = runTest {
@@ -222,11 +214,9 @@ class PackUpdateViewModelTest {
     vm.clearError()
 
     assertThat(vm.state.value).isEqualTo(stateBefore)
-    // No additional checkStatus call.
     coVerify(exactly = 1) { manager.checkStatus() }
   }
 
-  // --- installProgress ------------------------------------------------
 
   @Test
   fun `installProgress emits null when no install is in flight`() = runTest {
@@ -248,10 +238,6 @@ class PackUpdateViewModelTest {
 
     vm.installLatest()
 
-    // After the install completes, the VM auto-calls checkStatus
-    // and lands on Ready; installProgress is the derived flow of
-    // (it as? Installing.Downloading)?.progress, so it is null when
-    // state is no longer Downloading.
     assertThat(vm.installProgress.value).isNull()
   }
 
@@ -280,14 +266,10 @@ class PackUpdateViewModelTest {
     assertThat(vm.installProgress.value).isNull()
   }
 
-  // --- refreshManager ------------------------------------------------
 
   @Test
   fun `refreshManager re-creates the manager and re-runs checkStatus`() = runTest {
-    // Simulate the fresh-install / cleared-pref state: the first
-    // factory call returns null (manager is null), then onboarding
-    // completes and the composition root calls refreshManager(),
-    // which runs the factory a second time and gets a real manager.
+    // Storage can become configured after the ViewModel is created.
     val firstManager: RewindPackManager? = null
     val secondManager: RewindPackManager = mockk(relaxed = true)
     coEvery { secondManager.checkStatus() } returns
@@ -304,14 +286,11 @@ class PackUpdateViewModelTest {
         managerFactory = factory,
       )
 
-    // The first init { checkStatus() } ran with the null manager.
     assertThat(vm.state.value).isEqualTo(UiState.Ready(PackStatus.NotInstalled))
     coVerify(exactly = 0) { secondManager.checkStatus() }
 
     vm.refreshManager()
 
-    // After refresh, the cached manager is the new one and a
-    // fresh checkStatus has run against it.
     assertThat(factoryCalls).isEqualTo(2)
     coVerify(exactly = 1) { secondManager.checkStatus() }
     assertThat(vm.state.value)

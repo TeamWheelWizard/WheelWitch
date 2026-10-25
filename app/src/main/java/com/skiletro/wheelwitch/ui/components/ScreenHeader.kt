@@ -31,17 +31,7 @@ import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 
 private val HeaderPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp)
 
-/**
- * Standard screen header.
- *
- * Layout: [optional back] | title (centered, weighted) | [trailing slot] | [optional refresh].
- *
- * The [trailing] slot is rendered between the title and the refresh button and
- * is intended for small inline content such as a "5 minutes ago" label.
- *
- * Focus state for the back and refresh buttons is hoisted to the top of the
- * composable so the `var` declarations live in a stable, remembered scope.
- */
+/** Header with optional back/refresh actions and a [trailing] slot after the weighted title. */
 @Composable
 fun ScreenHeader(
     title: String,

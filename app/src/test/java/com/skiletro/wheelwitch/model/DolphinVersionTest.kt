@@ -66,9 +66,6 @@ class DolphinVersionTest {
 
   @Test
   fun `parse handles oversized dev build without crashing`() {
-    // Unbounded digits must not throw (mirrors WheelWizard's
-    // int.TryParse guard against OverflowException). The overflowed
-    // dev build is dropped and the version is treated as not-supported.
     val version = DolphinVersion.parse("2606-999999999999999999999")
     assertThat(version).isNotNull()
     assertThat(version!!.devBuild).isNull()

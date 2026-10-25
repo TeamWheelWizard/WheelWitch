@@ -2,6 +2,7 @@ package com.skiletro.wheelwitch.network
 
 import com.skiletro.wheelwitch.model.LeaderboardEntry
 import com.skiletro.wheelwitch.model.LeaderboardResponse
+import com.skiletro.wheelwitch.model.PlayerLeaderboardData
 import com.skiletro.wheelwitch.util.json.jsonArrayFromResponse
 import com.skiletro.wheelwitch.util.json.optAnyString
 import com.skiletro.wheelwitch.util.json.optNonEmptyString
@@ -11,10 +12,9 @@ import org.json.JSONObject
 /**
  * Parses a `/api/leaderboard` JSON response into [LeaderboardResponse].
  *
- * The API has historically returned the entries array under several
- * field names (`players`, `data`, `results`, `leaderboard`, `entries`)
- * and pagination under camelCase, snake_case, or a `next` link. All
- * known variants are tolerated; a bare top-level array is also accepted.
+ * Accepts a bare array or an entries array under `players`, `data`, `results`, `leaderboard`,
+ * or `entries`. Pagination supports camelCase/snake_case fields and treats the presence of
+ * `next` as more pages when explicit flags are absent, even if its value is null.
  */
 fun parseLeaderboardResponse(jsonString: String): LeaderboardResponse {
     val data = jsonArrayFromResponse(
@@ -40,10 +40,12 @@ fun parseLeaderboardResponse(jsonString: String): LeaderboardResponse {
         LeaderboardEntry(
             rank = obj.optInt("rank", 0),
             friendCode = obj.optAnyString("friendCode", "friend_code", "fc") ?: "",
-            name = obj.optString("name", "Unknown"),
-            vr = obj.optInt("vr", 0),
+            player = PlayerLeaderboardData(
+                vr = obj.optInt("vr", 0),
+                name = obj.optString("name", "Unknown"),
+                miiData = obj.optNonEmptyString("miiData"),
+            ),
             miiImageBase64 = obj.optNonEmptyString("miiImageBase64"),
-            miiData = obj.optNonEmptyString("miiData"),
         )
     }
     return LeaderboardResponse(entries = entries, page = page, hasMore = hasMore)

@@ -10,8 +10,7 @@ import androidx.compose.ui.Modifier
  * Build a modifier that morphs the title text from the Online Menu hub
  * into the destination page's screen header.
  *
- * The shared element key is the string passed in (typically the
- * [com.skiletro.wheelwitch.viewmodel.OnlineMenuPage] enum name). The
+ * The caller supplies the shared element key. The
  * returned modifier is a no-op when either [sharedTransitionScope] or
  * [animatedContentScope] is null, so screens can be used standalone
  * without shared transitions.

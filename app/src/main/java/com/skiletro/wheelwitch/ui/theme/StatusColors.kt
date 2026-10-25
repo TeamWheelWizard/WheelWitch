@@ -4,13 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-/**
- * Color palette used for OK / Error status indicators and cards.
- *
- * The light and dark instances currently use the same hues; the split
- * exists so that future theme tweaks can darken the dark-mode containers
- * without touching call sites.
- */
+/** Semantic colors for OK/error indicators and cards. */
 @Immutable
 data class StatusColors(
     val okContainer: Color,

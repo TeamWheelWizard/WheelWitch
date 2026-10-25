@@ -5,22 +5,9 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /**
- * Shared OkHttpClient singletons.
- *
- * [client] has 15s timeouts and is used for metadata-style requests
- * (rooms, leaderboard, server health, Mii face fetches, etc.). The
- * [Dispatcher] is capped at [MAX_REQUESTS] /
- * [MAX_REQUESTS_PER_HOST] so a fan-out of Mii image requests (up to
- * 50 leaderboard rows × 4 retries) cannot starve the rest of the
- * app's HTTP traffic.
- *
- * [largeDownloadClient] has 60s timeouts and is used for large payload
- * downloads (e.g. the multi-MB Retro Rewind pack zip and the Mii Channel
- * WAD zip). The longer timeouts prevent spurious read timeouts on slow
- * connections. [com.skiletro.wheelwitch.util.io.FileDownloader] clones
- * this client's dispatcher per parallel download so chunk workers
- * don't fight over the shared dispatcher; the cap here only applies
- * to the single-stream fallback.
+ * Shared HTTP clients with a 15s connect timeout and 15s ([client]) or 60s
+ * ([largeDownloadClient]) read timeout. [probeClient] uses 3s connect/read timeouts without
+ * redirects. Dispatcher limits govern asynchronous calls, not blocking `execute()` calls.
  */
 object HttpClientProvider {
     val client: OkHttpClient by lazy { buildClient(readTimeoutSeconds = 15) }

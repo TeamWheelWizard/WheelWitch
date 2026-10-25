@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.R
 
-/** Centered full-size loading spinner shared by the online sub-screens. */
 @Composable
 fun LoadingBox(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -26,7 +25,6 @@ fun LoadingBox(modifier: Modifier = Modifier) {
     }
 }
 
-/** Centered error message with a retry button shared by the online sub-screens. */
 @Composable
 fun ErrorRetry(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     Column(
@@ -49,7 +47,6 @@ fun ErrorRetry(message: String, onRetry: () -> Unit, modifier: Modifier = Modifi
     }
 }
 
-/** Centered empty-state message with an optional action button shared by the online sub-screens. */
 @Composable
 fun EmptyState(
     message: String,

@@ -3,11 +3,7 @@ package com.skiletro.wheelwitch.util.log
 import timber.log.Timber
 
 /**
- * Captures every log call into a [LogBuffer] for later export.
- *
- * [minPriority] follows [android.util.Log] priority constants (e.g.
- * [android.util.Log.VERBOSE], [android.util.Log.WARN]). Calls below this priority
- * are silently dropped.
+ * Captures calls at or above [minPriority] in a [LogBuffer] for later export.
  */
 class MemoryBufferTree(
   private val buffer: LogBuffer = LogBuffer.default,

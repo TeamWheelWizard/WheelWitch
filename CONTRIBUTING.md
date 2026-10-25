@@ -116,3 +116,13 @@ com.skiletro.wheelwitch
 ```
 
 Strings go in `res/values/strings.xml`; Compose screens use `stringResource()`.
+
+## Workflow ownership
+
+- `CloudSyncViewModel` owns account-scoped jobs. Connecting or disconnecting invalidates pending work; `MainScreen` observes app resume independently of the visible screen.
+- `OnlineViewModel` owns time-trial requests by track/filter generation. Selection changes cancel old work; pagination is single-flight and cannot publish into a newer selection.
+- Save discovery, reads, backup inspection, and deletion use existing-only paths. Restore creates directories explicitly; optional Dolphin directories are resolved afresh so a reused `DolphinTree` observes external changes.
+- `SaveManager` performs backup/restore/delete; `SaveDataViewModel` resolves storage, handles localized failures, and updates UI state directly, without a separate callback coordinator.
+- Home action rendering shares the last known pack-status row between ready and checking states. Re-checking disables install/update actions but preserves the explicit launch override and offline launch.
+- `HomeLaunchViewModel` owns launch confirmations, notice persistence, and the launch job. `HomeScreen` only renders prompts and consumes result messages; the job survives removal of the home composable.
+- `OnboardingViewModel` owns the wizard's single state and SAF/ROM I/O. Navigation invalidates old work; state survives activity recreation, and Settings explicitly restarts the wizard. Compose retains rendering and activity-result launchers.
