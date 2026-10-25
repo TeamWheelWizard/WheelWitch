@@ -120,3 +120,4 @@ Strings go in `res/values/strings.xml`; Compose screens use `stringResource()`.
 ## Workflow ownership
 
 - `CloudSyncViewModel` owns account-scoped jobs. Connecting or disconnecting invalidates pending work; `MainScreen` observes app resume independently of the visible screen.
+- `OnlineViewModel` owns time-trial requests by track/filter generation. Selection changes cancel old work; pagination is single-flight and cannot publish into a newer selection.

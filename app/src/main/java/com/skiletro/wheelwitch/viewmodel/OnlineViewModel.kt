@@ -18,6 +18,7 @@ import com.skiletro.wheelwitch.viewmodel.OnlineViewModel.Companion.MAX_CACHE_AGE
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +37,8 @@ private data class LeaderboardRequest(val refresh: Boolean, val generation: Int)
 
 /**
  * Owns rooms, leaderboard, server health, race stats, and time-trial tracks state. Each sub-screen
- * has its own state machine; pagination for the leaderboard is race-free via a conflated channel.
+ * has its own state machine. Time-trial requests capture their inputs and only the current request
+ * generation may publish; first-page requests and track-list resets cancel selected-track work.
  */
 class OnlineViewModel(
     application: Application,
@@ -75,6 +77,11 @@ class OnlineViewModel(
 
   private val _glitchAllowed = MutableStateFlow(true)
   val glitchAllowed: StateFlow<Boolean> = _glitchAllowed.asStateFlow()
+
+  private var tracksJob: Job? = null
+  private var tracksGeneration = 0
+  private var trackLeaderboardJob: Job? = null
+  private var trackLeaderboardGeneration = 0
 
   /**
    * Conflated channel so rapid refresh/load-more requests coalesce into one in-flight request. The
@@ -369,24 +376,30 @@ class OnlineViewModel(
     }
   }
 
-  /** Fetches the time-trial track list and resets selection. */
+  /**
+   * Fetches the time-trial track list and immediately resets selection. A reset invalidates pending
+   * first-page and pagination work; only the latest track-list request may publish its result.
+   */
   fun fetchTracks() {
-    fetchAsync(
-        logMessage = "Time trial tracks fetch failed",
-        setLoading = {
-          _ttState.value = TimeTrialState.Loading
-          _selectedTrackId.value = null
-          _trackLeaderboardState.value = TrackLeaderboardState.Idle
-        },
-        fetch = { VersionFileParser.fetchTracks() },
-        onSuccess = { tracks ->
-          val visible = tracks.filter { !it.isHidden }
-          _ttState.value = TimeTrialState.Success(visible)
-        },
-        onFailure = { e ->
-          _ttState.value = TimeTrialState.Error(errorMessage(e, "load time trial tracks"))
-        },
-    )
+    val generation = ++tracksGeneration
+    tracksJob?.cancel()
+    trackLeaderboardGeneration++
+    trackLeaderboardJob?.cancel()
+    _ttState.value = TimeTrialState.Loading
+    _selectedTrackId.value = null
+    _trackLeaderboardState.value = TrackLeaderboardState.Idle
+    tracksJob = viewModelScope.launch {
+      val result = withContext(ioDispatcher) { VersionFileParser.fetchTracks() }
+      if (generation != tracksGeneration) return@launch
+      result
+          .onSuccess { tracks ->
+            _ttState.value = TimeTrialState.Success(tracks.filter { !it.isHidden })
+          }
+          .onFailure { e ->
+            Timber.tag(TAG).w(e, "Time trial tracks fetch failed")
+            _ttState.value = TimeTrialState.Error(errorMessage(e, "load time trial tracks"))
+          }
+    }
   }
 
   /** Selects a track and fetches its leaderboard (page 1). */
@@ -395,69 +408,86 @@ class OnlineViewModel(
     fetchTrackLeaderboard()
   }
 
-  /** Fetches page 1 of the leaderboard for the currently selected track + filters. */
+  /**
+   * Fetches page 1 using an immutable snapshot of the selected track and filters. Starting a new
+   * generation cancels any previous first-page or pagination request before replacing its state.
+   */
   fun fetchTrackLeaderboard() {
     val trackId = _selectedTrackId.value ?: return
-    fetchAsync(
-        logMessage = "Track leaderboard fetch failed",
-        setLoading = { _trackLeaderboardState.value = TrackLeaderboardState.Loading },
-        fetch = {
-          VersionFileParser.fetchTrackLeaderboard(
-              trackId = trackId,
-              cc = _cc.value,
-              glitchAllowed = _glitchAllowed.value,
-              page = 1,
-              pageSize = 50,
-          )
-        },
-        onSuccess = { response ->
-          _trackLeaderboardState.value =
-              TrackLeaderboardState.Success(
-                  submissions = response.submissions,
-                  currentPage = response.currentPage,
-                  totalPages = response.totalPages,
-                  fastestLapMs = response.fastestLapMs,
-                  fastestLapDisplay = response.fastestLapDisplay,
-              )
-        },
-        onFailure = { e ->
-          _trackLeaderboardState.value =
-              TrackLeaderboardState.Error(errorMessage(e, "load track leaderboard"))
-        },
-    )
+    val cc = _cc.value
+    val glitchAllowed = _glitchAllowed.value
+    val generation = ++trackLeaderboardGeneration
+    trackLeaderboardJob?.cancel()
+    _trackLeaderboardState.value = TrackLeaderboardState.Loading
+    trackLeaderboardJob = viewModelScope.launch {
+      val result =
+          withContext(ioDispatcher) {
+            VersionFileParser.fetchTrackLeaderboard(
+                trackId = trackId,
+                cc = cc,
+                glitchAllowed = glitchAllowed,
+                page = 1,
+                pageSize = 50,
+            )
+          }
+      if (generation != trackLeaderboardGeneration) return@launch
+      result
+          .onSuccess { response ->
+            _trackLeaderboardState.value =
+                TrackLeaderboardState.Success(
+                    submissions = response.submissions,
+                    currentPage = response.currentPage,
+                    totalPages = response.totalPages,
+                    fastestLapMs = response.fastestLapMs,
+                    fastestLapDisplay = response.fastestLapDisplay,
+                )
+          }
+          .onFailure { e ->
+            Timber.tag(TAG).w(e, "Track leaderboard fetch failed")
+            _trackLeaderboardState.value =
+                TrackLeaderboardState.Error(errorMessage(e, "load track leaderboard"))
+          }
+    }
   }
 
-  /** Fetches the next page of submissions for the currently selected track. */
+  /**
+   * Fetches the next page once for the active track/filter generation. Duplicate taps are ignored
+   * while a request is active; existing submissions remain visible, including on failure.
+   */
   fun fetchMoreSubmissions() {
     val trackId = _selectedTrackId.value ?: return
     val current = _trackLeaderboardState.value
     if (current !is TrackLeaderboardState.Success) return
-    if (current.currentPage >= current.totalPages) return
+    if (current.currentPage >= current.totalPages || trackLeaderboardJob?.isActive == true) return
+    val cc = _cc.value
+    val glitchAllowed = _glitchAllowed.value
+    val generation = trackLeaderboardGeneration
     val nextPage = current.currentPage + 1
-    fetchAsync(
-        logMessage = "More submissions fetch failed",
-        setLoading = {},
-        fetch = {
-          VersionFileParser.fetchTrackLeaderboard(
-              trackId = trackId,
-              cc = _cc.value,
-              glitchAllowed = _glitchAllowed.value,
-              page = nextPage,
-              pageSize = 50,
-          )
-        },
-        onSuccess = { response ->
-          _trackLeaderboardState.value =
-              TrackLeaderboardState.Success(
-                  submissions = current.submissions + response.submissions,
-                  currentPage = response.currentPage,
-                  totalPages = response.totalPages,
-                  fastestLapMs = response.fastestLapMs,
-                  fastestLapDisplay = response.fastestLapDisplay,
-              )
-        },
-        onFailure = {},
-    )
+    trackLeaderboardJob = viewModelScope.launch {
+      val result =
+          withContext(ioDispatcher) {
+            VersionFileParser.fetchTrackLeaderboard(
+                trackId = trackId,
+                cc = cc,
+                glitchAllowed = glitchAllowed,
+                page = nextPage,
+                pageSize = 50,
+            )
+          }
+      if (generation != trackLeaderboardGeneration) return@launch
+      result
+          .onSuccess { response ->
+            _trackLeaderboardState.value =
+                TrackLeaderboardState.Success(
+                    submissions = current.submissions + response.submissions,
+                    currentPage = response.currentPage,
+                    totalPages = response.totalPages,
+                    fastestLapMs = response.fastestLapMs,
+                    fastestLapDisplay = response.fastestLapDisplay,
+                )
+          }
+          .onFailure { e -> Timber.tag(TAG).w(e, "More submissions fetch failed") }
+    }
   }
 
   /** Changes the engine class and re-fetches the leaderboard if a track is selected. */
