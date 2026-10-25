@@ -44,7 +44,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.PackStatus
 import com.skiletro.wheelwitch.model.SemVersion
@@ -70,19 +70,17 @@ import com.skiletro.wheelwitch.ui.components.TopBar
 import com.skiletro.wheelwitch.ui.components.focusBorder
 import com.skiletro.wheelwitch.ui.theme.buttonShape
 import com.skiletro.wheelwitch.util.io.DownloadProgress
-import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.viewmodel.AppUpdateState
 import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.CloudSyncViewModel
+import com.skiletro.wheelwitch.viewmodel.HomeLaunchViewModel
+import com.skiletro.wheelwitch.viewmodel.LaunchPrompt
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.RoomsState
 import com.skiletro.wheelwitch.viewmodel.SaveDataViewModel
 import com.skiletro.wheelwitch.viewmodel.UiState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Top-level home screen: top bar, inline license grid, and the check-for-updates / install / launch
@@ -100,6 +98,7 @@ fun HomeScreen(
     showDolphinOutdatedDialog: Boolean = false,
     outdatedDolphinVersion: String? = null,
     onDismissDolphinOutdatedDialog: () -> Unit = {},
+    gameLaunch: HomeLaunchViewModel = viewModel(factory = HomeLaunchViewModel.Factory),
 ) {
   val state by packUpdate.state.collectAsState()
   val installProgress by packUpdate.installProgress.collectAsState()
@@ -206,74 +205,38 @@ fun HomeScreen(
     }
   }
 
-  val scope = rememberCoroutineScope()
-  var showLaunchWarningDialog by remember { mutableStateOf(false) }
-  var showGameIniNotice by remember { mutableStateOf(false) }
-
-  val launchDolphinNotInstalled = stringResource(R.string.home_launch_dolphin_not_installed)
-  val launchNoRom = stringResource(R.string.home_launch_no_rom)
-  val launchFallback = stringResource(R.string.home_launch_fallback)
-  val launchStorageNotConfigured = stringResource(R.string.error_storage_not_configured)
-
-  val performLaunch: suspend () -> Unit = {
-    // Best-effort advisory lock + pending-push flag; never delays the launch.
-    cloudSync.beginSession()
-    val result = withContext(Dispatchers.IO) { DolphinLauncher.launchRetroRewind(context) }
-    val message =
-        when (result) {
-          is DolphinLauncher.LaunchResult.AutoStarted -> null
-          is DolphinLauncher.LaunchResult.FallbackStarted -> launchFallback
-          DolphinLauncher.LaunchResult.DolphinNotInstalled -> launchDolphinNotInstalled
-          DolphinLauncher.LaunchResult.StorageNotConfigured -> launchStorageNotConfigured
-          DolphinLauncher.LaunchResult.NoRom -> launchNoRom
-        }
-    if (message != null) {
+  val launchPrompt by gameLaunch.prompt.collectAsState()
+  LaunchedEffect(gameLaunch) {
+    gameLaunch.messages.collect { message ->
       Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
   }
 
-  if (showLaunchWarningDialog) {
+  if (launchPrompt == LaunchPrompt.CheckInProgress) {
     AlertDialog(
-        onDismissRequest = { showLaunchWarningDialog = false },
+        onDismissRequest = gameLaunch::dismissPrompt,
         title = { Text(stringResource(R.string.home_check_in_progress_title)) },
         text = { Text(stringResource(R.string.home_check_in_progress_body)) },
         confirmButton = {
-          TextButton(
-              onClick = {
-                showLaunchWarningDialog = false
-                scope.launch { performLaunch() }
-              }
-          ) {
+          TextButton(onClick = { gameLaunch.confirmLaunch(cloudSync::beginSession) }) {
             Text(stringResource(R.string.home_launch_anyway))
           }
         },
         dismissButton = {
-          TextButton(onClick = { showLaunchWarningDialog = false }) {
+          TextButton(onClick = gameLaunch::dismissPrompt) {
             Text(stringResource(R.string.action_cancel))
           }
         },
     )
   }
 
-  if (showGameIniNotice) {
+  if (launchPrompt == LaunchPrompt.GameIniNotice) {
     AlertDialog(
-        onDismissRequest = { showGameIniNotice = false },
+        onDismissRequest = gameLaunch::dismissPrompt,
         title = { Text(stringResource(R.string.home_game_ini_notice_title)) },
         text = { Text(stringResource(R.string.home_game_ini_notice_body)) },
         confirmButton = {
-          TextButton(
-              onClick = {
-                com.skiletro.wheelwitch.util.prefs.Prefs.main(context)
-                    .edit()
-                    .putBoolean(
-                        com.skiletro.wheelwitch.util.prefs.PrefsKeys.GAME_INI_NOTICE_SHOWN_KEY,
-                        true,
-                    )
-                    .apply()
-                showGameIniNotice = false
-                scope.launch { performLaunch() }
-              }
-          ) {
+          TextButton(onClick = { gameLaunch.confirmLaunch(cloudSync::beginSession) }) {
             Text(stringResource(R.string.home_game_ini_notice_acknowledged))
           }
         },
@@ -373,22 +336,10 @@ fun HomeScreen(
                     onInstall = { packUpdate.installLatest() },
                     onUpdate = { packUpdate.update() },
                     onLaunch = {
-                      if (state is UiState.Checking) {
-                        showLaunchWarningDialog = true
-                      } else {
-                        val noticeShown =
-                            com.skiletro.wheelwitch.util.prefs.Prefs.main(context)
-                                .getBoolean(
-                                    com.skiletro.wheelwitch.util.prefs.PrefsKeys
-                                        .GAME_INI_NOTICE_SHOWN_KEY,
-                                    false,
-                                )
-                        if (!noticeShown) {
-                          showGameIniNotice = true
-                        } else {
-                          scope.launch { performLaunch() }
-                        }
-                      }
+                      gameLaunch.requestLaunch(
+                          isChecking = state is UiState.Checking,
+                          beginSession = cloudSync::beginSession,
+                      )
                     },
                 )
               }
