@@ -116,3 +116,7 @@ com.skiletro.wheelwitch
 ```
 
 Strings go in `res/values/strings.xml`; Compose screens use `stringResource()`.
+
+## Workflow ownership
+
+- `CloudSyncViewModel` owns account-scoped jobs. Connecting or disconnecting invalidates pending work; `MainScreen` observes app resume independently of the visible screen.

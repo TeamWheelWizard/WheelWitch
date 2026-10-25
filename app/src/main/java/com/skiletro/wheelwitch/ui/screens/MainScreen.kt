@@ -17,6 +17,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,11 +28,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.skiletro.wheelwitch.R
+import com.skiletro.wheelwitch.model.DolphinVersion
 import com.skiletro.wheelwitch.ui.theme.AppTheme
 import com.skiletro.wheelwitch.ui.theme.ThemeMode
-import com.skiletro.wheelwitch.model.DolphinVersion
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
 import com.skiletro.wheelwitch.util.prefs.Prefs
 import com.skiletro.wheelwitch.util.prefs.PrefsKeys
@@ -48,22 +52,22 @@ import com.skiletro.wheelwitch.viewmodel.SyncUiState
 private const val ONBOARDING_TRANSITION_MS = 300
 
 /**
- * Top-level composable: chooses between the onboarding wizard and the
- * home / settings overlay stack.
+ * Top-level composable: chooses between the onboarding wizard and the home / settings overlay
+ * stack.
  */
 @Composable
 fun MainScreen(
-  packUpdate: PackUpdateViewModel = viewModel(factory = PackUpdateViewModel.Factory),
-  miiMaker: MiiMakerViewModel = viewModel(factory = MiiMakerViewModel.Factory),
-  onlineViewModel: OnlineViewModel = viewModel(factory = OnlineViewModel.Factory),
-  saveData: SaveDataViewModel = viewModel(factory = SaveDataViewModel.factory(packUpdate)),
-  logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
-  appUpdate: AppUpdateViewModel = viewModel(factory = AppUpdateViewModel.Factory),
-  cloudSync: CloudSyncViewModel = viewModel(factory = CloudSyncViewModel.Factory),
-  appTheme: AppTheme = AppTheme.Hex,
-  onChangeAppTheme: (AppTheme) -> Unit = {},
-  themeMode: ThemeMode = ThemeMode.System,
-  onChangeThemeMode: (ThemeMode) -> Unit = {},
+    packUpdate: PackUpdateViewModel = viewModel(factory = PackUpdateViewModel.Factory),
+    miiMaker: MiiMakerViewModel = viewModel(factory = MiiMakerViewModel.Factory),
+    onlineViewModel: OnlineViewModel = viewModel(factory = OnlineViewModel.Factory),
+    saveData: SaveDataViewModel = viewModel(factory = SaveDataViewModel.factory(packUpdate)),
+    logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
+    appUpdate: AppUpdateViewModel = viewModel(factory = AppUpdateViewModel.Factory),
+    cloudSync: CloudSyncViewModel = viewModel(factory = CloudSyncViewModel.Factory),
+    appTheme: AppTheme = AppTheme.Hex,
+    onChangeAppTheme: (AppTheme) -> Unit = {},
+    themeMode: ThemeMode = ThemeMode.System,
+    onChangeThemeMode: (ThemeMode) -> Unit = {},
 ) {
   val context = LocalContext.current
   val onboardingPrefs = remember { Prefs.settings(context) }
@@ -84,6 +88,15 @@ fun MainScreen(
   var foreignLockAcknowledged by remember { mutableStateOf(false) }
 
   val syncState by cloudSync.uiState.collectAsState()
+  // App-scoped: opening Settings must not remove automatic sync's resume observer.
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, cloudSync) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) cloudSync.onAppResume()
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
 
   LaunchedEffect(onboardingComplete) {
     if (!onboardingComplete || dolphinWarningChecked) return@LaunchedEffect
@@ -106,82 +119,76 @@ fun MainScreen(
 
   Box(Modifier.fillMaxSize()) {
     AnimatedContent(
-      targetState = onboardingComplete,
-      transitionSpec = {
-        fadeIn(tween(ONBOARDING_TRANSITION_MS)) togetherWith
-          fadeOut(tween(ONBOARDING_TRANSITION_MS))
-      },
-      label = "onboarding_transition",
+        targetState = onboardingComplete,
+        transitionSpec = {
+          fadeIn(tween(ONBOARDING_TRANSITION_MS)) togetherWith
+              fadeOut(tween(ONBOARDING_TRANSITION_MS))
+        },
+        label = "onboarding_transition",
     ) { completed ->
       if (completed) {
         // HomeScreen is removed from composition when settings is open (if-guard);
         // SettingsScreen uses AnimatedVisibility so it can slide in/out.
         if (!showSettings) {
           HomeScreen(
-            packUpdate = packUpdate,
-            miiMaker = miiMaker,
-            onlineViewModel = onlineViewModel,
-            saveData = saveData,
-            appUpdate = appUpdate,
-            cloudSync = cloudSync,
-            onOpenSettings = { showSettings = true },
-            showDolphinOutdatedDialog = showDolphinOutdatedDialog,
-            outdatedDolphinVersion = outdatedDolphinVersion,
-            onDismissDolphinOutdatedDialog = { showDolphinOutdatedDialog = false },
+              packUpdate = packUpdate,
+              miiMaker = miiMaker,
+              onlineViewModel = onlineViewModel,
+              saveData = saveData,
+              appUpdate = appUpdate,
+              cloudSync = cloudSync,
+              onOpenSettings = { showSettings = true },
+              showDolphinOutdatedDialog = showDolphinOutdatedDialog,
+              outdatedDolphinVersion = outdatedDolphinVersion,
+              onDismissDolphinOutdatedDialog = { showDolphinOutdatedDialog = false },
           )
         }
 
         AnimatedVisibility(
-          visible = showSettings && !showLogViewer,
-          enter = slideInVertically() + fadeIn(),
-          exit = slideOutVertically() + fadeOut(),
+            visible = showSettings && !showLogViewer,
+            enter = slideInVertically() + fadeIn(),
+            exit = slideOutVertically() + fadeOut(),
         ) {
           SettingsScreen(
-            packUpdate = packUpdate,
-            miiMaker = miiMaker,
-            saveData = saveData,
-            cloudSync = cloudSync,
-            onClose = { showSettings = false },
-            onOpenLogViewer = { showLogViewer = true },
-            appTheme = appTheme,
-            onChangeAppTheme = onChangeAppTheme,
-            themeMode = themeMode,
-            onChangeThemeMode = onChangeThemeMode,
-            onRelaunchOnboarding = {
-              onboardingPrefs
-                .edit()
-                .putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, false)
-                .apply()
-              onboardingComplete = false
-              showSettings = false
-            },
+              packUpdate = packUpdate,
+              miiMaker = miiMaker,
+              saveData = saveData,
+              cloudSync = cloudSync,
+              onClose = { showSettings = false },
+              onOpenLogViewer = { showLogViewer = true },
+              appTheme = appTheme,
+              onChangeAppTheme = onChangeAppTheme,
+              themeMode = themeMode,
+              onChangeThemeMode = onChangeThemeMode,
+              onRelaunchOnboarding = {
+                onboardingPrefs.edit().putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, false).apply()
+                onboardingComplete = false
+                showSettings = false
+              },
           )
         }
 
         AnimatedVisibility(
-          visible = showLogViewer,
-          enter = slideInVertically() + fadeIn(),
-          exit = slideOutVertically() + fadeOut(),
+            visible = showLogViewer,
+            enter = slideInVertically() + fadeIn(),
+            exit = slideOutVertically() + fadeOut(),
         ) {
           LogViewerScreen(
-            viewModel = logViewer,
-            onClose = { showLogViewer = false },
+              viewModel = logViewer,
+              onClose = { showLogViewer = false },
           )
         }
       } else {
         OnboardingScreen(
-          onComplete = {
-            onboardingPrefs
-              .edit()
-              .putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, true)
-              .apply()
-            onboardingComplete = true
-            // The VM was constructed before any tree URI was
-            // persisted, so its cached manager is null. Now that
-            // onboarding has written a valid URI to prefs, ask
-            // the VM to re-evaluate and run a fresh checkStatus.
-            packUpdate.refreshManager()
-          },
+            onComplete = {
+              onboardingPrefs.edit().putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, true).apply()
+              onboardingComplete = true
+              // The VM was constructed before any tree URI was
+              // persisted, so its cached manager is null. Now that
+              // onboarding has written a valid URI to prefs, ask
+              // the VM to re-evaluate and run a fresh checkStatus.
+              packUpdate.refreshManager()
+            },
         )
       }
     }
@@ -192,64 +199,64 @@ fun MainScreen(
     val conflict = connected?.conflict
     if (conflict != null) {
       AlertDialog(
-        onDismissRequest = { cloudSync.clearConflict() },
-        title = { Text(stringResource(R.string.sync_conflict_title)) },
-        text = {
-          Text(
-            stringResource(
-              R.string.sync_conflict_body,
-              conflict.localRegions,
-              conflict.cloudDevice ?: "",
+          onDismissRequest = { cloudSync.clearConflict() },
+          title = { Text(stringResource(R.string.sync_conflict_title)) },
+          text = {
+            Text(
+                stringResource(
+                    R.string.sync_conflict_body,
+                    conflict.localRegions,
+                    conflict.cloudDevice ?: "",
+                )
             )
-          )
-        },
-        confirmButton = {
-          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { cloudSync.resolveConflict(keepLocal = true) }) {
-              Text(stringResource(R.string.sync_conflict_keep_local))
+          },
+          confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              TextButton(onClick = { cloudSync.resolveConflict(keepLocal = true) }) {
+                Text(stringResource(R.string.sync_conflict_keep_local))
+              }
+              TextButton(onClick = { cloudSync.resolveConflict(keepLocal = false) }) {
+                Text(stringResource(R.string.sync_conflict_use_cloud))
+              }
             }
-            TextButton(onClick = { cloudSync.resolveConflict(keepLocal = false) }) {
-              Text(stringResource(R.string.sync_conflict_use_cloud))
+          },
+          dismissButton = {
+            TextButton(onClick = { cloudSync.clearConflict() }) {
+              Text(stringResource(R.string.action_cancel))
             }
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { cloudSync.clearConflict() }) {
-            Text(stringResource(R.string.action_cancel))
-          }
-        },
+          },
       )
     } else if (connected?.cloudFoundPrompt == true) {
       AlertDialog(
-        onDismissRequest = { cloudSync.dismissCloudFoundPrompt() },
-        title = { Text(stringResource(R.string.sync_cloud_found_title)) },
-        text = { Text(stringResource(R.string.sync_cloud_found_body)) },
-        confirmButton = {
-          TextButton(onClick = { cloudSync.resolveConflict(keepLocal = false) }) {
-            Text(stringResource(R.string.sync_cloud_found_download))
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { cloudSync.dismissCloudFoundPrompt() }) {
-            Text(stringResource(R.string.action_cancel))
-          }
-        },
+          onDismissRequest = { cloudSync.dismissCloudFoundPrompt() },
+          title = { Text(stringResource(R.string.sync_cloud_found_title)) },
+          text = { Text(stringResource(R.string.sync_cloud_found_body)) },
+          confirmButton = {
+            TextButton(onClick = { cloudSync.resolveConflict(keepLocal = false) }) {
+              Text(stringResource(R.string.sync_cloud_found_download))
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = { cloudSync.dismissCloudFoundPrompt() }) {
+              Text(stringResource(R.string.action_cancel))
+            }
+          },
       )
     } else if (connected?.foreignLock != null && !foreignLockAcknowledged) {
       AlertDialog(
-        onDismissRequest = { foreignLockAcknowledged = true },
-        title = { Text(stringResource(R.string.sync_foreign_lock_title)) },
-        text = { Text(stringResource(R.string.sync_foreign_lock_body)) },
-        confirmButton = {
-          TextButton(onClick = { foreignLockAcknowledged = true }) {
-            Text(stringResource(R.string.sync_foreign_lock_continue))
-          }
-        },
-        dismissButton = {
-          TextButton(onClick = { foreignLockAcknowledged = true }) {
-            Text(stringResource(R.string.action_cancel))
-          }
-        },
+          onDismissRequest = { foreignLockAcknowledged = true },
+          title = { Text(stringResource(R.string.sync_foreign_lock_title)) },
+          text = { Text(stringResource(R.string.sync_foreign_lock_body)) },
+          confirmButton = {
+            TextButton(onClick = { foreignLockAcknowledged = true }) {
+              Text(stringResource(R.string.sync_foreign_lock_continue))
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = { foreignLockAcknowledged = true }) {
+              Text(stringResource(R.string.action_cancel))
+            }
+          },
       )
     }
   }

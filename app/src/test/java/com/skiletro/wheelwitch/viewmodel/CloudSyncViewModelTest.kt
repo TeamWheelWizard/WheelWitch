@@ -24,12 +24,16 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -54,6 +58,7 @@ class CloudSyncViewModelTest {
     every { mainPrefs.getString(PrefsKeys.WHEELWITCH_TREE_URI_KEY, null) } returns
         "content://tree/abc"
     every { store.secureStorageAvailable } returns true
+    every { store.saveTokens(any()) } returns true
     DropboxRedirect.reset()
   }
 
@@ -100,6 +105,99 @@ class CloudSyncViewModelTest {
     coEvery { api.fetchSaveMeta() } returns CloudSaveMeta("r2", 100L)
     coEvery { api.downloadSaveZip() } returns Result.success(corruptCloudZip)
     coEvery { backup.invoke() } returns localZip
+  }
+
+  @Test
+  fun `disconnect during non cooperative refresh cannot restore credentials`() = runTest {
+    var tokens: DropboxAuth.AuthTokens? = DropboxAuth.AuthTokens("old", "refresh", 0L, null)
+    every { store.tokens() } answers { tokens }
+    every { store.clearTokens() } answers { tokens = null }
+    every { store.autoSyncEnabled } returns true
+    val release = CompletableDeferred<Unit>()
+    coEvery { api.fetchSaveMeta() } throws IOException("expired")
+    coEvery { auth.refresh("refresh") } coAnswers
+        {
+          withContext(NonCancellable) { release.await() }
+          Result.success(DropboxAuth.AuthTokens("late", "refresh", 500L, null))
+        }
+    val model = vm()
+    model.syncNow()
+
+    model.disconnect()
+    release.complete(Unit)
+
+    assertThat(model.uiState.value).isEqualTo(SyncUiState.Disconnected)
+    verify(exactly = 0) { store.saveTokens(any()) }
+    coVerify(exactly = 1) { api.fetchSaveMeta() }
+    coVerify(exactly = 0) { api.writeState(any()) }
+  }
+
+  @Test
+  fun `late old upload cannot write state or finish a new account sync`() = runTest {
+    var tokens: DropboxAuth.AuthTokens? = DropboxAuth.AuthTokens("old", null, Long.MAX_VALUE, null)
+    every { store.tokens() } answers { tokens }
+    every { store.clearTokens() } answers { tokens = null }
+    every { store.autoSyncEnabled } returns true
+    every { store.storedRev } returns null
+    every { store.storedHash } returns null
+    every { store.sessionPendingPush } returns false
+    coEvery { backup.invoke() } returns saveZip(1)
+    coEvery { api.fetchSaveMeta() } returns null
+    val uploadRelease = CompletableDeferred<Unit>()
+    coEvery { api.uploadSaveZip(any(), any()) } coAnswers
+        {
+          withContext(NonCancellable) { uploadRelease.await() }
+          Result.success(CloudSaveMeta("old-rev", 1L))
+        }
+    val model = vm()
+    model.syncNow()
+    model.disconnect()
+    tokens = DropboxAuth.AuthTokens("new", null, Long.MAX_VALUE, null)
+    val fetchRelease = CompletableDeferred<Unit>()
+    coEvery { api.fetchSaveMeta() } coAnswers
+        {
+          fetchRelease.await()
+          null
+        }
+    model.syncNow()
+
+    uploadRelease.complete(Unit)
+
+    assertThat((model.uiState.value as SyncUiState.Connected).status).isEqualTo(SyncStatus.Syncing)
+    coVerify(exactly = 0) { api.writeState(any()) }
+    coVerify(exactly = 0) { api.deleteLock() }
+    verify(exactly = 0) { store.storedRev = "old-rev" }
+    model.disconnect()
+  }
+
+  @Test
+  fun `disconnect invalidates a late OAuth exchange and pending redirect`() = runTest {
+    every { store.tokens() } returns null
+    val pending = DropboxAuth.PendingAuth("verifier", DropboxRedirect.REDIRECT_URI, "state")
+    every { auth.authorizeUrl() } returns Pair("https://example.com", pending)
+    val release = CompletableDeferred<Unit>()
+    coEvery { auth.exchangeCode(pending, "code") } coAnswers
+        {
+          withContext(NonCancellable) { release.await() }
+          Result.success(DropboxAuth.AuthTokens("late", "refresh", 500L, null))
+        }
+    val redirect = mockk<Uri>()
+    every { redirect.getQueryParameter("state") } returns pending.state
+    every { redirect.getQueryParameter("code") } returns "code"
+    every { redirect.getQueryParameter("error") } returns null
+    val model = vm()
+    model.connect()
+    val exchange = launch(dispatcher) { model.onRedirect(redirect) }
+
+    model.disconnect()
+    release.complete(Unit)
+    exchange.join()
+    model.onRedirect(redirect)
+
+    assertThat(model.uiState.value).isEqualTo(SyncUiState.Disconnected)
+    verify(exactly = 0) { store.saveTokens(any()) }
+    coVerify(exactly = 1) { auth.exchangeCode(any(), any()) }
+    coVerify(exactly = 0) { api.fetchAccountEmail() }
   }
 
   @Test

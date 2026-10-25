@@ -120,7 +120,6 @@ fun HomeScreen(
       if (event == Lifecycle.Event.ON_RESUME) {
         onlineViewModel.fetchRooms()
         saveData.refreshIfStale()
-        cloudSync.onAppResume()
       }
     }
     lifecycleOwner.lifecycle.addObserver(observer)

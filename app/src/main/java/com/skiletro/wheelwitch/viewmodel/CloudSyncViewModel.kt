@@ -31,10 +31,14 @@ import com.skiletro.wheelwitch.util.prefs.PrefsKeys
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.util.zip.ZipInputStream
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,9 +94,10 @@ data class ConflictInfo(
  * Orchestrates WheelSync: decides pull/push/conflict via [SaveSyncEngine], moves the
  * `wheelwitch-save` zip through [DropboxApi], and exposes dialog state for the overlay UI.
  *
- * All network work happens in [viewModelScope] with [ioDispatcher]; there is no background service
- * (see the WheelSync spec). Local save access goes through the [zipBytes]/[applyZip]/
- * [hasLocalSaves] seams, which stage the unified zip in the app cache so
+ * Network and local-save operations use [ioDispatcher]; account-owned commits stay on the main
+ * dispatcher. Disconnect/reconnect cancels work and invalidates late completions before
+ * credentials, bookkeeping, or UI can change. Local save access uses
+ * [zipBytes]/[applyZip]/[hasLocalSaves] seams, which stage the unified zip in the app cache so
  * [SaveManager.backupAll]/[restoreAll] are reused verbatim.
  */
 class CloudSyncViewModel(
@@ -131,6 +136,59 @@ class CloudSyncViewModel(
   private var syncing: Boolean = false
   private var pendingAuth: DropboxAuth.PendingAuth? = null
   private var redirectJob: Job? = null
+  @Volatile private var accountGeneration = 0L
+  private val accountJobs = mutableSetOf<Job>()
+
+  private class AccountOperation(val generation: Long) : AbstractCoroutineContextElement(Key) {
+    companion object Key : CoroutineContext.Key<AccountOperation>
+  }
+
+  /** Cancels owned work; late, non-cooperative completions also fail the generation check. */
+  private fun invalidateAccountWork() {
+    accountGeneration++
+    accountJobs.toList().forEach { it.cancel() }
+    accountJobs.clear()
+    redirectJob?.cancel()
+    redirectJob = null
+    pendingAuth = null
+    syncing = false
+    status = SyncStatus.Idle
+    DropboxRedirect.reset()
+  }
+
+  private fun launchAccountWork(block: suspend () -> Unit): Job {
+    val job = viewModelScope.launch(AccountOperation(accountGeneration)) { block() }
+    accountJobs.add(job)
+    job.invokeOnCompletion { accountJobs.remove(job) }
+    return job
+  }
+
+  private suspend fun checkOwnership() {
+    val context = currentCoroutineContext()
+    context.ensureActive()
+    if (context[AccountOperation]?.generation != accountGeneration) {
+      throw CancellationException("Cloud account changed")
+    }
+  }
+
+  /** Unlike runCatching, cancellation (including stale account work) is never a value. */
+  private suspend fun <T> owned(block: suspend () -> T): Result<T> {
+    checkOwnership()
+    val result =
+        try {
+          Result.success(withContext(ioDispatcher) { block() })
+        } catch (ce: CancellationException) {
+          throw ce
+        } catch (e: Exception) {
+          Result.failure(e)
+        }
+    checkOwnership()
+    return result
+  }
+
+  private suspend fun <T> ownedResult(block: suspend () -> Result<T>): Result<T> = owned {
+    block().getOrThrow()
+  }
 
   /** Stages the unified save zip bytes; production default uses the app cache. */
   private val zipBytes: suspend () -> ByteArray =
@@ -149,7 +207,7 @@ class CloudSyncViewModel(
   }
 
   /**
-   * Auto-sync entry, called from the home screen's ON_RESUME observer. Silent skip when disabled,
+   * Auto-sync entry, called from the app-level ON_RESUME observer. Silent skip when disabled,
    * offline, or already syncing (per the spec, background failures never nag). A pending Dolphin
    * session forces the push decision path.
    */
@@ -168,31 +226,38 @@ class CloudSyncViewModel(
    */
   fun beginSession() {
     store.sessionPendingPush = true
-    if (store.tokens() == null) return
-    viewModelScope.launch {
-      runCatching { api().writeLock(store.deviceId()) }
+    if (pendingAuth != null || store.tokens() == null) return
+    launchAccountWork {
+      ownedResult { api().writeLock(store.deviceId()) }
           .onFailure { Timber.tag(TAG).w(it, "writeLock failed (advisory only)") }
     }
   }
 
-  /** Starts the Dropbox OAuth flow in a Custom Tab. */
+  /** Starts OAuth in a Custom Tab, first discarding the previous account and its owned work. */
   fun connect() {
     if (appKey.isBlank()) {
       emit()
       return
     }
+    disconnect()
     DropboxRedirect.reset()
     val (url, pending) = auth.authorizeUrl()
     pendingAuth = pending
     openBrowser(url)
     redirectJob?.cancel()
-    redirectJob = viewModelScope.launch {
+    redirectJob = launchAccountWork {
       DropboxRedirect.redirectFlow.collect { uri -> onRedirect(uri) }
     }
   }
 
   /** Handles one OAuth redirect: validates state, then exchanges the code and stores the tokens. */
-  internal suspend fun onRedirect(uri: Uri?) {
+  internal suspend fun onRedirect(uri: Uri?) =
+      withContext(Dispatchers.Main.immediate + AccountOperation(accountGeneration)) {
+        handleRedirect(uri)
+      }
+
+  private suspend fun handleRedirect(uri: Uri?) {
+    checkOwnership()
     val active = pendingAuth
     val returnedState = uri?.getQueryParameter("state")
     if (active == null || returnedState != active.state) {
@@ -219,9 +284,10 @@ class CloudSyncViewModel(
     }
 
     DropboxRedirect.reset()
-    val tokens = auth.exchangeCode(active, code).getOrNull()
+    val tokens = ownedResult { auth.exchangeCode(active, code) }.getOrNull()
     if (tokens == null) {
       status = SyncStatus.Error
+      pendingAuth = null
     } else if (!store.saveTokens(tokens)) {
       status = SyncStatus.ReconnectNeeded
       pendingAuth = null
@@ -240,9 +306,13 @@ class CloudSyncViewModel(
 
   /** Disconnects the account and forgets this install's sync bookkeeping. */
   fun disconnect() {
+    invalidateAccountWork()
     store.clearTokens()
     store.storedRev = null
     store.storedHash = null
+    store.lastSyncAtMillis = 0L
+    store.sessionPendingPush = false
+    store.cloudPromptShown = false
     lastSyncFromDevice = null
     conflict = null
     cloudFoundPrompt = false
@@ -286,7 +356,7 @@ class CloudSyncViewModel(
   // --- sync core ---------------------------------------------------------
 
   private fun runSync(manual: Boolean, force: SyncAction? = null) {
-    if (syncing) return
+    if (syncing || pendingAuth != null) return
     if (appKey.isBlank() || !hasTree()) {
       emit()
       return
@@ -312,18 +382,21 @@ class CloudSyncViewModel(
     syncing = true
     status = SyncStatus.Syncing
     emit()
-    viewModelScope.launch {
+    val generation = accountGeneration
+    launchAccountWork {
       try {
-        withContext(ioDispatcher) { syncLoop(manual, force) }
+        syncLoop(manual, force)
       } catch (ce: CancellationException) {
         throw ce
       } catch (e: Exception) {
         Timber.tag(TAG).e(e, "sync loop failed unexpectedly")
-        if (manual) status = SyncStatus.Error
+        if (generation == accountGeneration && manual) status = SyncStatus.Error
       } finally {
-        syncing = false
-        if (status == SyncStatus.Syncing) status = SyncStatus.Idle
-        emit()
+        if (generation == accountGeneration) {
+          syncing = false
+          if (status == SyncStatus.Syncing) status = SyncStatus.Idle
+          emit()
+        }
       }
     }
   }
@@ -336,17 +409,18 @@ class CloudSyncViewModel(
     // surfaces ReconnectNeeded; network failures stay failures. It is
     // NEVER read as "cloud empty" (null), which could push over a
     // cloud save we cannot see.
-    val cloudMeta =
-        withRetry { api -> runCatching { api.fetchSaveMeta() } }
-            .getOrElse {
-              Timber.tag(TAG).w(it, "fetchSaveMeta failed; skipping sync")
-              if (manual && status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
-              return
-            }
-    val anySaves = runCatching { hasLocalSavesFn() }.getOrDefault(false)
+    val cloudMeta = withRetry { api ->
+      owned { api.fetchSaveMeta() }
+    }
+        .getOrElse {
+          Timber.tag(TAG).w(it, "fetchSaveMeta failed; skipping sync")
+          if (manual && status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
+          return
+        }
+    val anySaves = owned { hasLocalSavesFn() }.getOrDefault(false)
     val localZip: ByteArray? =
         if (anySaves) {
-          runCatching { zipBytes() }
+          owned { zipBytes() }
               .getOrElse {
                 Timber.tag(TAG).w(it, "local save staging failed")
                 if (manual) status = SyncStatus.Error
@@ -357,7 +431,7 @@ class CloudSyncViewModel(
         localZip
             ?.takeIf { it.isNotEmpty() }
             ?.let {
-              runCatching { SaveContentHash.canonicalHash(it) }.getOrNull()
+              owned { SaveContentHash.canonicalHash(it) }.getOrNull()
             }
     val pendingPush = store.sessionPendingPush
     val action =
@@ -392,7 +466,7 @@ class CloudSyncViewModel(
         performPush(localZip, manual, cloudMeta?.rev)
       }
       SyncAction.Conflict -> {
-        val state = runCatching { api().readState() }.getOrNull()
+        val state = owned { api().readState() }.getOrNull()
         conflict =
             ConflictInfo(
                 localRegions = localZip?.let(::countRegions) ?: 0,
@@ -410,12 +484,13 @@ class CloudSyncViewModel(
   }
 
   private suspend fun performPull(cloudMeta: CloudSaveMeta, manual: Boolean) {
-    val bytes =
-        withRetry { it.downloadSaveZip() }
-            .getOrElse {
-              if (manual && status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
-              return
-            }
+    val bytes = withRetry {
+      it.downloadSaveZip()
+    }
+        .getOrElse {
+          if (manual && status != SyncStatus.ReconnectNeeded) status = SyncStatus.Error
+          return
+        }
     val hash =
         try {
           SaveContentHash.canonicalHash(bytes)
@@ -426,7 +501,7 @@ class CloudSyncViewModel(
           status = SyncStatus.Error
           return
         }
-    runCatching { applyZipFn(bytes) }
+    owned { applyZipFn(bytes) }
         .onFailure {
           Timber.tag(TAG).e(it, "restore from cloud zip failed")
           if (manual) status = SyncStatus.Error
@@ -435,7 +510,7 @@ class CloudSyncViewModel(
     store.storedRev = cloudMeta.rev
     store.storedHash = hash
     store.lastSyncAtMillis = now()
-    lastSyncFromDevice = runCatching { api().readState() }.getOrNull()?.lastUploaderDevice
+    lastSyncFromDevice = owned { api().readState() }.getOrNull()?.lastUploaderDevice
     if (cloudFoundPrompt) store.cloudPromptShown = true
     conflict = null
     cloudFoundPrompt = false
@@ -456,7 +531,7 @@ class CloudSyncViewModel(
     val meta = upload.getOrThrow()
     // state.json is presentation metadata; a failure here must not
     // fail the push (the zip itself is already committed atomically).
-    runCatching { api().writeState(CloudState(store.deviceId(), now(), hash)) }
+    ownedResult { api().writeState(CloudState(store.deviceId(), now(), hash)) }
         .onFailure { Timber.tag(TAG).w(it, "writeState failed (non-fatal)") }
     store.storedRev = meta.rev
     store.storedHash = hash
@@ -464,12 +539,13 @@ class CloudSyncViewModel(
     lastSyncFromDevice = store.deviceId()
     store.sessionPendingPush = false
     // deleteLock is not idempotent (absent = failure) — always fine.
-    runCatching { api().deleteLock() }
+    ownedResult { api().deleteLock() }
+        .onFailure { Timber.tag(TAG).w(it, "deleteLock failed (advisory only)") }
     conflict = null
   }
 
   private suspend fun showWriteConflict(zip: ByteArray) {
-    val state = runCatching { api().readState() }.getOrNull()
+    val state = owned { api().readState() }.getOrNull()
     conflict =
         ConflictInfo(
             localRegions = countRegions(zip),
@@ -484,7 +560,7 @@ class CloudSyncViewModel(
    * rejection marks the stored tokens as dead; network/IO refresh failures retain the first error.
    */
   private suspend fun <T> withRetry(block: suspend (DropboxApi) -> Result<T>): Result<T> {
-    val first = block(api())
+    val first = ownedResult { block(api()) }
     if (first.isSuccess) return first
     if (
         first.exceptionOrNull() is com.skiletro.wheelwitch.util.cloud.DropboxWriteConflictException
@@ -493,7 +569,7 @@ class CloudSyncViewModel(
     }
     val tokens = store.tokens() ?: return first
     val refreshToken = tokens.refreshToken ?: return first
-    val refreshResult = auth.refresh(refreshToken)
+    val refreshResult = ownedResult { auth.refresh(refreshToken) }
     if (refreshResult.isFailure) {
       if (refreshResult.exceptionOrNull() is DropboxAuthException) {
         status = SyncStatus.ReconnectNeeded
@@ -501,19 +577,24 @@ class CloudSyncViewModel(
       return first
     }
     val refreshed = refreshResult.getOrThrow()
-    store.saveTokens(
-        tokens.copy(
-            accessToken = refreshed.accessToken,
-            refreshToken = refreshed.refreshToken ?: tokens.refreshToken,
-            expiresAtMillis = refreshed.expiresAtMillis,
+    if (
+        !store.saveTokens(
+            tokens.copy(
+                accessToken = refreshed.accessToken,
+                refreshToken = refreshed.refreshToken ?: tokens.refreshToken,
+                expiresAtMillis = refreshed.expiresAtMillis,
+            )
         )
-    )
-    return block(api())
+    ) {
+      status = SyncStatus.ReconnectNeeded
+      return first
+    }
+    return ownedResult { block(api()) }
   }
 
   /** Best-effort advisory-lock check; TTL judged by server mtime. */
   private suspend fun refreshForeignLock() {
-    val lock = runCatching { api().readLockWithServerTime() }.getOrNull()
+    val lock = owned { api().readLockWithServerTime() }.getOrNull()
     foreignLock = lock?.takeIf { engine.isLockFresh(it, store.deviceId()) }
   }
 
@@ -537,23 +618,22 @@ class CloudSyncViewModel(
   }
 
   /** Distinct `RetroWFC/<region>` folders in a save zip, for the conflict dialog. */
-  private fun countRegions(zip: ByteArray): Int =
-      runCatching {
-            val regions = HashSet<String>()
-            ZipInputStream(ByteArrayInputStream(zip)).use { z ->
-              while (true) {
-                val entry = z.nextEntry ?: break
-                if (entry.isDirectory) continue
-                val name = entry.name
-                if (name.startsWith("RetroWFC/")) {
-                  val region = name.removePrefix("RetroWFC/").substringBefore('/')
-                  if (region.isNotEmpty()) regions.add(region)
-                }
-              }
-            }
-            regions.size
-          }
-          .getOrDefault(0)
+  private fun countRegions(zip: ByteArray): Int = runCatching {
+    val regions = HashSet<String>()
+    ZipInputStream(ByteArrayInputStream(zip)).use { z ->
+      while (true) {
+        val entry = z.nextEntry ?: break
+        if (entry.isDirectory) continue
+        val name = entry.name
+        if (name.startsWith("RetroWFC/")) {
+          val region = name.removePrefix("RetroWFC/").substringBefore('/')
+          if (region.isNotEmpty()) regions.add(region)
+        }
+      }
+    }
+    regions.size
+  }
+      .getOrDefault(0)
 
   // --- production defaults ----------------------------------------------
 
