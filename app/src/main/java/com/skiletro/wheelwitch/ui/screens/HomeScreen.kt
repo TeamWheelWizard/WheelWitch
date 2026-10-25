@@ -513,70 +513,41 @@ private fun HomeBottomBar(
             )
           }
         }
-        is UiState.Checking -> {
-          val previous = currentState.previousStatus
-          when {
-            previous == null ->
-                FilledTonalButton(
-                    onClick = {},
-                    enabled = false,
-                    shape = buttonShape,
-                    modifier = Modifier.height(56.dp),
-                ) {
-                  Text(
-                      text = stringResource(R.string.status_checking),
-                      style = MaterialTheme.typography.titleSmall,
-                      fontWeight = FontWeight.SemiBold,
-                  )
-                }
-            previous is PackStatus.CheckFailed -> {
-              if (previous.installedVersion != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  CheckFailedButton(
-                      installed = previous.installedVersion,
-                      onCheck = onCheck,
-                      enabled = false,
-                      showSpinner = true,
-                      checkButtonFocused = checkButtonFocused,
-                      onFocusChanged = { checkButtonFocused = it },
-                  )
-                  Spacer(modifier = Modifier.width(12.dp))
-                  PrimaryActionButton(
-                      text = stringResource(R.string.home_launch_retro_rewind),
-                      onClick = onLaunch,
-                      enabled = !isBusy,
-                      subText =
-                          stringResource(
-                              R.string.home_bulleted_format,
-                              stringResource(R.string.home_offline),
-                          ),
-                  )
-                }
-              } else {
-                CheckFailedButton(
-                    installed = previous.installedVersion,
-                    onCheck = onCheck,
-                    enabled = false,
-                    showSpinner = true,
-                    checkButtonFocused = checkButtonFocused,
-                    onFocusChanged = { checkButtonFocused = it },
-                )
+        is UiState.Checking,
+        is UiState.Ready -> {
+          val status =
+              when (currentState) {
+                is UiState.Checking -> currentState.previousStatus
+                is UiState.Ready -> currentState.status
+                else -> error("Expected a pack status")
               }
+          if (status == null) {
+            FilledTonalButton(
+                onClick = {},
+                enabled = false,
+                shape = buttonShape,
+                modifier = Modifier.height(56.dp),
+            ) {
+              Text(
+                  text = stringResource(R.string.status_checking),
+                  style = MaterialTheme.typography.titleSmall,
+                  fontWeight = FontWeight.SemiBold,
+              )
             }
-            else ->
-                StatusRow(
-                    status = previous,
-                    isChecking = true,
-                    isBusy = isBusy,
-                    serverConnectivity = serverConnectivity,
-                    playerCount = playerCount,
-                    checkButtonFocused = checkButtonFocused,
-                    onFocusChanged = { checkButtonFocused = it },
-                    onCheck = onCheck,
-                    onInstall = onInstall,
-                    onUpdate = onUpdate,
-                    onLaunch = onLaunch,
-                )
+          } else {
+            StatusRow(
+                status = status,
+                isChecking = currentState is UiState.Checking,
+                isBusy = isBusy,
+                serverConnectivity = serverConnectivity,
+                playerCount = playerCount,
+                checkButtonFocused = checkButtonFocused,
+                onFocusChanged = { checkButtonFocused = it },
+                onCheck = onCheck,
+                onInstall = onInstall,
+                onUpdate = onUpdate,
+                onLaunch = onLaunch,
+            )
           }
         }
         is UiState.Error ->
@@ -591,57 +562,6 @@ private fun HomeBottomBar(
                   fontWeight = FontWeight.SemiBold,
               )
             }
-        is UiState.Ready -> {
-          val status = currentState.status
-          if (status is PackStatus.CheckFailed) {
-            if (status.installedVersion != null) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                CheckFailedButton(
-                    installed = status.installedVersion,
-                    onCheck = onCheck,
-                    enabled = !isBusy,
-                    showSpinner = false,
-                    checkButtonFocused = checkButtonFocused,
-                    onFocusChanged = { checkButtonFocused = it },
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                PrimaryActionButton(
-                    text = stringResource(R.string.home_launch_retro_rewind),
-                    onClick = onLaunch,
-                    enabled = !isBusy,
-                    subText =
-                        stringResource(
-                            R.string.home_bulleted_format,
-                            stringResource(R.string.home_offline),
-                        ),
-                )
-              }
-            } else {
-              CheckFailedButton(
-                  installed = status.installedVersion,
-                  onCheck = onCheck,
-                  enabled = !isBusy,
-                  showSpinner = false,
-                  checkButtonFocused = checkButtonFocused,
-                  onFocusChanged = { checkButtonFocused = it },
-              )
-            }
-          } else {
-            StatusRow(
-                status = status,
-                isChecking = false,
-                isBusy = isBusy,
-                serverConnectivity = serverConnectivity,
-                playerCount = playerCount,
-                checkButtonFocused = checkButtonFocused,
-                onFocusChanged = { checkButtonFocused = it },
-                onCheck = onCheck,
-                onInstall = onInstall,
-                onUpdate = onUpdate,
-                onLaunch = onLaunch,
-            )
-          }
-        }
         is UiState.Idle -> {
           FilledTonalButton(
               onClick = onCheck,
@@ -738,10 +658,9 @@ private fun CheckFailedButton(
 }
 
 /**
- * The "check + primary action" row used by both [UiState.Ready] and [UiState.Checking] (when a
- * previous [PackStatus] is known). When [isChecking] is true, the left button swaps to a 20dp
- * spinner + "Checking..." and the right primary action is disabled. The [checkButtonFocused] state
- * is hoisted to [HomeBottomBar] so the focus border persists across [UiState] transitions.
+ * Renders the last known pack status during both idle and checking states. Re-checking disables
+ * installation and updates but keeps launching available; failed checks retain the offline launch.
+ * Focus state is hoisted so the border persists across state transitions.
  */
 @Composable
 private fun StatusRow(
@@ -757,6 +676,33 @@ private fun StatusRow(
     onUpdate: () -> Unit,
     onLaunch: () -> Unit,
 ) {
+  if (status is PackStatus.CheckFailed) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      CheckFailedButton(
+          installed = status.installedVersion,
+          onCheck = onCheck,
+          enabled = !isBusy && !isChecking,
+          showSpinner = isChecking,
+          checkButtonFocused = checkButtonFocused,
+          onFocusChanged = onFocusChanged,
+      )
+      if (status.installedVersion != null) {
+        Spacer(modifier = Modifier.width(12.dp))
+        PrimaryActionButton(
+            text = stringResource(R.string.home_launch_retro_rewind),
+            onClick = onLaunch,
+            enabled = !isBusy,
+            subText =
+                stringResource(
+                    R.string.home_bulleted_format,
+                    stringResource(R.string.home_offline),
+                ),
+        )
+      }
+    }
+    return
+  }
+
   val checkSubtitle =
       if (isChecking) {
         null
