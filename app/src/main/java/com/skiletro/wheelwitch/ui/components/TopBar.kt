@@ -50,15 +50,8 @@ private val TopBarHorizontalPadding = 20.dp
 private val TopBarVerticalPadding = 16.dp
 
 /**
- * Top app bar shown on the Home screen.
- *
- * Renders the brand name + subtitle, a clock, and three icon buttons: online menu, Mii Maker, and
- * settings.
- *
- * [onLaunchMiiMaker] is always enabled; when no cached WAD exists the caller shows an install
- * prompt instead of launching. that gates the corresponding button. The Mii Maker button also dims
- * its icon tint manually when disabled because the default Material disabled styling is too subtle
- * on this design.
+ * Home app bar. [onLaunchMiiMaker] stays enabled so the caller can offer installation when the
+ * cached WAD is missing.
  */
 @Composable
 fun TopBar(

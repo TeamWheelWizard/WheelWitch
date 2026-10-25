@@ -29,13 +29,7 @@ private fun paragraph(style: TextStyle): TextStyle =
 
 private val wheelWitchBaseTypography: Typography = Typography()
 
-/**
- * App typography. Built from the Material 3 baseline (via the no-arg
- * [Typography] constructor) and then opt-in to `fontFeatureSettings =
- * "tnum"` for stable-width digits and to [LineBreak.Heading] /
- * [LineBreak.Paragraph] for balanced heading wraps and body copy
- * without orphan lines.
- */
+/** Material typography with tabular digits and heading/paragraph-specific line-breaking rules. */
 val Typography: Typography = wheelWitchBaseTypography.copy(
     displayLarge = heading(wheelWitchBaseTypography.displayLarge),
     displayMedium = heading(wheelWitchBaseTypography.displayMedium),

@@ -21,15 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/**
- * Owns the Mii Channel WAD install / launch / delete state.
- *
- * Exposes three pieces of state: [hasWad] (a cached WAD is present), [isInstallingWad] (an install
- * is in flight), and [miiMakerError] (the last user-facing error message, if any).
- *
- * [installMiiMakerWad] is guarded by a [Mutex] so concurrent user taps cannot trigger parallel
- * installs.
- */
+/** Owns Mii Channel WAD state; install requests serialize through a mutex. */
 class MiiMakerViewModel(
     application: Application,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -79,12 +71,7 @@ class MiiMakerViewModel(
     }
   }
 
-  /**
-   * Downloads and extracts the Mii Channel WAD. No-op when there is no network connection; in that
-   * case [miiMakerError] is populated.
-   *
-   * Guarded by [installMutex] so concurrent calls serialize.
-   */
+  /** Downloads and extracts the WAD, reporting offline errors; concurrent requests serialize. */
   fun installMiiMakerWad() {
     viewModelScope.launch {
       installMutex.withLock {

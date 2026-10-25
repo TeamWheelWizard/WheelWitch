@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-/** State of the app-self update check. [CheckFailed] never shows the dialog. */
+/** App-update check state; [AppUpdateState.CheckFailed] is silent in the UI. */
 sealed interface AppUpdateState {
     /** The version check is in flight. */
     data object Checking : AppUpdateState
@@ -37,17 +37,8 @@ sealed interface AppUpdateState {
 }
 
 /**
- * Checks the installed app version against the newest WheelWitch release on
- * GitHub and flags when an update is available. Runs once on [init]; the
- * [HomeScreen] shows an [androidx.compose.material3.AlertDialog] driven by
- * [dialogVisible].
- *
- * Skipped (via [enabled]) on debug builds: local debug versions are built from
- * arbitrary commits and would nag against CI releases that do not match them.
- *
- * Tests inject a fixed [currentVersion], a stubbed [fetcher], and a test
- * [ioDispatcher]; [enabled] defaults to `!BuildConfig.DEBUG` which is `false`
- * under `testDebugUnitTest`, so tests must pass `enabled = true`.
+ * Checks for a newer GitHub release on construction and exposes dialog visibility.
+ * Disabled by default in debug builds, whose local versions need not match CI releases.
  */
 class AppUpdateViewModel(
     application: Application,
@@ -61,12 +52,7 @@ class AppUpdateViewModel(
     private val _state = MutableStateFlow<AppUpdateState>(AppUpdateState.Checking)
     val state: StateFlow<AppUpdateState> = _state.asStateFlow()
 
-    /**
-     * Whether the update dialog should be shown. Hoisted out of the UI so a
-     * dismissal survives screen recompositions (HomeScreen leaves composition
-     * when Settings opens); resetting it is what makes a dismissal last the
-     * whole session.
-     */
+    /** Retains dismissal when HomeScreen leaves composition to show Settings. */
     private val _dialogVisible = MutableStateFlow(false)
     val dialogVisible: StateFlow<Boolean> = _dialogVisible.asStateFlow()
 
@@ -74,7 +60,6 @@ class AppUpdateViewModel(
         check()
     }
 
-    /** Runs the version check; no-op safety for future re-checks is not needed (init-only today). */
     fun check() {
         viewModelScope.launch {
             if (!enabled || currentVersion == null) {
@@ -107,7 +92,7 @@ class AppUpdateViewModel(
         }
     }
 
-    /** Dismisses the update dialog for the remainder of this process lifetime. */
+    /** Hides the dialog until another successful check finds an update. */
     fun dismissDialog() {
         _dialogVisible.value = false
     }

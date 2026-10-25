@@ -161,8 +161,7 @@ class OnlineViewModel(
   private fun initialFetch() {
     viewModelScope.launch {
       withContext(ioDispatcher) {
-        // Quick probe first — avoids 15s timeout when the server
-        // is unreachable and immediately shows the Offline state.
+        // Probe before fetching room details so unreachable servers take the offline path.
         if (!VersionFileParser.probeServer()) {
           _roomsState.value =
               RoomsState.Success(

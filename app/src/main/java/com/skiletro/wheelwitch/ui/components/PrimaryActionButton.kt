@@ -26,12 +26,7 @@ import com.skiletro.wheelwitch.ui.theme.buttonShape
 private val PrimaryActionButtonHeight = 56.dp
 private const val SubTextAlpha = 0.7f
 
-/**
- * Primary call-to-action button: 56dp tall, filled with the primary
- * color, [titleSmall] semi-bold label. An optional [subText] line
- * renders below the main label at reduced alpha. Integrates with
- * [focusBorder] for gamepad focus indication.
- */
+/** Primary action with optional [subText] and a gamepad focus ring. */
 @Composable
 fun PrimaryActionButton(
     text: String,

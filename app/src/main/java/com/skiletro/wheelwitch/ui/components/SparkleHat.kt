@@ -34,7 +34,7 @@ private const val SPARKLE_COUNT = 6
 private const val SPARKLE_PERIOD_MS = 3000
 private val SPARKLE_INDICES = listOf(0, 3, 4)
 
-/** Extra canvas space beyond [hatSize] so sparkles at the orbit edge are not clipped. */
+/** Extra canvas space so sparkles at the orbit edge are not clipped. */
 private val SparklePaddingDp = 30.dp
 
 /** Sparkle orbit radius as a fraction of hatSize. */

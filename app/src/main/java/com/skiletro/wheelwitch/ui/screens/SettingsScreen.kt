@@ -64,10 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Settings overlay. Sections, in order: Retro Rewind (pack + Mii Channel WAD), Save Data (saves +
- * cloud sync), Appearance, Advanced, About.
- */
+/** Settings overlay for pack management, saves, appearance, diagnostics, and app information. */
 @Composable
 fun SettingsScreen(
     packUpdate: PackUpdateViewModel,
@@ -440,7 +437,7 @@ private fun CloudSyncSection(
   }
 }
 
-/** Retro Rewind section: pack version + full reinstall, and the Mii Channel WAD install. */
+/** Retro Rewind pack version and full-reinstall action. */
 @Composable
 private fun PackSection(packUpdate: PackUpdateViewModel) {
   val state by packUpdate.state.collectAsState()
@@ -599,7 +596,7 @@ private fun AppearanceSection(
   )
 }
 
-/** Mii Channel WAD row within the Retro Rewind section: install or delete the cached WAD. */
+/** Installs or deletes the cached Mii Channel WAD. */
 @Composable
 private fun MiiMakerSection(
     hasWad: Boolean,
@@ -723,11 +720,7 @@ private fun AdvancedSection(
 private fun MiiCacheRow() {
   var miiCacheSizeBytes by remember { mutableStateOf(MiiFaceCache.cacheSize()) }
   val scope = androidx.compose.runtime.rememberCoroutineScope()
-  // The initial read above is on the main thread; the on-disk
-  // walk can be a few hundred `stat()` calls for a 50 MB cache
-  // with many small files. Re-read on `Dispatchers.IO` once on
-  // first composition and re-read again after every clear so
-  // the summary line shows the post-clear value.
+  // Refresh the cache summary off the main thread because it walks files on disk.
   LaunchedEffect(Unit) {
     val updated = withContext(Dispatchers.IO) { MiiFaceCache.cacheSize() }
     miiCacheSizeBytes = updated

@@ -56,26 +56,8 @@ private fun miiDataUrl(data: String): String =
   "$MII_IMAGE_BASE_URL?data=${URLEncoder.encode(data, "UTF-8")}&width=300&type=face&shaderType=switch"
 
 /**
- * Renders a Mii face from either an already-rendered PNG (base64) or raw
- * Mii data that needs to be fetched from the configured image service.
- *
- * Resolution order (handled by Coil's [AsyncImage] via the [ImageRequest]):
- * 1. If [imageBase64] is non-null, the pre-rendered PNG bytes are
- *    decoded off the main thread by Coil.
- * 2. Otherwise, [miiDataBase64] is fetched from [MII_IMAGE_BASE_URL].
- *    Results are cached by Coil's in-memory + on-disk cache, with the
- *    on-disk location shared with the Settings Mii face cache row
- *    ([com.skiletro.wheelwitch.util.mii.MiiFaceCache]) so the user can
- *    see and clear the cache from Settings.
- * 3. On any failure, a second Coil-backed painter is used to fetch the
- *    [DEFAULT_MII_DATA_BASE64] default face. The default face is itself
- *    cached, so subsequent failed renders hit the cache.
- * 4. If even the default Mii fails, a face icon (`ic_face_up`) is
- *    shown as a static placeholder.
- *
- * If neither [imageBase64] nor [miiDataBase64] is non-null, the
- * composable renders a [CircularProgressIndicator] so the surrounding
- * layout stays stable while a request is in flight.
+ * Prefers [imageBase64] as Coil's model, otherwise requests a face for [miiDataBase64].
+ * Missing input shows a spinner. Request errors use a separate default-face painter.
  */
 @Composable
 fun MiiFace(

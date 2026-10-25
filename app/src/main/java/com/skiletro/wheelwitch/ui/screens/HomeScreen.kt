@@ -384,19 +384,7 @@ fun HomeScreen(
   }
 }
 
-/**
- * Bottom bar of the home screen: check-for-updates on the left, status-dependent primary action on
- * the right. The install / update actions call into [PackUpdateViewModel]; the launch action calls
- * [DolphinLauncher.launchRetroRewind] which handles the full pre-launch sequence (Dolphin.ini
- * upsert + launch descriptor write
- * + intent + fallback) and reports via [DolphinLauncher.LaunchResult].
- *
- * [installProgress] is read from [PackUpdateViewModel.installProgress] so the [ProgressButton] only
- * recomposes when the per-byte download progress changes; the [AnimatedContent] content lambda
- * still re-dispatches on every state class transition, but the `Installing.Downloading` branch is
- * extracted into [DownloadingProgressButton] so the rest of the UI does not pay the recomposition
- * cost on each tick.
- */
+/** Status-dependent install, update, or launch action. */
 @Composable
 private fun HomeBottomBar(
     state: UiState,
@@ -435,10 +423,6 @@ private fun HomeBottomBar(
     ) { currentState ->
       when (currentState) {
         is UiState.Installing.Downloading -> {
-          // Hot path: a new DownloadProgress event flows in here ~5x
-          // per second. Extracted into its own composable so the
-          // rest of the bar (stringResource lookups, sibling
-          // branches) does not recompose.
           DownloadingProgressButton(installProgress ?: currentState.progress)
         }
         is UiState.Installing.Extracting ->
@@ -784,12 +768,7 @@ private fun StatusRow(
   }
 }
 
-/**
- * Determinate progress bar shown while a pack zip is being downloaded. Owns its own
- * [animateFloatAsState] so the 1%-throttled progress events from the downloader animate smoothly.
- * Recomposes on every progress tick; siblings of this composable in [HomeBottomBar] are not
- * affected because they live outside this composable's scope.
- */
+/** Smooths download-fraction changes while retaining the latest byte counts and transfer rate. */
 @Composable
 private fun DownloadingProgressButton(progress: DownloadProgress) {
   val animatedFraction by

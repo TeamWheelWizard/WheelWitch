@@ -4,10 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
-/**
- * Convenience accessor for the active [StatusColors] from [LocalStatusColors].
- * Re-exports the theme-side type so callers can `import` it from one place.
- */
+/** Active status colors supplied by the theme. */
 @Composable
 @ReadOnlyComposable
 fun statusColors(): StatusColors = LocalStatusColors.current

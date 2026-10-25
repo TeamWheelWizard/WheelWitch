@@ -54,10 +54,7 @@ class HomeLaunchViewModel(
     }
   }
 
-  /**
-   * "Launch anyway" preserves the existing check-warning override; the notice remains
-   * unacknowledged.
-   */
+  /** Overriding a running check launches without acknowledging the separate Game.ini notice. */
   fun confirmLaunch(beginSession: () -> Unit) {
     val confirmation = _prompt.value ?: return
     if (confirmation == LaunchPrompt.GameIniNotice) {

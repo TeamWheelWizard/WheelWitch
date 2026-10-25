@@ -172,7 +172,6 @@ fun OnboardingScreen(
   }
 }
 
-/** First onboarding step: greets the user. */
 @Composable
 private fun WelcomeStep(onNext: () -> Unit) {
   StepCard(
@@ -246,17 +245,12 @@ private fun DolphinStep(
   }
 }
 
-/**
- * Opens Dolphin's official download page in the user's default browser. Website-first per the
- * design decision; avoids the `market://` Play Store intent and the resulting "no Play Store"
- * fallback ladder that the website solves for free.
- */
+/** Uses the official download page without requiring a Play Store installation. */
 private fun openDolphinDownloadIntent(context: android.content.Context) {
   val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://dolphin-emu.org/download/"))
   context.startActivity(intent)
 }
 
-/** Third onboarding step: SAF tree picker for the Dolphin user folder. */
 @Composable
 private fun StorageStep(onPick: () -> Unit, error: String?) {
   StepCard(
@@ -272,7 +266,6 @@ private fun StorageStep(onPick: () -> Unit, error: String?) {
   }
 }
 
-/** Fourth onboarding step: SAF document picker for the MKW ROM. */
 @Composable
 private fun RomStep(
     onPick: () -> Unit,
@@ -357,7 +350,6 @@ private fun RomStep(
   }
 }
 
-/** Final onboarding step: confirms the user is ready to enter the home screen. */
 @Composable
 private fun CompleteStep(onDone: () -> Unit) {
   StepCard(
@@ -370,7 +362,6 @@ private fun CompleteStep(onDone: () -> Unit) {
   }
 }
 
-/** Red-tinted error message shown below the storage or rom step button. */
 @Composable
 private fun ErrorBanner(message: String) {
   Text(
@@ -381,7 +372,6 @@ private fun ErrorBanner(message: String) {
   )
 }
 
-/** Card frame that hosts each onboarding step's title, body, and content. */
 @Composable
 private fun StepCard(
     title: String,

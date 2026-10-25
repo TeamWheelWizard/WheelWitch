@@ -125,7 +125,6 @@ private fun StatContent(stats: RaceStats) {
         contentPadding = PaddingValues(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Headline stats: 3 in a row
         item {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -155,7 +154,6 @@ private fun StatContent(stats: RaceStats) {
             }
         }
 
-        // Most Active Players
         if (stats.mostActivePlayers.isNotEmpty()) {
             item {
                 Column(
@@ -203,7 +201,6 @@ private fun StatContent(stats: RaceStats) {
             }
         }
 
-        // Top Characters / Vehicles / Combos: tabbed
         if (stats.topCharacters.isNotEmpty() || stats.topVehicles.isNotEmpty() || stats.topCombos.isNotEmpty()) {
             item {
                 Column(
@@ -247,7 +244,6 @@ private fun StatContent(stats: RaceStats) {
             }
         }
 
-        // Win Rates: tabbed
         if (stats.topCharactersByWinRate.isNotEmpty() || stats.topVehiclesByWinRate.isNotEmpty() || stats.topCombosByWinRate.isNotEmpty()) {
             item {
                 Column(
@@ -295,7 +291,6 @@ private fun StatContent(stats: RaceStats) {
             }
         }
 
-        // Most Popular Tracks
         if (stats.allPlayedTracks.isNotEmpty()) {
             item {
                 Column(
@@ -340,7 +335,6 @@ private fun StatContent(stats: RaceStats) {
             }
         }
 
-        // Activity charts: side by side
         if (stats.racesByDayOfWeek.isNotEmpty() || stats.racesByHour.isNotEmpty()) {
             item {
                 Column(

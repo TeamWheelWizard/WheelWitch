@@ -27,13 +27,7 @@ import androidx.compose.ui.unit.dp
 import android.provider.Settings
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 
-/**
- * Animated status indicator dot.
- *
- * - The fill color smoothly transitions to [target] over [transitionMs].
- * - When [pulse] is true, the dot pulses (alpha 0.55→1.0 and scale
- *   0.85→1.15) on a 1100ms reverse cycle for a clear "alive" feel.
- */
+/** Status dot with animated color; pulsing is suppressed when the system animator scale is zero. */
 @Composable
 fun PulsingDot(
     target: Color,

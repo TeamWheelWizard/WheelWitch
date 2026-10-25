@@ -25,48 +25,19 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
-/**
- * Orchestrates the install/update flow for the Retro Rewind Pack.
- *
- * Loads the [RewindPackManager] from the persisted [DolphinTree] in
- * [init] and runs an initial [checkStatus]. Exposes the install /
- * update actions to the UI; both are guarded by an [installMutex]
- * so a double-tap on the install button cannot trigger parallel
- * downloads.
- *
- * The state machine (`UiState`) cycles through
- * `Idle → Checking → Ready → Installing → Installed → Checking → Ready`
- * on a successful install. Failure paths land in [UiState.Error] and
- * can be retried via [clearError].
- *
- * Tests can swap the [managerFactory] to inject a mock
- * [RewindPackManager] without going through SAF.
- */
+/** Owns pack status checks and serializes install, update, and reinstall operations. */
 class PackUpdateViewModel(
   application: Application,
   private val managerFactory: (Context) -> RewindPackManager? = ::defaultManagerFactory,
 ) : AndroidViewModel(application) {
-  // Cached at construction, replaced by [refreshManager] after the
-  // composition root re-runs onboarding. The var swap is intentional:
-  // the manager depends on a persisted SAF tree URI which can be
-  // written after the VM is created.
+  // Onboarding can persist a new SAF tree after this ViewModel is created.
   private var manager: RewindPackManager? = managerFactory(application)
   private val installMutex = Mutex()
 
   private val _state = MutableStateFlow<UiState>(UiState.Idle)
   val state: StateFlow<UiState> = _state.asStateFlow()
 
-  /**
-   * Hot derivation of the in-flight download progress (fraction, byte
-   * rate, byte counts) for the [HomeScreen] progress bar. Distinct from
-   * [state] so the home screen doesn't re-compose the whole
-   * `Scaffold` + `TopBar` + `Scaffold` content lambda on every 1%
-   * progress callback. Emits null when not downloading.
-   *
-   * `distinctUntilChanged` coalesces duplicate progress events
-   * (e.g. when the downloader is throttled to a sub-1% delta). The
-   * downstream [HomeBottomBar] only collects this flow.
-   */
+  /** Latest download progress, or null outside the download phase. */
   val installProgress: StateFlow<DownloadProgress?> =
     _state
       .map { (it as? UiState.Installing.Downloading)?.progress }
@@ -77,30 +48,15 @@ class PackUpdateViewModel(
     checkStatus()
   }
 
-  /** Single read-through so the `var` swap is intentional. */
   private fun currentManager(): RewindPackManager? = manager
 
-  /**
-   * Re-creates the manager from the current persisted tree URI and
-   * re-runs [checkStatus]. Call from the composition root after a
-   * successful onboarding flow so the cached (possibly null) manager
-   * is replaced with the new tree URI. No-op if the factory still
-   * returns null (the user cancelled the SAF picker or the URI was
-   * cleared by a previous fromPersisted failure).
-   */
+  /** Rebuilds the manager from the persisted tree and checks status, even if no tree is available. */
   fun refreshManager() {
     manager = managerFactory(getApplication())
     checkStatus()
   }
 
-  /**
-   * Re-checks the local version against the server manifest. Emits
-   * [UiState.Checking] then [UiState.Ready] with the resolved
-   * [PackStatus], or [UiState.Error] on failure. When no pack
-   * storage is configured (no persisted tree URI), the resolved
-   * status is [PackStatus.NotInstalled]. The user is routed to
-   * onboarding by the UI.
-   */
+  /** Checks pack status; missing storage resolves to [PackStatus.NotInstalled]. */
   fun checkStatus() {
     viewModelScope.launch {
       val previous = (_state.value as? UiState.Ready)?.status
@@ -141,10 +97,8 @@ class PackUpdateViewModel(
   }
 
   /**
-   * Performs the smallest set of incremental updates needed. Falls
-   * back to a full reinstall if the local version is missing.
-   * Same [installMutex] guard as [installLatest]; calling both in
-   * parallel is a no-op for the second caller.
+   * Applies incremental updates, falling back to a full install when the local version is missing.
+   * Calls serialize with other install operations through [installMutex].
    */
   fun update() {
     runInstall("update") {

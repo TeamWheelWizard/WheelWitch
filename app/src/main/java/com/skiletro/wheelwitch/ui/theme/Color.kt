@@ -3,16 +3,8 @@ package com.skiletro.wheelwitch.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Per-theme color tokens.
- *
- * The `80`/`40` suffix follows Material 3 tonal palette notation: `80`
- * is the tone used on dark themes (lighter accent) and `40` is the tone
- * used on light themes (darker accent). The `On*` variants are the
- * foreground colors that sit on top of the matching accent.
- *
- * Each palette block declares four roles: primary, secondary, tertiary,
- * and the on-primary foreground. Other roles (background, surface, etc.)
- * are either inlined in [Theme.kt] or left to Material 3 defaults.
+ * Per-theme accents: `80` denotes dark-theme variants and `40` light-theme variants.
+ * `On*` colors provide foregrounds for their matching accents; other roles are set in the theme.
  */
 
 // Hex palette (dark): the default brand theme

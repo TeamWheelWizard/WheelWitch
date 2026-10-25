@@ -83,10 +83,7 @@ fun MainScreen(
   var outdatedDolphinVersion by remember { mutableStateOf<String?>(null) }
   var dolphinWarningChecked by remember { mutableStateOf(false) }
 
-  // One-shot acknowledge for the foreign-lock advisory dialog. Local
-  // UI state by design: the VM has no ack method, and the dialog is
-  // allowed to re-surface on later resumes while the foreign lock is
-  // still fresh (the other device has not synced yet).
+  // Keep the advisory dismissed for this composition, independent of later sync-state emissions.
   var foreignLockAcknowledged by remember { mutableStateOf(false) }
 
   val syncState by cloudSync.uiState.collectAsState()
@@ -187,10 +184,7 @@ fun MainScreen(
             onComplete = {
               onboardingPrefs.edit().putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, true).apply()
               onboardingComplete = true
-              // The VM was constructed before any tree URI was
-              // persisted, so its cached manager is null. Now that
-              // onboarding has written a valid URI to prefs, ask
-              // the VM to re-evaluate and run a fresh checkStatus.
+              // Onboarding may have replaced the persisted tree after the manager was constructed.
               packUpdate.refreshManager()
             },
         )

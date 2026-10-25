@@ -53,36 +53,9 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * Owns the save file state: per-region parse, leaderboard merge, unified backup/restore/delete, and
- * slot selection.
- *
- * The pack install flow lives in [PackUpdateViewModel]. This VM listens to its [UiState] via
- * [packStatusFlow] and re-parses the save whenever the pack state transitions to [UiState.Ready].
- * This keeps the two VMs decoupled (no static companion pointers like the deleted
- * `SaveDataDelegate`) and survives process death naturally; both VMs are reconstructed on the next
- * composition and re-collect the [packStatusFlow] from scratch.
- *
- * Multi-region: a user with multiple ROMs (one per region) has one save file per region.
- * [SaveManager.listRegions] walks the user's [DolphinTree.romDir] and [refresh] reads + parses a
- * save for each present region in parallel. [selectedRegion] defaults to the first region with a
- * ROM, and is persisted across launches. The Licenses screen is a pure viewer of the selected
- * region and never picks one.
- *
- * Leaderboard merge: the home screen renders all 4 slots of the selected region, so
- * [mergedLicenses] holds a 4-entry list per region with leaderboard VR and Mii name merged in. The
- * VR fetch is fanned out in parallel for all 4 slots of the selected region (4 in-flight requests
- * max) via [LeaderboardMerger].
- *
- * Unified save data: [hasAnySave] is the single source of truth for whether the user has anything
- * worth backing up (any region's `rksys.dat`, the Mii DB, any Pulsar pul file, or any ghost). The
- * Save Data section in Settings uses it to drive the enabled/disabled state of the three buttons,
- * and to switch between the "no save data" status line and the "Last backed up" line.
- * [lastBackupTimestamp] is read from [PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY] on construction and
- * updated after every successful [backup] call.
- *
- * Tests can swap the [treeFactory], the [parser], the [LeaderboardMerger], the [SaveManager], the
- * [now] lambda (for timestamps), and the [ioDispatcher] to inject mocks without going through SAF,
- * the network, or real time.
+ * Owns per-region saves, selected slots, leaderboard enrichment, and unified backup/restore/delete.
+ * Ready pack-status emissions trigger a refresh. Local and cached licenses are published before
+ * network enrichment so the grid remains usable offline.
  */
 class SaveDataViewModel(
     application: Application,
@@ -160,18 +133,13 @@ class SaveDataViewModel(
   private val _isLoading = MutableStateFlow(false)
   val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-  /** Maps profileId → internal VR (0–10000) from RRating.pul, or empty if unavailable. */
+  /** Maps profileId → internal VR (0–10000) from RRRating.pul, or empty if unavailable. */
   private var ratingVrMap: Map<Long, Float> = emptyMap()
 
   private val _error = MutableStateFlow<String?>(null)
   val error: StateFlow<String?> = _error.asStateFlow()
 
-  /**
-   * Wall-clock time of the most recent [refresh] call, used by [refreshIfStale] to dedup the `init`
-   * collect and the `SaveInfoScreen` lifecycle ON_RESUME observer. The latter previously triggered
-   * a second full save re-parse + 4 leaderboard round trips every time the user opened the screen.
-   * Updated with an atomic CAS so two concurrent stale-checks cannot both start a refresh.
-   */
+  /** Refresh timestamp; CAS in [refreshIfStale] prevents concurrent stale checks starting twice. */
   private val lastRefreshAt = AtomicLong(0L)
 
   /**
@@ -180,21 +148,11 @@ class SaveDataViewModel(
    */
   private var refreshJob: Job? = null
 
-  /**
-   * Monotonic generation bumped on every [refresh]. Background work captured under an older
-   * generation (e.g. a badge fetch that resumes after a newer refresh replaced it) drops its result
-   * instead of overwriting the newer refresh's output. Belt-and-braces on top of [refreshJob]
-   * cancellation, which is not observable at a resumed continuation's every step.
-   */
+  /** Rejects older badge results even when cancellation has not yet been observed. */
   private var refreshGeneration = 0
 
   init {
-    // Read persisted state synchronously — SharedPreferences get*()
-    // calls are fast and running them inline guarantees the persisted
-    // region/slot are set before the packStatusFlow collect (which
-    // triggers refresh()) observes them. The StateFlows start with
-    // their default values and immediately receive the real values
-    // without flicker.
+    // Restore selection before the pack-status collector can trigger a refresh.
     loadPersistedState()
     viewModelScope.launch {
       packStatusFlow
@@ -328,13 +286,7 @@ class SaveDataViewModel(
     }
   }
 
-  /**
-   * [refresh] wrapper used by the `SaveInfoScreen` lifecycle ON_RESUME observer. Skips the work if
-   * a refresh already ran within [maxAgeMs], so navigating into and out of the screen in quick
-   * succession (or re-entering right after the `packStatusFlow` collect already triggered a
-   * refresh) does not pay a second full save re-parse + 4 leaderboard round trips. Forced refreshes
-   * (the manual pull-to-refresh button) should call [refresh] directly.
-   */
+  /** Deduplicates lifecycle refreshes within [maxAgeMs]; explicit refreshes use [refresh] directly. */
   fun refreshIfStale(maxAgeMs: Long = DEFAULT_REFRESH_STALE_MS) {
     val nowValue = now()
     val last = lastRefreshAt.get()
@@ -417,7 +369,6 @@ class SaveDataViewModel(
     _error.value = null
   }
 
-  // --- internals --------------------------------------------------------
 
   /**
    * Resolves the tree and runs a save operation, publishing a user-facing failure or applying the
@@ -458,11 +409,7 @@ class SaveDataViewModel(
     return error.message ?: fallback()
   }
 
-  /**
-   * Merges leaderboard data for [region]'s 4 slots and publishes the result into [mergedLicenses].
-   * The initial (un-merged) local list is published by [refresh] before this runs, so the UI shows
-   * the local VR while the network round trips are in flight.
-   */
+  /** Publishes leaderboard enrichment for [region] without replacing other regions' cached slots. */
   private suspend fun publishMerged(region: Region, info: SaveFileInfo?) {
     val enriched = leaderboardMerger.merge(region, info)
     _mergedLicenses.update { current -> current + (region to enriched) }
@@ -507,16 +454,7 @@ class SaveDataViewModel(
     }
   }
 
-  /**
-   * Internal tag + default [DolphinTree] factory plus the public [factory] used by
-   * [androidx.lifecycle.viewmodel.compose.viewModel] in the composition root. The default
-   * [ViewModelProvider] for [AndroidViewModel] looks up a single-arg `(Application)` constructor,
-   * which doesn't exist anymore. The second `packStatusFlow` parameter requires a custom factory.
-   *
-   * The other constructor parameters (`treeFactory`, `parser`, `leaderboardMerger`, `saveManager`,
-   * `now`, `ioDispatcher`) use their production defaults; tests that need to swap them continue to
-   * construct the VM directly with explicit arguments.
-   */
+  /** A custom factory supplies the required pack-status flow alongside the application. */
   companion object {
     const val TAG = "SaveData"
 

@@ -27,15 +27,8 @@ data class LogViewerUiState(
 )
 
 /**
- * Owns the log-viewer state for the bug-report flow.
- *
- * [logText] is the full report rendered by [LogExporter.exportToString]
- * — the same text the "share as file" option exports — so the user
- * reads exactly what gets sent. [copyRequest] is incremented on every
- * copy so the screen can re-trigger its snackbar for repeated copies.
- *
- * Tests can swap the [logLoader], [clipboard], and [ioDispatcher] to
- * inject fakes without touching [LogExporter] / the clipboard service.
+ * Owns the bug-report snapshot. [LogViewerUiState.copyRequest] increments on each copy so repeated
+ * copies can retrigger the UI snackbar.
  */
 class LogViewerViewModel(
   application: Application,
@@ -52,11 +45,7 @@ class LogViewerViewModel(
     reload()
   }
 
-  /**
-   * (Re-)renders the log report into [state]. Called from [init] and
-   * again whenever the Log Viewer screen opens, so the snapshot is
-   * fresh after new log entries have been captured.
-   */
+  /** Refreshes the report on construction and whenever the viewer opens. */
   fun reload() {
     viewModelScope.launch {
       _state.value = _state.value.copy(isLoading = true)

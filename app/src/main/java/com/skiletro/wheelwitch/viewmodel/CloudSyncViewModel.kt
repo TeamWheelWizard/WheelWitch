@@ -48,7 +48,7 @@ import timber.log.Timber
 
 /** UI-facing cloud-sync status inside [SyncUiState.Connected]. */
 enum class SyncStatus {
-  /** No sync running and the last one succeeded. */
+  /** No sync is running; automatic-sync failures also return here silently. */
   Idle,
 
   /** A sync round-trip is in flight. */
@@ -96,9 +96,8 @@ data class ConflictInfo(
  *
  * Network and local-save operations use [ioDispatcher]; account-owned commits stay on the main
  * dispatcher. Disconnect/reconnect cancels work and invalidates late completions before
- * credentials, bookkeeping, or UI can change. Local save access uses
- * [zipBytes]/[applyZip]/[hasLocalSaves] seams, which stage the unified zip in the app cache so
- * [SaveManager.backupAll]/[restoreAll] are reused verbatim.
+ * credentials, bookkeeping, or UI can change. [zipBytes], [applyZipFn], and [hasLocalSavesFn]
+ * provide local-save operations using the unified zip.
  */
 class CloudSyncViewModel(
     app: Application,
@@ -207,9 +206,8 @@ class CloudSyncViewModel(
   }
 
   /**
-   * Auto-sync entry, called from the app-level ON_RESUME observer. Silent skip when disabled,
-   * offline, or already syncing (per the spec, background failures never nag). A pending Dolphin
-   * session forces the push decision path.
+   * App-resume automatic sync: skips when disabled, offline, or already syncing.
+   * A pending Dolphin session forces the push decision path; failures remain silent.
    */
   fun onAppResume() {
     runSync(manual = false)
@@ -321,11 +319,7 @@ class CloudSyncViewModel(
     emit()
   }
 
-  /**
-   * Resolves a conflict dialog: keep local → push, use cloud → pull. Also serves the cloud-found
-   * fresh-device prompt's Download action (force = Pull) — there the conflict state is null by
-   * definition, so no early return guard.
-   */
+  /** Forces push for local data or pull for cloud data, including the fresh-device download prompt. */
   fun resolveConflict(keepLocal: Boolean) {
     runSync(manual = true, force = if (keepLocal) SyncAction.Push else SyncAction.Pull)
   }
@@ -353,7 +347,6 @@ class CloudSyncViewModel(
     emit()
   }
 
-  // --- sync core ---------------------------------------------------------
 
   private fun runSync(manual: Boolean, force: SyncAction? = null) {
     if (syncing || pendingAuth != null) return
@@ -635,7 +628,6 @@ class CloudSyncViewModel(
   }
       .getOrDefault(0)
 
-  // --- production defaults ----------------------------------------------
 
   /** Stages the unified save zip in the app cache via [SaveManager.backup]. */
   private suspend fun defaultZipBytes(context: Context): ByteArray =
