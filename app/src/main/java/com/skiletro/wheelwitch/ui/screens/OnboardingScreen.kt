@@ -2,7 +2,6 @@ package com.skiletro.wheelwitch.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,12 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,302 +46,55 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.skiletro.wheelwitch.R
-import com.skiletro.wheelwitch.data.DolphinPaths
-import com.skiletro.wheelwitch.data.DolphinTree
-import com.skiletro.wheelwitch.data.GameTypeParser
-import com.skiletro.wheelwitch.data.InvalidTreeReason
-import com.skiletro.wheelwitch.data.InvalidTreeUriException
 import com.skiletro.wheelwitch.ui.components.PrimaryActionButton
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.buttonShape
 import com.skiletro.wheelwitch.ui.theme.sectionShape
-import com.skiletro.wheelwitch.util.io.readUpTo
 import com.skiletro.wheelwitch.util.launcher.DolphinLauncher
-import java.io.File
-import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import timber.log.Timber
+import com.skiletro.wheelwitch.viewmodel.OnboardingRomActivity
+import com.skiletro.wheelwitch.viewmodel.OnboardingStep
+import com.skiletro.wheelwitch.viewmodel.OnboardingViewModel
 
 /**
- * Onboarding wizard. The flow is: `Welcome → Dolphin → Storage → Rom → Complete`.
- *
- * - **Dolphin**: confirms [DolphinLauncher.isDolphinInstalled] before the user is asked to grant
- *   access to its user folder. If the package isn't installed, the step offers a Download button
- *   (opens [DolphinLauncher]'s official download page) and a re-check button. A lifecycle observer
- *   re-runs the check on every `ON_RESUME` so the UI flips to the installed view automatically when
- *   the user returns from the browser.
- * - **Storage**: fires the SAF `OpenDocumentTree` picker with `EXTRA_INITIAL_URI` deep-linked at
- *   the Dolphin user folder (`primary:Android/data/org.dolphinemu.dolphinemu/files`). The pick is
- *   validated by [DolphinTree.validate] and persisted via [DolphinTree.persist].
- * - **Rom**: fires the SAF `OpenDocument` picker filtered to ISO/RVZ/ WBFS. The picked file is
- *   validated by [GameTypeParser.checkValidity] and copied into the SAF tree by
- *   [DolphinTree.copyRomFromSource] (renamed to `<GAMEID>.<ext>` uppercase).
- *
- * The state machine is in-memory; if the user backgrounds the app mid-flow, they restart at the
- * welcome step on return. The
- * [com.skiletro.wheelwitch.util.prefs.PrefsKeys.ONBOARDING_COMPLETED_KEY] gate is only set in the
- * `Complete` step.
+ * Renders the five-step onboarding wizard owned by [OnboardingViewModel]. The UI owns only SAF
+ * activity-result launchers and browser opening; workflow state and storage/ROM I/O live in the
+ * ViewModel. Resume notifications re-check Dolphin after returning from its download page.
  */
-private const val ROM_HEADER_BYTES = 4096
-
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
+    onboarding: OnboardingViewModel = viewModel(factory = OnboardingViewModel.Factory),
 ) {
   val context = LocalContext.current
-  val scope = rememberCoroutineScope()
-  var step by remember { mutableStateOf(OnboardingStep.Welcome) }
-  var storageError by remember { mutableStateOf<String?>(null) }
-  var romError by remember { mutableStateOf<String?>(null) }
-  var isRomLoading by remember { mutableStateOf(false) }
-  var romStage by remember { mutableStateOf<String?>(null) }
-  // Dolphin-check state. Both default to false / false so the
-  // first composition of the Dolphin step shows the "not installed"
-  // view until the lifecycle observer's first ON_RESUME fires.
-  // The observer handles the initial check, the re-check after
-  // returning from the browser, and the manual re-check via the
-  // "Check Again" button.
-  var dolphinInstalled by remember { mutableStateOf(false) }
-  var hasCheckedDolphin by remember { mutableStateOf(false) }
-  var isCheckingRomPresence by remember { mutableStateOf(false) }
-  var existingRomDetected by remember { mutableStateOf<Boolean?>(null) }
-  var detectedRomName by remember { mutableStateOf<String?>(null) }
+  val state by onboarding.state.collectAsStateWithLifecycle()
+  val step = state.step
+  val rom = state.rom
 
-  // Re-check the Dolphin install on every ON_RESUME while the
-  // Dolphin step is current. This catches the case where the user
-  // taps "Download Dolphin" -> browser opens -> user installs
-  // Dolphin -> returns to the app via the system back button.
-  // Without the observer the user would have to tap "Check Again"
-  // manually. The initial check is covered by ON_RESUME firing
-  // for the first display.
   val lifecycleOwner = LocalLifecycleOwner.current
-  DisposableEffect(lifecycleOwner) {
+  DisposableEffect(lifecycleOwner, onboarding) {
     val observer = LifecycleEventObserver { _, event ->
-      if (event == Lifecycle.Event.ON_RESUME && step == OnboardingStep.Dolphin) {
-        dolphinInstalled = DolphinLauncher.isDolphinInstalled(context)
-        hasCheckedDolphin = true
-      }
+      if (event == Lifecycle.Event.ON_RESUME) onboarding.checkDolphin()
     }
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
-  // Auto-check when entering the Dolphin step (catches Welcome→Dolphin
-  // navigation where no lifecycle event fires). The lifecycle observer
-  // above handles the resume-from-browser case.
-  LaunchedEffect(step) {
-    if (step == OnboardingStep.Dolphin) {
-      dolphinInstalled = DolphinLauncher.isDolphinInstalled(context)
-      hasCheckedDolphin = true
-    }
-  }
-
-  // Scan for an existing ROM when the user reaches the Rom step.
-  LaunchedEffect(step) {
-    if (step == OnboardingStep.Rom) {
-      isCheckingRomPresence = true
-      existingRomDetected = null
-      detectedRomName = null
-      try {
-        val tree = withContext(Dispatchers.IO) { DolphinTree.fromPersisted(context) }
-        if (tree != null) {
-          val files = withContext(Dispatchers.IO) { tree.romDir.listFiles() }
-          var found = false
-          for (file in files) {
-            val name = file.name ?: continue
-            val ext = File(name).extension.uppercase()
-            if (ext in setOf("ISO", "RVZ", "WBFS") && file.isFile && file.exists()) {
-              val bytes =
-                  withContext(Dispatchers.IO) {
-                    tree.resolver.openInputStream(file.uri)?.use { stream ->
-                      stream.readUpTo(ROM_HEADER_BYTES)
-                    }
-                  }
-              if (bytes != null && GameTypeParser.checkValidity(name, bytes)) {
-                detectedRomName = name
-                found = true
-                break
-              }
-            }
-          }
-          existingRomDetected = found
-        } else {
-          existingRomDetected = false
-        }
-      } catch (e: Exception) {
-        Timber.tag("Onboarding").w(e, "ROM scan failed")
-        existingRomDetected = false
-      } finally {
-        isCheckingRomPresence = false
-      }
-    }
-  }
-
-  // Resolve every error string up here so the activity-result
-  // callbacks (which run outside the composition) can use them
-  // without calling getString on LocalContext.current; lint
-  // rejects that and it's also fragile across recomposition.
-  val storageReadFailed = stringResource(R.string.onboarding_storage_read_failed)
-  val storageWrongFolder = stringResource(R.string.onboarding_storage_wrong_folder)
-  val storageSubfolderExternal =
-      stringResource(
-          R.string.onboarding_storage_subfolder_external_format,
-          DolphinPaths.expectedTreeId(),
-      )
-  val storageSubfolderInternal = stringResource(R.string.onboarding_storage_subfolder_internal)
-  val storageRequired = stringResource(R.string.onboarding_storage_required)
-  val isoInvalid = stringResource(R.string.onboarding_iso_invalid)
-  val isoCopyFailed = stringResource(R.string.onboarding_iso_copy_failed)
-  val metadataWriteFailed = stringResource(R.string.onboarding_metadata_write_failed)
-  val romVerifying = stringResource(R.string.onboarding_rom_verifying)
-  val romCopying = stringResource(R.string.onboarding_rom_copying)
-
-  // The tree picker. We deep-link to the Dolphin user folder so the
-  // user lands at the right place immediately. The picked URI must
-  // match the expected tree id (validated by DolphinTree.validate).
   val treeLauncher =
-      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocumentTree()) { uri
-        ->
-        if (uri == null) {
-          // User cancelled. Stay on the Storage step, no error.
-          Timber.tag("Onboarding").i("Storage picker cancelled")
-          return@rememberLauncherForActivityResult
-        }
-        Timber.tag("Onboarding").i("Storage picked: authority=%s", uri.authority)
-        val validation = DolphinTree.validate(uri)
-        validation
-            .onSuccess {
-              try {
-                val tree = DolphinTree(context, uri)
-                tree.persistUriPermission()
-                DolphinTree.persist(context, tree)
-                // Touch the lazy WheelWitch dir so the bootstrap subdirs
-                // exist before we move on to the ROM step. If this throws,
-                // the user gets a re-promptable error.
-                tree.wheelWitchDir // ensure lazy creation succeeds
-                Timber.tag("Onboarding")
-                    .i(
-                        "Onboarding storage step complete: tree persisted at %s",
-                        tree.wheelWitchDir.uri,
-                    )
-                storageError = null
-                step = OnboardingStep.Rom
-              } catch (e: Exception) {
-                Timber.tag("Onboarding").e(e, "Storage bootstrap failed")
-                storageError = e.message ?: storageReadFailed
-              }
-            }
-            .onFailure { e ->
-              Timber.tag("Onboarding").w(e, "Picked tree failed validation")
-              storageError =
-                  when (e) {
-                    is InvalidTreeUriException ->
-                        when (e.reason) {
-                          InvalidTreeReason.SubfolderExternal -> storageSubfolderExternal
-                          InvalidTreeReason.SubfolderInternal -> storageSubfolderInternal
-                          else -> storageWrongFolder
-                        }
-                    else -> e.message ?: storageWrongFolder
-                  }
-            }
+      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocumentTree()) {
+        onboarding.selectStorage(it)
       }
-
-  // The ROM picker. OpenDocument returns a content URI; we read
-  // enough bytes to validate, then copy via DolphinTree (which
-  // re-opens the URI for streaming). application/octet-stream is
-  // the closest SAF mime filter; extension-based discrimination
-  // happens in GameTypeParser.
   val romLauncher =
-      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-          isRomLoading = true
-          try {
-            romStage = romVerifying
-            val tree = DolphinTree.fromPersisted(context)
-            if (tree == null) {
-              romError = storageRequired
-              return@launch
-            }
-            romError = null
-            val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "rom.iso"
-            val bytes =
-                withContext(Dispatchers.IO) {
-                  context.contentResolver.openInputStream(uri)?.use { stream ->
-                    // Read enough bytes for the GameTypeParser checks.
-                    stream.readUpTo(ROM_HEADER_BYTES)
-                  } ?: throw IOException("Cannot open $uri")
-                }
-            if (!GameTypeParser.checkValidity(displayName, bytes)) {
-              romError = isoInvalid
-              return@launch
-            }
-            val info = GameTypeParser.parseGameInfo(displayName, bytes)
-            val gameId = info.gameId ?: "RMCP01"
-            val ext = File(displayName).extension.ifEmpty { "iso" }.lowercase()
-
-            romStage = romCopying
-            // Track whether the ROM copy or the metadata write was the
-            // last step to run before a throw, so the catch block can
-            // pick the right error message. Declared before the try so
-            // the catch can read it on any failure path.
-            var metadataFailed = false
-            try {
-              withContext(Dispatchers.IO) { tree.copyRomFromSource(uri, gameId, ext) }
-              metadataFailed = true
-              withContext(Dispatchers.IO) { tree.writeRrCover() }
-              step = OnboardingStep.Complete
-            } catch (e: Exception) {
-              Timber.tag("Onboarding")
-                  .e(e, if (metadataFailed) "Metadata write failed" else "ROM copy failed")
-              romError =
-                  if (metadataFailed) (e.message ?: metadataWriteFailed)
-                  else (e.message ?: isoCopyFailed)
-            }
-          } finally {
-            isRomLoading = false
-            romStage = null
-          }
-        }
+      rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) {
+        onboarding.selectRom(it)
       }
 
-  // Pre-warm the deep-link URI for the tree picker. The picker
-  // surfaces different providers depending on whether Dolphin is
-  // installed, so we deep-link to the matching one. If Dolphin is
-  // installed, the picker shows the Dolphin provider (no
-  // MANAGE_EXTERNAL_STORAGE needed) and we land at `root/`. If not,
-  // we land on primary external storage. Re-keyed on `dolphinInstalled`
-  // so a user who installs Dolphin between the Dolphin step and the
-  // Storage step gets the new deep link.
-  val treeDeepLink =
-      remember(dolphinInstalled) {
-        if (dolphinInstalled) {
-          DocumentsContract.buildTreeDocumentUri(
-              "org.dolphinemu.dolphinemu.user",
-              "root",
-          )
-        } else {
-          DocumentsContract.buildTreeDocumentUri(
-              "primary",
-              "Android/data/${DolphinLauncher.DOLPHIN_PACKAGE}/files",
-          )
-        }
-      }
-
-  BackHandler(enabled = step.previous() != null) {
-    storageError = null
-    romError = null
-    isRomLoading = false
-    romStage = null
-    step = step.previous() ?: step
-  }
+  BackHandler(enabled = step.previous() != null) { onboarding.back() }
 
   Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
     Box(
@@ -370,57 +117,47 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
           when (currentStep) {
-            OnboardingStep.Welcome -> WelcomeStep(onNext = { step = OnboardingStep.Dolphin })
+            OnboardingStep.Welcome -> WelcomeStep(onNext = onboarding::next)
             OnboardingStep.Dolphin ->
                 DolphinStep(
-                    installed = dolphinInstalled,
-                    hasChecked = hasCheckedDolphin,
-                    onContinue = { step = OnboardingStep.Storage },
+                    installed = state.dolphinInstalled,
+                    hasChecked = state.hasCheckedDolphin,
+                    onContinue = onboarding::next,
                     onDownload = { openDolphinDownloadIntent(context) },
-                    onCheckAgain = {
-                      dolphinInstalled = DolphinLauncher.isDolphinInstalled(context)
-                      hasCheckedDolphin = true
-                    },
+                    onCheckAgain = onboarding::checkDolphin,
                 )
             OnboardingStep.Storage ->
                 StorageStep(
                     onPick = {
-                      storageError = null
-                      treeLauncher.launch(treeDeepLink)
+                      onboarding.clearStorageError()
+                      treeLauncher.launch(onboarding.treeDeepLink)
                     },
-                    error = storageError,
+                    error = state.storageError,
                 )
             OnboardingStep.Rom ->
                 RomStep(
                     onPick = {
-                      romError = null
+                      onboarding.clearRomError()
                       // application/octet-stream is the closest SAF mime
                       // filter; GameTypeParser does extension validation.
                       romLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                     },
-                    onConfirmRom = {
-                      scope.launch {
-                        try {
-                          romStage = romCopying
-                          val tree = DolphinTree.fromPersisted(context)
-                          if (tree != null) {
-                            withContext(Dispatchers.IO) { tree.writeRrCover() }
-                          }
-                          step = OnboardingStep.Complete
-                        } catch (e: Exception) {
-                          Timber.tag("Onboarding").e(e, "Cover write failed on ROM confirm")
-                          romError = e.message ?: metadataWriteFailed
-                        } finally {
-                          romStage = null
-                        }
-                      }
-                    },
-                    error = romError,
-                    isLoading = isRomLoading,
-                    isCheckingRom = isCheckingRomPresence,
-                    existingRomDetected = existingRomDetected,
-                    detectedRomName = detectedRomName,
-                    stage = romStage,
+                    onConfirmRom = onboarding::confirmExistingRom,
+                    error = state.romError,
+                    isLoading =
+                        rom.activity == OnboardingRomActivity.Verifying ||
+                            rom.activity == OnboardingRomActivity.Copying,
+                    isCheckingRom = rom.activity == OnboardingRomActivity.Scanning,
+                    existingRomDetected = rom.existingRomName != null,
+                    detectedRomName = rom.existingRomName,
+                    stage =
+                        when (rom.activity) {
+                          OnboardingRomActivity.Verifying ->
+                              stringResource(R.string.onboarding_rom_verifying)
+                          OnboardingRomActivity.Copying ->
+                              stringResource(R.string.onboarding_rom_copying)
+                          else -> null
+                        },
                 )
             OnboardingStep.Complete -> CompleteStep(onDone = onComplete)
           }
@@ -429,25 +166,9 @@ fun OnboardingScreen(
     }
     StepDots(
         current = step.ordinal,
-        total = OnboardingStep.TOTAL,
+        total = OnboardingStep.entries.size,
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
     )
-  }
-}
-
-/** Onboarding flow. Five steps; TOTAL drives the dot count. */
-private enum class OnboardingStep {
-  Welcome,
-  Dolphin,
-  Storage,
-  Rom,
-  Complete;
-
-  /** Returns the previous step, or null if this is the first. */
-  fun previous(): OnboardingStep? = entries.getOrNull(ordinal - 1)
-
-  companion object {
-    val TOTAL: Int = entries.size
   }
 }
 
@@ -591,9 +312,11 @@ private fun RomStep(
         StepPrimaryButton(
             text = stringResource(R.string.onboarding_rom_use_this_rom),
             onClick = onConfirmRom,
+            enabled = !isLoading,
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedButton(
+            enabled = !isLoading,
             onClick = onPick,
             shape = buttonShape,
             modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -733,18 +456,10 @@ private fun StepDots(current: Int, total: Int, modifier: Modifier = Modifier) {
   }
 }
 
-/**
- * Best-effort display-name lookup for a SAF document URI. Falls back to `null` so the caller can
- * use a generic name. DocumentFile is the only public API for this.
- * `DocumentsContract.getTreeDocumentId` doesn't return the leaf name.
- */
-private fun queryDisplayName(context: android.content.Context, uri: Uri): String? =
-    DocumentFile.fromSingleUri(context, uri)?.name
-
 @Preview(showBackground = true, widthDp = 600, heightDp = 400)
 @Composable
 private fun OnboardingScreenWelcomePreview() {
   WheelWitchPreviewTheme {
-    OnboardingScreen(onComplete = {})
+    WelcomeStep(onNext = {})
   }
 }

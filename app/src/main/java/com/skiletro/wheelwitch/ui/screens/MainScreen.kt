@@ -43,6 +43,7 @@ import com.skiletro.wheelwitch.viewmodel.AppUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.CloudSyncViewModel
 import com.skiletro.wheelwitch.viewmodel.LogViewerViewModel
 import com.skiletro.wheelwitch.viewmodel.MiiMakerViewModel
+import com.skiletro.wheelwitch.viewmodel.OnboardingViewModel
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 import com.skiletro.wheelwitch.viewmodel.PackUpdateViewModel
 import com.skiletro.wheelwitch.viewmodel.SaveDataViewModel
@@ -64,6 +65,7 @@ fun MainScreen(
     logViewer: LogViewerViewModel = viewModel(factory = LogViewerViewModel.Factory),
     appUpdate: AppUpdateViewModel = viewModel(factory = AppUpdateViewModel.Factory),
     cloudSync: CloudSyncViewModel = viewModel(factory = CloudSyncViewModel.Factory),
+    onboarding: OnboardingViewModel = viewModel(factory = OnboardingViewModel.Factory),
     appTheme: AppTheme = AppTheme.Hex,
     onChangeAppTheme: (AppTheme) -> Unit = {},
     themeMode: ThemeMode = ThemeMode.System,
@@ -161,6 +163,7 @@ fun MainScreen(
               themeMode = themeMode,
               onChangeThemeMode = onChangeThemeMode,
               onRelaunchOnboarding = {
+                onboarding.restart()
                 onboardingPrefs.edit().putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, false).apply()
                 onboardingComplete = false
                 showSettings = false
@@ -180,6 +183,7 @@ fun MainScreen(
         }
       } else {
         OnboardingScreen(
+            onboarding = onboarding,
             onComplete = {
               onboardingPrefs.edit().putBoolean(PrefsKeys.ONBOARDING_COMPLETED_KEY, true).apply()
               onboardingComplete = true

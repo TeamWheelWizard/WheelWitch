@@ -125,3 +125,4 @@ Strings go in `res/values/strings.xml`; Compose screens use `stringResource()`.
 - `SaveManager` performs backup/restore/delete; `SaveDataViewModel` resolves storage, handles localized failures, and updates UI state directly, without a separate callback coordinator.
 - Home action rendering shares the last known pack-status row between ready and checking states. Re-checking disables install/update actions but preserves the explicit launch override and offline launch.
 - `HomeLaunchViewModel` owns launch confirmations, notice persistence, and the launch job. `HomeScreen` only renders prompts and consumes result messages; the job survives removal of the home composable.
+- `OnboardingViewModel` owns the wizard's single state and SAF/ROM I/O. Navigation invalidates old work; state survives activity recreation, and Settings explicitly restarts the wizard. Compose retains rendering and activity-result launchers.

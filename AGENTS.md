@@ -54,9 +54,11 @@ com.skiletro.wheelwitch
 └── viewmodel/
     ├── PackUpdateViewModel   : install/update state machine + SAF tree wiring
     ├── SaveDataViewModel     : per-region parse, leaderboard merge, backup/restore/delete, multi-region
+    ├── HomeLaunchViewModel   : launch confirmations, notice persistence, single-flight Dolphin launch
+    ├── OnboardingViewModel   : wizard state, SAF setup, ROM scan/import, cancellation on navigation
     ├── MiiMakerViewModel     : WAD install (Mutex-guarded), launch, delete
-    ├── OnlineViewModel       : rooms, leaderboard (Channel-based race-free), health, race stats
-    ├── CloudSyncViewModel    : Dropbox save sync orchestration, auth, conflicts, session locks
+    ├── OnlineViewModel       : rooms, leaderboard, health, race stats, generation-owned time trials
+    ├── CloudSyncViewModel    : account-owned Dropbox sync/auth, conflicts, session locks
     └── UiState               : sealed class for pack update flow
 ```
 
@@ -74,6 +76,8 @@ The sub-packages under `util/` are intentional. Keep new files in the right sub-
 
 - **Screen nav**: `MainScreen` orchestrates `HomeScreen`/`SettingsScreen`/`OnboardingScreen`; `HomeScreen` orchestrates `OnlineMenuScreen`/`SaveInfoScreen`; `OnlineMenuScreen` uses `AnimatedContent` with `OnlineMenuPage` enum
 - **Dolphin tree**: `DolphinTree` (SAF wrapper) is the single source of truth for the user-picked folder; `DolphinPaths` derives physical paths via the package-swap trick; `DolphinConfig` is the pure INI parser for `Dolphin.ini` `ISOPathN` registration
+- **Storage queries**: save discovery/read/delete uses existing-only paths. Optional Wii/Mii/Pulsar directories are resolved afresh; creation is explicit in restore and write paths.
+- **Workflow state**: `OnboardingViewModel` owns wizard I/O and survives activity recreation; Settings explicitly restarts it. `HomeLaunchViewModel` owns launch work independently of home composition. `MainScreen` observes cloud-sync resume events.
 - **Path consistency invariant**: every path inside `rr_autostartfile.json` and the `AutoStartFile` extra must derive from the same `DolphinPaths.physicalRoot(context)` call. Riivolution's native code can't resolve `content://` URIs.
 - **Launch flow**: `DolphinLauncher.launchRetroRewind(context)` does (1) validate Dolphin, (2) load tree, (3) pick ROM, (4) upsert `Dolphin.ini`, (5) write descriptor, (6) fire intent; falls back to bare-Dolphin launch if any step throws
 - **PrimaryActionButton**: 56dp, filled primary, `titleSmall` semi-bold; **SecondaryActionButton**: 48dp, outlined
@@ -137,28 +141,31 @@ JUnit 5, MockK 1.13.x, Truth 1.4.x, `org.json:json` test dep (Android stubs thro
 | `data/RksysParserTest.kt` | 9 | RKPD binary parsing: slots, friend code golden |
 | `data/GameTypeParserTest.kt` | 23 | ISO/RVZ/WBFS/WAD detection, game-id extraction |
 | `data/DolphinPathsTest.kt` | 14 | `physicalRoot` package-swap (release + debug), path helpers |
-| `data/DolphinTreeTest.kt` | 35 | lazy subdirs, `validate`, `fromPersisted`/`persist`, `copyRomFromSource`, `extractZipToPack`, `writeLaunchJson`/`readLaunchJson`, `readVersion`/`writeVersion`, `readConfigIni`/`writeConfigIni`, persist/release URI permission |
+| `data/DolphinTreeTest.kt` | 75 | required directory creation, fresh optional lookups, side-effect-free discovery, restore/backup/delete on one wrapper, validation/grants, ROM copying, ZIP extraction, launch/version/config I/O |
 | `data/DolphinConfigTest.kt` | 25 | `IsoPaths.toIniLines`, `read`/`upsert`/`remove`, idempotency, comment preservation, `dolphinUserTreeUri` |
-| `data/SaveManagerTest.kt` | 36 | region mapping, `listRegions`, `hasSave`, unified scope (`hasAnySave`/`backup`/`restore`/`delete`), RR version stamp + `RRGameSettings.pul` restore gate, old-zip back-compat |
+| `data/SaveManagerTest.kt` | 39 | region mapping, existing-only queries, backup/restore/delete scope, RR version gate, old-zip compatibility, partial-backup cleanup |
 | `network/VersionFileParserTest.kt` | 17 | update/deletion parsing, leaderboard, health, tracks, race stats |
 | `network/GitHubReleaseParserTest.kt` | 6 | `parseLatestReleaseVersion()`: release title extraction, no-version/null/empty/malformed payloads |
 | `domain/RewindPackManagerTest.kt` | 11 | `checkStatus`, `installLatest` (zip + extract + version-after-extract, server failures, extract-failure no-version-write), `update` (incremental steps) |
 | `viewmodel/PackUpdateViewModelTest.kt` | 10 | init/checkStatus/install/update/clearError state machine |
 | `viewmodel/AppUpdateViewModelTest.kt` | 7 | init latest-vs-current resolution, fetch failure, disabled skip, unparseable current version, `dismissDialog` |
-| `viewmodel/SaveDataViewModelTest.kt` | 27 | refresh, region selection, slot selection, leaderboard merge, unified backup/restore/delete delegation |
+| `viewmodel/SaveDataViewModelTest.kt` | 30 | refresh, region selection, leaderboard merge, backup/restore/delete, localized errors, cancellation |
+| `viewmodel/HomeLaunchViewModelTest.kt` | 4 | notice persistence/dismissal, check override, single-flight launch, queued result messages |
+| `viewmodel/OnboardingViewModelTest.kt` | 12 | Dolphin gating, SAF setup, ROM import/reuse/errors, navigation cancellation, explicit restart |
+| `viewmodel/OnlineViewModelTest.kt` | 10 | leaderboard refresh, time-trial request ownership, pagination/reset boundaries, race-stat cache I/O |
 | `util/cloud/SaveContentHashTest.kt` | 5 | canonical zip hashing, entry-order independence, manifest exclusion |
 | `util/cloud/DropboxAuthTest.kt` | 4 | PKCE URL, token exchange, refresh, HTTP errors |
 | `util/cloud/OAuthBrowserLauncherTest.kt` | 3 | Custom Tab launch, external-browser fallback, dual failure reporting |
 | `util/cloud/DropboxApiTest.kt` | 17 | metadata, conditional upload/download, account email, state/lock JSON, delete/error handling |
 | `util/cloud/SyncStoreTest.kt` | 11 | device ID, encrypted credential fail-closed behavior, token persistence, sync bookkeeping, defaults |
 | `domain/SaveSyncEngineTest.kt` | 11 | sync decision table, fresh-device branches, lock TTL |
-| `viewmodel/CloudSyncViewModelTest.kt` | 18 | auth, lifecycle sync, secure storage, conditional conflicts, pull/restore failure, push, token refresh, session locks |
+| `viewmodel/CloudSyncViewModelTest.kt` | 28 | auth/lifecycle sync, conflicts, pull/push failures, token refresh, session locks, disconnect/account-change races |
 | `viewmodel/LogViewerViewModelTest.kt` | 4 | init load, loading state, reload, copy bumps trigger |
 
 ### Testability notes
 - Pure functions tested directly (no Android deps): SemVersion, parseRooms(), parseUpdatesText(), `DolphinConfig`, `DolphinPaths.physicalRoot`, `DolphinLauncher.buildLaunchJson`, etc.
 - `RksysParser` and `MiiFaceCache` use `java.util.Base64` for JVM testability
 - `DolphinTree` is tested with MockK-stubs for `ContentResolver`/`DocumentFile`; constructor is cheap and side-effect free (lazy subdirs).
-- ViewModels test through MockK constructor injection. `PackUpdateViewModel` takes a `managerFactory` lambda; `SaveDataViewModel` takes `treeFactory`, `parser`, `leaderboardFetcher`, `ioDispatcher`
+- ViewModels test through constructor injection. `PackUpdateViewModel` takes a `managerFactory`; `SaveDataViewModel` takes `treeFactory`, `parser`, `leaderboardMerger`, and `ioDispatcher`. Onboarding and launch workflows expose their state without requiring Compose.
 - Static `object` singletons mocked via `mockkObject()`; `RewindPackManager` is a class with constructor injection
-- Android-dependent orchestration (intent firing, SAF I/O) is mocked via the two-arg `DolphinLauncher.launchRetroRewind(context, tree)` overload. The single-arg version delegates to `DolphinTree.fromPersisted` which the production home-screen caller invokes anyway
+- Android-dependent orchestration (intent firing, SAF I/O) is mocked via the two-arg `DolphinLauncher.launchRetroRewind(context, tree)` overload. `HomeLaunchViewModel` uses the single-arg overload, which resolves the persisted tree.
