@@ -78,9 +78,9 @@ import timber.log.Timber
  * Unified save data: [hasAnySave] is the single source of truth for whether the user has anything
  * worth backing up (any region's `rksys.dat`, the Mii DB, any Pulsar pul file, or any ghost). The
  * Save Data section in Settings uses [hasAnySave] to drive Backup/Delete and status text, while
- * [storageConfigured] enables Restore even before a save exists.
- * [lastBackupTimestamp] is read from [PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY] on construction and
- * updated after every successful [backup] call.
+ * [storageConfigured] enables Restore even before a save exists. [lastBackupTimestamp] is read from
+ * [PrefsKeys.LAST_BACKUP_TIMESTAMP_KEY] on construction and updated after every successful [backup]
+ * call.
  *
  * Tests can swap the [treeFactory], the [parser], the [LeaderboardMerger], the [SaveManager], the
  * [now] lambda (for timestamps), and the [ioDispatcher] to inject mocks without going through SAF,

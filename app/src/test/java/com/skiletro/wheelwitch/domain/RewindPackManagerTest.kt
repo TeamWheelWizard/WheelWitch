@@ -519,9 +519,10 @@ class RewindPackManagerTest {
           true
         }
     coEvery { tree.readVersion() } returns SemVersion(3, 2, 5) andThen null
-    coEvery { tree.writeVersion(server.latestVersion) } answers {
-      events += "version:${server.latestVersion}"
-    }
+    coEvery { tree.writeVersion(server.latestVersion) } answers
+        {
+          events += "version:${server.latestVersion}"
+        }
     coEvery { tree.writeRrMetadata(server.latestVersion) } returns Unit
 
     val result =

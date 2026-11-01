@@ -458,38 +458,37 @@ class OnlineViewModel(
     if (existingSubmissions == null) {
       _trackLeaderboardState.value = TrackLeaderboardState.Loading
     }
-    trackLeaderboardJob =
-        viewModelScope.launch {
-          val result =
-              withContext(ioDispatcher) {
-                trackLeaderboardFetcher(
-                    request.trackId,
-                    request.cc,
-                    request.glitchAllowed,
-                    request.page,
-                    50,
-                )
-              }
-          if (!isCurrentTrackLeaderboardRequest(request)) return@launch
-          if (result.isSuccess) {
-            val response = result.getOrThrow()
-            _trackLeaderboardState.value =
-                TrackLeaderboardState.Success(
-                    submissions = (request.existingSubmissions ?: emptyList()) + response.submissions,
-                    currentPage = response.currentPage,
-                    totalPages = response.totalPages,
-                    fastestLapMs = response.fastestLapMs,
-                    fastestLapDisplay = response.fastestLapDisplay,
-                )
-          } else {
-            val error = result.exceptionOrNull()!!
-            Timber.tag(TAG).w(error, "Track leaderboard page %d fetch failed", request.page)
-            if (request.existingSubmissions == null) {
-              _trackLeaderboardState.value =
-                  TrackLeaderboardState.Error(errorMessage(error, "load track leaderboard"))
-            }
+    trackLeaderboardJob = viewModelScope.launch {
+      val result =
+          withContext(ioDispatcher) {
+            trackLeaderboardFetcher(
+                request.trackId,
+                request.cc,
+                request.glitchAllowed,
+                request.page,
+                50,
+            )
           }
+      if (!isCurrentTrackLeaderboardRequest(request)) return@launch
+      if (result.isSuccess) {
+        val response = result.getOrThrow()
+        _trackLeaderboardState.value =
+            TrackLeaderboardState.Success(
+                submissions = (request.existingSubmissions ?: emptyList()) + response.submissions,
+                currentPage = response.currentPage,
+                totalPages = response.totalPages,
+                fastestLapMs = response.fastestLapMs,
+                fastestLapDisplay = response.fastestLapDisplay,
+            )
+      } else {
+        val error = result.exceptionOrNull()!!
+        Timber.tag(TAG).w(error, "Track leaderboard page %d fetch failed", request.page)
+        if (request.existingSubmissions == null) {
+          _trackLeaderboardState.value =
+              TrackLeaderboardState.Error(errorMessage(error, "load track leaderboard"))
         }
+      }
+    }
   }
 
   private fun invalidateTrackLeaderboard() {

@@ -298,28 +298,26 @@ fun OnboardingScreen(
           try {
             romStage = romVerifying
             romError = null
-            val validationResult =
-                runRomValidation {
-                  val tree =
-                      DolphinTree.fromPersisted(context)
-                          ?: return@runRomValidation RomValidation.StorageNotConfigured
-                  val displayName =
-                      queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "rom.iso"
-                  val bytes =
-                      withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { stream ->
-                          stream.readUpTo(ROM_HEADER_BYTES)
-                        } ?: throw IOException("Cannot open $uri")
-                      }
-                  if (!GameTypeParser.checkValidity(displayName, bytes)) {
-                    return@runRomValidation RomValidation.Invalid
+            val validationResult = runRomValidation {
+              val tree =
+                  DolphinTree.fromPersisted(context)
+                      ?: return@runRomValidation RomValidation.StorageNotConfigured
+              val displayName = queryDisplayName(context, uri) ?: uri.lastPathSegment ?: "rom.iso"
+              val bytes =
+                  withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                      stream.readUpTo(ROM_HEADER_BYTES)
+                    } ?: throw IOException("Cannot open $uri")
                   }
-                  val gameId =
-                      GameTypeParser.parseGameInfo(displayName, bytes).gameId
-                          ?: return@runRomValidation RomValidation.Invalid
-                  val extension = File(displayName).extension.ifEmpty { "iso" }.lowercase()
-                  RomValidation.Valid(tree, gameId, extension)
-                }
+              if (!GameTypeParser.checkValidity(displayName, bytes)) {
+                return@runRomValidation RomValidation.Invalid
+              }
+              val gameId =
+                  GameTypeParser.parseGameInfo(displayName, bytes).gameId
+                      ?: return@runRomValidation RomValidation.Invalid
+              val extension = File(displayName).extension.ifEmpty { "iso" }.lowercase()
+              RomValidation.Valid(tree, gameId, extension)
+            }
             val validation = validationResult.getOrNull()
             if (validation == null) {
               val error = validationResult.exceptionOrNull()

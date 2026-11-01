@@ -21,20 +21,19 @@ import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.buttonShape
 
 /**
- * A focusable card that draws a focus border when focused and optionally
- * handles click events.
+ * A focusable card that draws a focus border when focused and optionally handles click events.
  *
- * Replaces the repeated `.clickable {} + .focusable() + .onFocusChanged {} +
- * .focusBorder()` + `Surface` pattern that was copy-pasted across screens.
+ * Replaces the repeated `.clickable {} + .focusable() + .onFocusChanged {} + .focusBorder()` +
+ * `Surface` pattern that was copy-pasted across screens.
  *
  * - Clickable cards use clickable as their sole focus target; passive cards use one explicit
  *   focusable target.
- * - When [selected] is true, the focus border is shown regardless of focus
- *   state (used for things like a currently-selected license slot).
- * - Focus state is hoisted to a `remember` scope (NOT inside the clickable
- *   lambda) so the state survives recomposition correctly.
- * - The focus border is drawn with [shape], which may be a
- *   [RoundedCornerShape] or [CircleShape] (or falls back to [buttonShape]).
+ * - When [selected] is true, the focus border is shown regardless of focus state (used for things
+ *   like a currently-selected license slot).
+ * - Focus state is hoisted to a `remember` scope (NOT inside the clickable lambda) so the state
+ *   survives recomposition correctly.
+ * - The focus border is drawn with [shape], which may be a [RoundedCornerShape] or [CircleShape]
+ *   (or falls back to [buttonShape]).
  */
 @Composable
 fun FocusableSurface(
@@ -44,46 +43,47 @@ fun FocusableSurface(
     selected: Boolean = false,
     shape: Shape = buttonShape,
     color: Color = MaterialTheme.colorScheme.surfaceVariant,
-    content: @Composable () -> Unit
+    content: @Composable () -> Unit,
 ) {
-    var isFocused by remember { mutableStateOf(false) }
+  var isFocused by remember { mutableStateOf(false) }
 
-    val focusTargetModifier =
-        if (onClick != null) {
-            Modifier.clickable(enabled = enabled, onClick = onClick)
-        } else {
-            Modifier.focusable(enabled = enabled)
-        }
+  val focusTargetModifier =
+      if (onClick != null) {
+        Modifier.clickable(enabled = enabled, onClick = onClick)
+      } else {
+        Modifier.focusable(enabled = enabled)
+      }
 
-    Surface(
-        shape = shape,
-        color = color,
-        modifier = modifier
-            .onFocusChanged { isFocused = it.isFocused }
-            .then(focusTargetModifier)
-            .focusBorder(
-                isFocused = isFocused || selected,
-                shape = shape
-            )
-    ) {
-        content()
-    }
+  Surface(
+      shape = shape,
+      color = color,
+      modifier =
+          modifier
+              .onFocusChanged { isFocused = it.isFocused }
+              .then(focusTargetModifier)
+              .focusBorder(
+                  isFocused = isFocused || selected,
+                  shape = shape,
+              ),
+  ) {
+    content()
+  }
 }
 
 @Preview(showBackground = true)
 @Composable
 private fun FocusableSurfacePreview() {
-    WheelWitchPreviewTheme {
-        FocusableSurface(
-            modifier = Modifier.padding(16.dp),
-            onClick = {},
-        ) {
-            Text(
-                text = "Sample focusable card",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(16.dp),
-            )
-        }
+  WheelWitchPreviewTheme {
+    FocusableSurface(
+        modifier = Modifier.padding(16.dp),
+        onClick = {},
+    ) {
+      Text(
+          text = "Sample focusable card",
+          style = MaterialTheme.typography.bodyLarge,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.padding(16.dp),
+      )
     }
+  }
 }
