@@ -6,6 +6,14 @@
 
     <queries>
         <package android:name="org.dolphinemu.dolphinemu" />
+
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+
+            <category android:name="android.intent.category.BROWSABLE" />
+
+            <data android:scheme="https" />
+        </intent>
     </queries>
 
     <application
@@ -23,12 +31,24 @@
             android:configChanges="orientation|screenSize"
             android:enableOnBackInvokedCallback="true"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.WheelWitch">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="dropbox"
+                    android:scheme="com.skiletro.wheelwitch" />
             </intent-filter>
         </activity>
 

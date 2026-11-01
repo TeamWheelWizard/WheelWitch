@@ -3,9 +3,9 @@ package com.skiletro.wheelwitch.util.log
 import android.content.Context
 import com.skiletro.wheelwitch.BuildConfig
 import java.io.File
-import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Date
-import java.util.Locale
 
 /**
  * Flushes the in-memory [LogBuffer] to a timestamped text file in the app's
@@ -22,7 +22,13 @@ object LogExporter {
   private const val FILE_EXTENSION = ".log"
   private const val ON_DISK_LOG_NAME = "wheelwitch.log"
   private const val ON_DISK_LOG_ROTATED_NAME = "wheelwitch.log.1"
-  private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
+  private val TIMESTAMP_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+
+  /**
+   * Formats [dateTime] for export filenames. Exposed for tests; the shared
+   * [DateTimeFormatter] is thread-safe, unlike a shared `SimpleDateFormat`.
+   */
+  internal fun formatTimestamp(dateTime: LocalDateTime): String = dateTime.format(TIMESTAMP_FORMAT)
 
   /**
    * Renders the current [LogBuffer] to a new file in `cacheDir/logs/`
@@ -31,7 +37,7 @@ object LogExporter {
   fun flushToCacheFile(context: Context): File {
     val dir = File(context.cacheDir, DIR_NAME)
     if (!dir.exists()) dir.mkdirs()
-    val file = File(dir, "$FILE_PREFIX${TIMESTAMP_FORMAT.format(Date())}$FILE_EXTENSION")
+    val file = File(dir, "$FILE_PREFIX${formatTimestamp(LocalDateTime.now())}$FILE_EXTENSION")
     file.writeText(buildReport(context))
     return file
   }
@@ -56,15 +62,7 @@ object LogExporter {
       sb.append("(no log entries captured)\n")
     } else {
       for (entry in entries) {
-        val tag = entry.tag ?: "?"
-        sb.append(entry.timestampMillis)
-          .append(' ')
-          .append(entry.levelLabel())
-          .append('/')
-          .append(tag)
-          .append(": ")
-          .append(entry.message)
-          .append('\n')
+        sb.append(entry.serialize()).append('\n')
       }
     }
     appendOnDiskLogs(sb, File(context.cacheDir, DIR_NAME))

@@ -19,6 +19,7 @@ sealed interface ServerConnectivity {
 }
 
 /** A room on the RWFC multiplayer server parsed from the rooms API. */
+@Immutable
 data class Room(
     val id: String,
     val players: List<Player>,
@@ -35,6 +36,7 @@ data class Room(
  * [data] is the Base64-encoded RFL (Mii binary) payload; [name] is the
  * Mii's display name.
  */
+@Immutable
 data class MiiData(
     val data: String,
     val name: String
@@ -46,6 +48,7 @@ data class MiiData(
  * [vr] is the player's Versus Rating; [br] is their Battle Rating. Both
  * are Mario Kart Wii online ranking points.
  */
+@Immutable
 data class Player(
     val name: String,
     val friendCode: String,

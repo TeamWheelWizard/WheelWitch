@@ -20,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +29,7 @@ import com.skiletro.wheelwitch.R
 import com.skiletro.wheelwitch.model.Player
 import com.skiletro.wheelwitch.model.Room
 import com.skiletro.wheelwitch.ui.components.MiiFace
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.WheelWitchPreviewTheme
 import com.skiletro.wheelwitch.ui.theme.chipShape
@@ -59,13 +59,13 @@ fun RoomDetail(room: Room) {
                     )
                     if (room.isJoinable) {
                         Surface(
-                            color = statusColors().ok,
+                            color = statusColors().okContainer,
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.rooms_joinable),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                                color = Color.White,
+                                color = statusColors().onOkContainer,
                                 style = MaterialTheme.typography.labelMedium
                             )
                         }
@@ -83,7 +83,7 @@ fun RoomDetail(room: Room) {
 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = stringResource(R.string.rooms_meta_format, room.id, room.roomType),
+                    text = stringResource(R.string.rooms_meta_format, room.id, unknownOrValue(room.roomType)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -143,7 +143,7 @@ fun MiiPlayerCard(player: Player) {
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = player.name,
+                            text = unknownOrValue(player.name),
                             fontWeight = FontWeight.SemiBold,
                             style = MaterialTheme.typography.bodyLarge,
                             fontFamily = CtmkfFontFamily

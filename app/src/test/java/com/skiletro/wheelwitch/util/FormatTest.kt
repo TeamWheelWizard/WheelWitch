@@ -42,4 +42,20 @@ class FormatTest {
         assertThat(formatDownloadProgress(1536L, 0L)).isEqualTo("1 KB")
         assertThat(formatDownloadProgress(1536L, -1L)).isEqualTo("1 KB")
     }
+
+    @Test
+    fun `formatScore always prints two decimal places`() {
+        assertThat(formatScore(76.4)).isEqualTo("76.40")
+        assertThat(formatScore(0.0)).isEqualTo("0.00")
+        assertThat(formatScore(9.0)).isEqualTo("9.00")
+        assertThat(formatScore(1234.567)).isEqualTo("1234.57")
+    }
+
+    @Test
+    fun `formatRankPoints prefixes a plus and prints two decimal places`() {
+        assertThat(formatRankPoints(10.52)).isEqualTo("+10.52")
+        assertThat(formatRankPoints(10.5)).isEqualTo("+10.50")
+        assertThat(formatRankPoints(0.0)).isEqualTo("+0.00")
+        assertThat(formatRankPoints(1234.567)).isEqualTo("+1234.57")
+    }
 }

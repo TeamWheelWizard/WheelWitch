@@ -34,27 +34,29 @@ class OptionalFileTree(
   companion object {
     const val DEFAULT_MAX_BYTES: Long = 1_000_000L // 1 MB
 
-    internal fun formatLine(priority: Int, tag: String?, message: String): String {
-      val ts = LogEntry(System.currentTimeMillis(), priority, tag, message)
-      return "${ts.timestampMillis} ${ts.levelLabel()}/${tag ?: "?"}: $message"
-    }
+    internal fun formatLine(priority: Int, tag: String?, message: String): String =
+        LogEntry(System.currentTimeMillis(), priority, tag, message).serialize()
   }
 }
 
 /**
  * Appends [line] to [file], creating parent directories as needed. If the file would exceed
- * [maxBytes] after the write, rotates the existing file to `<file>.1` (overwriting any
- * previous `.1`) and starts a new file. Synchronized on the file path so concurrent log calls
- * from different threads do not interleave writes.
+ * [maxBytes] after the write (measured in UTF-8 bytes), rotates the existing file to `<file>.1`
+ * (overwriting any previous `.1`) and starts a new file. If the rename fails, the file is
+ * truncated in place instead so it never grows unbounded. Synchronized on the file path so
+ * concurrent log calls from different threads do not interleave writes.
  */
 internal fun appendWithRotation(file: File, line: String, maxBytes: Long) {
   val parent = file.parentFile
   if (parent != null && !parent.exists()) parent.mkdirs()
   synchronized(file.absolutePath) {
-    if (file.exists() && file.length() + line.length > maxBytes) {
+    if (file.exists() && file.length() + line.toByteArray().size > maxBytes) {
       val rotated = File(file.parentFile, file.name + ".1")
       if (rotated.exists()) rotated.delete()
-      file.renameTo(rotated)
+      if (!file.renameTo(rotated)) {
+        // Rotation failed; truncate in place to keep the file bounded.
+        file.delete()
+      }
     }
     file.appendText(line)
   }

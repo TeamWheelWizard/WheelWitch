@@ -34,12 +34,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.skiletro.wheelwitch.BuildConfig
 import com.skiletro.wheelwitch.R
-import kotlin.math.sin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlin.math.sin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 private const val TopBarBobAmplitudeDp = 4
 private const val TopBarBobPeriodMs = 3000
@@ -48,158 +48,150 @@ private val TopBarTwoPi = (2.0 * Math.PI).toFloat()
 private const val ClockRefreshMs = 60_000L
 private val TopBarHorizontalPadding = 20.dp
 private val TopBarVerticalPadding = 16.dp
-private const val DisabledIconAlpha = 0.38f
 
 /**
  * Top app bar shown on the Home screen.
  *
- * Renders the brand name + subtitle, a clock, and three icon buttons:
- * online menu, Mii Maker, and settings.
+ * Renders the brand name + subtitle, a clock, and three icon buttons: online menu, Mii Maker, and
+ * settings.
  *
- * [onLaunchMiiMaker] and [onOpenOnlineMenu] accept an `enabled` flag
- * that gates the corresponding button. The Mii Maker button also dims
- * its icon tint manually when disabled because the default Material
- * disabled styling is too subtle on this design.
+ * [onLaunchMiiMaker] is always enabled; when no cached WAD exists the caller shows an install
+ * prompt instead of launching. that gates the corresponding button. The Mii Maker button also dims
+ * its icon tint manually when disabled because the default Material disabled styling is too subtle
+ * on this design.
  */
 @Composable
 fun TopBar(
     onOpenSettings: () -> Unit,
     onLaunchMiiMaker: () -> Unit,
-    miiMakerEnabled: Boolean,
     onOpenOnlineMenu: () -> Unit,
 ) {
-    var bobOffset by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
-        val periodNanos = TopBarBobPeriodMs * NanosecondsPerMillisecond
-        val startNanos = withFrameNanos { it }
-        while (true) {
-            withFrameNanos { nowNanos ->
-                val phase =
-                    ((nowNanos - startNanos) % periodNanos).toFloat() / periodNanos
-                bobOffset = -TopBarBobAmplitudeDp.toFloat() * sin(phase * TopBarTwoPi)
-            }
-        }
+  var bobOffset by remember { mutableFloatStateOf(0f) }
+  LaunchedEffect(Unit) {
+    val periodNanos = TopBarBobPeriodMs * NanosecondsPerMillisecond
+    val startNanos = withFrameNanos { it }
+    while (true) {
+      withFrameNanos { nowNanos ->
+        val phase = ((nowNanos - startNanos) % periodNanos).toFloat() / periodNanos
+        bobOffset = -TopBarBobAmplitudeDp.toFloat() * sin(phase * TopBarTwoPi)
+      }
     }
+  }
 
-    var onlineMenuFocused by remember { mutableStateOf(false) }
-    var miiMakerFocused by remember { mutableStateOf(false) }
-    var settingsFocused by remember { mutableStateOf(false) }
+  var onlineMenuFocused by remember { mutableStateOf(false) }
+  var miiMakerFocused by remember { mutableStateOf(false) }
+  var settingsFocused by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = TopBarHorizontalPadding, vertical = TopBarVerticalPadding),
-        verticalAlignment = Alignment.CenterVertically
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .padding(horizontal = TopBarHorizontalPadding, vertical = TopBarVerticalPadding),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+        modifier = Modifier.offset(y = bobOffset.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier.offset(y = bobOffset.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            SparkleHat(hatSize = 38.dp)
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                VersionBadge()
-            }
-            Text(
-                text = stringResource(R.string.topbar_subtitle),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        IconButton(
-            onClick = onOpenOnlineMenu,
-            modifier = Modifier
-                .onFocusChanged { onlineMenuFocused = it.isFocused }
-                .focusBorder(onlineMenuFocused, CircleShape)
-        ) {
-            Icon(
-                imageVector = ImageVector.vectorResource(R.drawable.ic_dns),
-                contentDescription = stringResource(R.string.cd_online_menu),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        IconButton(
-            onClick = onLaunchMiiMaker,
-            enabled = miiMakerEnabled,
-            modifier = Modifier
-                .onFocusChanged { miiMakerFocused = it.isFocused }
-                .focusBorder(miiMakerFocused, CircleShape)
-        ) {
-            Icon(
-                imageVector = ImageVector.vectorResource(R.drawable.ic_face_up),
-                contentDescription = stringResource(R.string.cd_mii_maker),
-                tint = if (miiMakerEnabled) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = DisabledIconAlpha),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        IconButton(
-            onClick = onOpenSettings,
-            modifier = Modifier
-                .onFocusChanged { settingsFocused = it.isFocused }
-                .focusBorder(settingsFocused, CircleShape)
-        ) {
-            Icon(
-                imageVector = ImageVector.vectorResource(R.drawable.ic_settings),
-                contentDescription = stringResource(R.string.cd_settings),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        ClockText()
+      SparkleHat(hatSize = 38.dp)
     }
+    Spacer(modifier = Modifier.width(12.dp))
+    Column(modifier = Modifier.weight(1f)) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        VersionBadge()
+      }
+      Text(
+          text = stringResource(R.string.topbar_subtitle),
+          style = MaterialTheme.typography.titleSmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    IconButton(
+        onClick = onOpenOnlineMenu,
+        modifier =
+            Modifier.onFocusChanged { onlineMenuFocused = it.isFocused }
+                .focusBorder(onlineMenuFocused, CircleShape),
+    ) {
+      Icon(
+          imageVector = ImageVector.vectorResource(R.drawable.ic_dns),
+          contentDescription = stringResource(R.string.cd_online_menu),
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    IconButton(
+        onClick = onLaunchMiiMaker,
+        modifier =
+            Modifier.onFocusChanged { miiMakerFocused = it.isFocused }
+                .focusBorder(miiMakerFocused, CircleShape),
+    ) {
+      Icon(
+          imageVector = ImageVector.vectorResource(R.drawable.ic_mii),
+          contentDescription = stringResource(R.string.cd_mii_maker),
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+          modifier = Modifier.size(24.dp),
+      )
+    }
+    IconButton(
+        onClick = onOpenSettings,
+        modifier =
+            Modifier.onFocusChanged { settingsFocused = it.isFocused }
+                .focusBorder(settingsFocused, CircleShape),
+    ) {
+      Icon(
+          imageVector = ImageVector.vectorResource(R.drawable.ic_settings),
+          contentDescription = stringResource(R.string.cd_settings),
+          tint = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    Spacer(modifier = Modifier.width(8.dp))
+    ClockText()
+  }
 }
 
 /** Displays the current time, refreshing once per [ClockRefreshMs]. */
 @Composable
 private fun ClockText() {
-    var timeText by remember { mutableStateOf("") }
+  var timeText by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val now = LocalTime.now()
-            timeText = now.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
-            delay(ClockRefreshMs)
-        }
+  LaunchedEffect(Unit) {
+    while (isActive) {
+      val now = LocalTime.now()
+      timeText = now.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
+      delay(ClockRefreshMs)
     }
+  }
 
-    Text(
-        text = timeText,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.Medium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
+  Text(
+      text = timeText,
+      style = MaterialTheme.typography.bodyMedium,
+      fontWeight = FontWeight.Medium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+  )
 }
 
 @Composable
 private fun VersionBadge() {
-    val version = BuildConfig.VERSION_NAME.substringBefore("+")
-    val label = if (BuildConfig.DEBUG) "${version} CANARY" else version
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(4.dp)
-            )
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer
-        )
-    }
+  val version = BuildConfig.VERSION_NAME.substringBefore("+")
+  val label: String =
+      if (BuildConfig.DEBUG) stringResource(R.string.topbar_canary_version, version) else version
+  Box(
+      modifier =
+          Modifier.background(
+                  color = MaterialTheme.colorScheme.secondaryContainer,
+                  shape = RoundedCornerShape(4.dp),
+              )
+              .padding(horizontal = 6.dp, vertical = 2.dp)
+  ) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+    )
+  }
 }

@@ -277,7 +277,7 @@ class PackUpdateViewModel(
     /** Default production factory: read the persisted SAF tree and wire up the manager. */
     fun defaultManagerFactory(context: Context): RewindPackManager? {
       val tree = DolphinTree.fromPersisted(context) ?: return null
-      return RewindPackManager(context, tree)
+      return RewindPackManager(tree = tree, cacheDir = context.cacheDir)
     }
 
     /**

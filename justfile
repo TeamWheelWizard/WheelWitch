@@ -1,3 +1,5 @@
+set dotenv-load := true
+
 # assemble debug APK
 build:
     ./gradlew assembleDebug

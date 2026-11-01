@@ -1,6 +1,5 @@
 package com.skiletro.wheelwitch.ui.screens
 
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,9 +42,11 @@ import com.skiletro.wheelwitch.ui.components.FocusableSurface
 import com.skiletro.wheelwitch.ui.components.LoadingBox
 import com.skiletro.wheelwitch.ui.components.MiiFace
 import com.skiletro.wheelwitch.ui.components.ScreenHeader
+import com.skiletro.wheelwitch.ui.components.unknownOrValue
 import com.skiletro.wheelwitch.ui.theme.CtmkfFontFamily
 import com.skiletro.wheelwitch.ui.theme.chipShape
 import com.skiletro.wheelwitch.viewmodel.LeaderboardState
+import com.skiletro.wheelwitch.viewmodel.OnlineMenuPage
 import com.skiletro.wheelwitch.viewmodel.OnlineViewModel
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -56,174 +56,163 @@ fun LeaderboardScreen(
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
     animatedContentScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
 ) {
-    val leaderboardState by viewModel.leaderboardState.collectAsState()
+  val leaderboardState by viewModel.leaderboardState.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        ScreenHeader(
-            title = stringResource(R.string.leaderboard_title),
-            onBack = { viewModel.goBack() },
-            onRefresh = { viewModel.fetchLeaderboard() },
-            titleModifier = com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
-                key = "online_title_Leaderboard",
+  Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    ScreenHeader(
+        title = stringResource(R.string.leaderboard_title),
+        onBack = { viewModel.goBack() },
+        onRefresh = { viewModel.refreshLeaderboard() },
+        titleModifier =
+            com.skiletro.wheelwitch.ui.components.SharedTitleModifier(
+                key = OnlineMenuPage.Leaderboard.titleSharedKey,
                 sharedTransitionScope = sharedTransitionScope,
                 animatedContentScope = animatedContentScope,
-            )
-        )
+            ),
+    )
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp)
-        ) {
-            when (leaderboardState) {
-                is LeaderboardState.Idle -> {}
-                is LeaderboardState.Loading -> {
-                    LoadingBox()
-                }
-
-                is LeaderboardState.Error -> {
-                    ErrorRetry(
-                        message = (leaderboardState as LeaderboardState.Error).message,
-                        onRetry = { viewModel.fetchLeaderboard() }
-                    )
-                }
-
-                is LeaderboardState.Success -> {
-                    val state = leaderboardState as LeaderboardState.Success
-                    if (state.entries.isEmpty()) {
-                        EmptyState(message = stringResource(R.string.leaderboard_no_entries))
-                    } else {
-                        LeaderboardList(
-                            entries = state.entries,
-                            hasMore = state.hasMore,
-                            onLoadMore = { viewModel.fetchLeaderboard() }
-                        )
-                    }
-                }
-            }
+    Box(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+      when (leaderboardState) {
+        is LeaderboardState.Idle -> {}
+        is LeaderboardState.Loading -> {
+          LoadingBox()
         }
+
+        is LeaderboardState.Error -> {
+          ErrorRetry(
+              message = (leaderboardState as LeaderboardState.Error).message,
+              onRetry = { viewModel.refreshLeaderboard() },
+          )
+        }
+
+        is LeaderboardState.Success -> {
+          val state = leaderboardState as LeaderboardState.Success
+          if (state.entries.isEmpty()) {
+            EmptyState(message = stringResource(R.string.leaderboard_no_entries))
+          } else {
+            LeaderboardList(
+                entries = state.entries,
+                hasMore = state.hasMore,
+                onLoadMore = { viewModel.fetchLeaderboard() },
+            )
+          }
+        }
+      }
     }
+  }
 }
 
 @Composable
 private fun LeaderboardList(
     entries: List<LeaderboardEntry>,
     hasMore: Boolean,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
-    val focusRequester = remember { FocusRequester() }
-    var hasRequestedFocus by remember { mutableStateOf(false) }
+  val listState = rememberLazyListState()
+  val focusRequester = remember { FocusRequester() }
+  var hasRequestedFocus by remember { mutableStateOf(false) }
 
-    val shouldLoadMore by remember {
-        derivedStateOf {
-            val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()
-            lastVisibleItem != null && hasMore &&
-                    lastVisibleItem.index >= listState.layoutInfo.totalItemsCount - 3
-        }
+  val shouldLoadMore by remember {
+    derivedStateOf {
+      val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()
+      lastVisibleItem != null &&
+          hasMore &&
+          lastVisibleItem.index >= listState.layoutInfo.totalItemsCount - 3
     }
+  }
 
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore) {
-            onLoadMore()
-        }
+  LaunchedEffect(shouldLoadMore) {
+    if (shouldLoadMore) {
+      onLoadMore()
     }
+  }
 
-    LaunchedEffect(entries) {
-        if (entries.isNotEmpty() && !hasRequestedFocus) {
-            focusRequester.requestFocus()
-            hasRequestedFocus = true
-        }
+  LaunchedEffect(entries) {
+    if (entries.isNotEmpty() && !hasRequestedFocus) {
+      focusRequester.requestFocus()
+      hasRequestedFocus = true
     }
+  }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .focusRequester(focusRequester),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        items(entries, key = { "${it.rank}_${it.friendCode}" }) { entry ->
-            LeaderboardRow(entry = entry, modifier = Modifier.animateItem())
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-            )
-        }
-        if (hasMore) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-            }
-        }
+  LazyColumn(
+      state = listState,
+      modifier = Modifier.focusRequester(focusRequester),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
+  ) {
+    items(entries, key = { "${it.rank}_${it.friendCode}" }) { entry ->
+      LeaderboardRow(entry = entry, modifier = Modifier.animateItem())
+      HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
     }
+    if (hasMore) {
+      item {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+          CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        }
+      }
+    }
+  }
 }
 
 @Composable
 private fun LeaderboardRow(entry: LeaderboardEntry, modifier: Modifier = Modifier) {
-    val shape = chipShape
-    FocusableSurface(
-        modifier = modifier.fillMaxWidth(),
-        onClick = { },
-        shape = shape
+  val shape = chipShape
+  FocusableSurface(
+      modifier = modifier.fillMaxWidth(),
+      onClick = {},
+      shape = shape,
+  ) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.leaderboard_rank_format, entry.rank),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (entry.rank <= 3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.width(44.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            MiiFace(
-                imageBase64 = entry.miiImageBase64,
-                miiDataBase64 = entry.miiData,
-                modifier = Modifier.size(36.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = CtmkfFontFamily,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = entry.friendCode,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = "${entry.vr}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = stringResource(R.string.leaderboard_vr_label),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+      Text(
+          text = stringResource(R.string.leaderboard_rank_format, entry.rank),
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = FontWeight.Bold,
+          color =
+              if (entry.rank <= 3) MaterialTheme.colorScheme.primary
+              else MaterialTheme.colorScheme.onSurface,
+          modifier = Modifier.width(44.dp),
+      )
+      Spacer(modifier = Modifier.width(8.dp))
+      MiiFace(
+          imageBase64 = entry.miiImageBase64,
+          miiDataBase64 = entry.player.miiData,
+          modifier = Modifier.size(36.dp),
+      )
+      Spacer(modifier = Modifier.width(8.dp))
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+            text = unknownOrValue(entry.player.name ?: ""),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = CtmkfFontFamily,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = entry.friendCode,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+      Spacer(modifier = Modifier.width(8.dp))
+      Column(horizontalAlignment = Alignment.End) {
+        Text(
+            text = "${entry.player.vr}",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = stringResource(R.string.leaderboard_vr_label),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
     }
+  }
 }
